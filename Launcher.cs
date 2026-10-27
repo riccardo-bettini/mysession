@@ -16,8 +16,8 @@ using System.Windows.Forms;
 [assembly: AssemblyCompany("Riccardo Bettini")]
 [assembly: AssemblyProduct("MySession")]
 [assembly: AssemblyCopyright("Copyright © 2026 Riccardo Bettini")]
-[assembly: AssemblyVersion("1.0.2.0")]
-[assembly: AssemblyFileVersion("1.0.2.0")]
+[assembly: AssemblyVersion("1.0.3.0")]
+[assembly: AssemblyFileVersion("1.0.3.0")]
 
 namespace MySessionApp
 {

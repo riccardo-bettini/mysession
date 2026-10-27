@@ -105,6 +105,44 @@
         <!-- Injected if session has conflict notes -->
       </div>
 
+      <!-- Navigation & View Modes Section -->
+      <section class="sidebar-section sidebar-view-controls" aria-label="Modalità di visualizzazione e Filtro Giri">
+        <div class="section-title-row">
+          <span class="section-label">Vista Calendario</span>
+        </div>
+        <div class="segmented-control sidebar-segmented" role="tablist" aria-label="Modalità di visualizzazione">
+          <button type="button" class="seg-btn active" data-view="continuous" id="btnViewContinuous" role="tab" aria-selected="true" title="Scorrimento verticale continuo infinito">
+            <span class="seg-label-full">↕ Continuo</span>
+            <span class="seg-label-short">Cont.</span>
+          </button>
+          <button type="button" class="seg-btn" data-view="month" id="btnViewMonth" role="tab" aria-selected="false" title="Mese singolo">
+            <span>Mese</span>
+          </button>
+          <button type="button" class="seg-btn" data-view="week" id="btnViewWeek" role="tab" aria-selected="false" title="Vista Settimana">
+            <span class="seg-label-full">Settimana</span>
+            <span class="seg-label-short">Sett.</span>
+          </button>
+          <button type="button" class="seg-btn" data-view="agenda" id="btnViewAgenda" role="tab" aria-selected="false" title="Elenco cronologico degli appelli">
+            <span>Appelli</span>
+          </button>
+        </div>
+
+        <div class="section-title-row" style="margin-top: 6px;">
+          <span class="section-label">Giro Appelli</span>
+        </div>
+        <div class="segmented-control sidebar-segmented sidebar-round-segmented" id="sidebarRoundFilter" role="group" aria-label="Filtra per giro di appelli">
+          <button type="button" class="seg-btn pill-round active" data-round="all">Tutti</button>
+          <button type="button" class="seg-btn pill-round" data-round="1">
+            <span class="round-label-full">1° Giro</span>
+            <span class="round-label-short">1°</span>
+          </button>
+          <button type="button" class="seg-btn pill-round" data-round="2">
+            <span class="round-label-full">2° Giro</span>
+            <span class="round-label-short">2°</span>
+          </button>
+        </div>
+      </section>
+
       <!-- Session Active Months -->
       <nav class="sidebar-section" aria-label="Mesi Chiave della Sessione">
         <div class="section-title-row">
@@ -167,38 +205,6 @@
             <input type="month" id="hiddenMonthPicker" class="hidden-month-input" aria-label="Seleziona mese e anno" />
             <button type="button" class="btn-jump-month" id="btnJumpMonth" title="Salta a un mese o anno specifico">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2.5" ry="2.5"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            </button>
-          </div>
-        </div>
-
-        <!-- Center Area: View Switcher + Round Filter -->
-        <div class="toolbar-center">
-          <div class="segmented-control" role="tablist" aria-label="Modalità di visualizzazione">
-            <button type="button" class="seg-btn active" data-view="continuous" id="btnViewContinuous" role="tab" aria-selected="true" title="Scorrimento verticale continuo infinito">
-              <span class="seg-label-full">↕ Continuo</span>
-              <span class="seg-label-short">Cont.</span>
-            </button>
-            <button type="button" class="seg-btn" data-view="month" id="btnViewMonth" role="tab" aria-selected="false" title="Mese singolo">
-              <span>Mese</span>
-            </button>
-            <button type="button" class="seg-btn" data-view="week" id="btnViewWeek" role="tab" aria-selected="false" title="Vista Settimana">
-              <span class="seg-label-full">Settimana</span>
-              <span class="seg-label-short">Sett.</span>
-            </button>
-            <button type="button" class="seg-btn" data-view="agenda" id="btnViewAgenda" role="tab" aria-selected="false" title="Elenco cronologico degli appelli">
-              <span>Appelli</span>
-            </button>
-          </div>
-
-          <div class="segmented-control" id="toolbarRoundFilter" role="group" aria-label="Filtra per giro di appelli">
-            <button type="button" class="seg-btn pill-round active" data-round="all">Tutti</button>
-            <button type="button" class="seg-btn pill-round" data-round="1">
-              <span class="round-label-full">1° Giro</span>
-              <span class="round-label-short">1°</span>
-            </button>
-            <button type="button" class="seg-btn pill-round" data-round="2">
-              <span class="round-label-full">2° Giro</span>
-              <span class="round-label-short">2°</span>
             </button>
           </div>
         </div>
@@ -670,7 +676,7 @@
                   <img src="app.ico" alt="MySession" class="settings-author-app-icon" width="22" height="22" />
                   <div class="settings-author-meta">
                     <span class="settings-app-name">MySession</span>
-                    <span class="settings-app-version">v1.0.02</span>
+                    <span class="settings-app-version">v1.0.03</span>
                   </div>
                 </div>
                 <div class="settings-author-divider"></div>

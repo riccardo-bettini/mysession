@@ -1150,6 +1150,56 @@ body.standard-window-frame .app-layout {
   width: 100%;
 }
 
+/* Sidebar View & Round Controls */
+.sidebar-view-controls {
+  gap: 6px;
+  max-height: 150px;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    max-height var(--dur-morph) var(--ease-morph),
+    opacity calc(var(--dur-morph) * 0.5) var(--ease-out),
+    transform var(--dur-morph) var(--ease-morph),
+    margin var(--dur-morph) var(--ease-morph);
+  overflow: hidden;
+}
+
+.sidebar.compact .sidebar-view-controls,
+.sidebar.compact-rail .sidebar-view-controls {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-8px);
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: none;
+}
+
+.sidebar-segmented {
+  width: 100%;
+  display: flex;
+  background: var(--seg-track-bg);
+  padding: 3px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  gap: 2px;
+  box-sizing: border-box;
+}
+
+.sidebar-segmented .seg-btn {
+  flex: 1;
+  height: 28px;
+  padding: 0 4px;
+  justify-content: center;
+  font-size: 0.73rem;
+  letter-spacing: -0.015em;
+  text-align: center;
+}
+
+.sidebar-segmented.sidebar-round-segmented .seg-btn {
+  font-size: 0.76rem;
+  height: 27px;
+}
+
 .sidebar-section-grow {
   flex: 1;
   min-height: 0;
@@ -4332,15 +4382,6 @@ kbd {
   }
   .btn-toolbar-accent span {
     display: none !important;
-  }
-
-  /* Hide round filter from main top-bar to keep the 4 core views spacious */
-  #toolbarRoundFilter {
-    display: none;
-  }
-
-  .toolbar-center {
-    gap: 4px;
   }
 
   .seg-btn {
