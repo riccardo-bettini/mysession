@@ -16,8 +16,8 @@ using System.Windows.Forms;
 [assembly: AssemblyCompany("Riccardo Bettini")]
 [assembly: AssemblyProduct("MySession")]
 [assembly: AssemblyCopyright("Copyright © 2026 Riccardo Bettini")]
-[assembly: AssemblyVersion("1.0.1.0")]
-[assembly: AssemblyFileVersion("1.0.1.0")]
+[assembly: AssemblyVersion("1.0.2.0")]
+[assembly: AssemblyFileVersion("1.0.2.0")]
 
 namespace MySessionApp
 {
@@ -82,6 +82,18 @@ namespace MySessionApp
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
         [DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
@@ -112,6 +124,7 @@ namespace MySessionApp
         private const long WS_SYSMENU = 0x00080000L;
         private const long WS_MINIMIZEBOX = 0x00020000L;
         private const long WS_MAXIMIZEBOX = 0x00010000L;
+        private const long WS_BORDERLESS_MASK = 0x00C40000L; // WS_CAPTION | WS_THICKFRAME
 
         private const uint SWP_FRAMECHANGED = 0x0020;
         private const uint SWP_NOMOVE = 0x0002;
@@ -269,8 +282,8 @@ namespace MySessionApp
                 if (_sessionHwnd != IntPtr.Zero)
                 {
                     ApplyWindowFrameStyleInternal(_currentFrameStyle);
-                    // Una volta agganciata stabilmente l'applicazione per almeno 15 iterazioni, passa alla fase 2
-                    if (attempts > 15) break;
+                    // Una volta agganciata stabilmente l'applicazione per almeno 20 iterazioni, passa alla fase 2
+                    if (attempts > 20) break;
                 }
 
                 Thread.Sleep(100);
@@ -278,10 +291,10 @@ namespace MySessionApp
             }
 
             // Fase 2: Monitoraggio continuo in background
-            // Assicura che la barra nativa di Windows non riappaia dopo redraw/navigazioni interne del browser
+            // Assicura che né la barra classica di Windows né quella nativa di Edge riappaiano
             while (_isRunning)
             {
-                Thread.Sleep(400);
+                Thread.Sleep(300);
                 if (_sessionHwnd == IntPtr.Zero || !IsWindow(_sessionHwnd))
                 {
                     _sessionHwnd = FindMySessionWindow();
@@ -290,9 +303,9 @@ namespace MySessionApp
                 if (_sessionHwnd != IntPtr.Zero && _currentFrameStyle == "custom")
                 {
                     long curStyle = GetWindowLongPtr(_sessionHwnd, GWL_STYLE);
-                    if ((curStyle & WS_CAPTION) != 0)
+                    if ((curStyle & WS_BORDERLESS_MASK) != 0 || (curStyle & WS_SYSMENU) != 0)
                     {
-                        // Il browser ha ripristinato WS_CAPTION: riapplica la rimozione della barra nativa
+                        // La barra nativa o la cornice classica sono presenti: riapplica la modalità borderless
                         ApplyWindowFrameStyleInternal("custom");
                     }
                 }
@@ -315,16 +328,25 @@ namespace MySessionApp
 
                     if (className == "Chrome_WidgetWin_1" || className.Contains("Chrome"))
                     {
-                        uint pid = 0;
-                        GetWindowThreadProcessId(hWnd, out pid);
+                        RECT r;
+                        GetWindowRect(hWnd, out r);
+                        int w = r.Right - r.Left;
+                        int h = r.Bottom - r.Top;
 
-                        bool matchPid = (_browserPid != 0 && pid == (uint)_browserPid);
-                        bool matchTitle = (title.Contains("MySession") || title.Contains("Calendario") || title.Contains("Sessione"));
-
-                        if (matchTitle || (matchPid && !string.IsNullOrEmpty(title)))
+                        // Verifica che sia la finestra principale dell'applicazione (non tooltip o finestre di servizio)
+                        if (w > 300 && h > 200)
                         {
-                            found = hWnd;
-                            return false;
+                            uint pid = 0;
+                            GetWindowThreadProcessId(hWnd, out pid);
+
+                            bool matchPid = (_browserPid != 0 && pid == (uint)_browserPid);
+                            bool matchTitle = (title.Contains("MySession") || title.Contains("Calendario") || title.Contains("Sessione"));
+
+                            if (matchTitle || (matchPid && !string.IsNullOrEmpty(title)))
+                            {
+                                found = hWnd;
+                                return false;
+                            }
                         }
                     }
                 }
@@ -346,21 +368,34 @@ namespace MySessionApp
             if (_currentFrameStyle == "custom")
             {
                 long curStyle = GetWindowLongPtr(_sessionHwnd, GWL_STYLE);
-                // Rimuove completamente WS_CAPTION (0x00C00000 = WS_BORDER | WS_DLGFRAME)
-                // Mantiene WS_THICKFRAME per consentire ridimensionamento e Aero Snap di Windows 11
-                long newStyle = (curStyle & ~WS_CAPTION) | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
-                SetWindowLongPtr(_sessionHwnd, GWL_STYLE, newStyle);
-                SetWindowPos(_sessionHwnd, IntPtr.Zero, 0, 0, 0, 0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE);
+                // Rimuove WS_CAPTION (0x00C00000), WS_THICKFRAME (0x00040000) e WS_SYSMENU (0x00080000)
+                // Questo elimina completamente la barra classica di Windows e la barra nativa di Edge/Chrome,
+                // lasciando visibile e operante esclusivamente la cornice personalizzata dell'applicazione.
+                long newStyle = (curStyle & ~WS_BORDERLESS_MASK) & ~WS_SYSMENU;
 
-                // Estende il frame DWM per mantenere l'ombreggiatura morbida e i bordi arrotondati di Windows 11
+                SetWindowLongPtr(_sessionHwnd, GWL_STYLE, newStyle);
+
+                RECT r;
+                if (GetWindowRect(_sessionHwnd, out r))
+                {
+                    int w = r.Right - r.Left;
+                    int h = r.Bottom - r.Top;
+                    SetWindowPos(_sessionHwnd, IntPtr.Zero, r.Left, r.Top, w, h,
+                        SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE);
+                }
+                else
+                {
+                    SetWindowPos(_sessionHwnd, IntPtr.Zero, 0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE);
+                }
+
                 try
                 {
                     MARGINS margins = new MARGINS();
-                    margins.cxLeftWidth = 1;
-                    margins.cxRightWidth = 1;
-                    margins.cyTopHeight = 1;
-                    margins.cyBottomHeight = 1;
+                    margins.cxLeftWidth = 0;
+                    margins.cxRightWidth = 0;
+                    margins.cyTopHeight = 0;
+                    margins.cyBottomHeight = 0;
                     DwmExtendFrameIntoClientArea(_sessionHwnd, ref margins);
                 }
                 catch { }
@@ -371,8 +406,20 @@ namespace MySessionApp
                 // Ripristina la barra del titolo classica e il menu di sistema nativo di Windows
                 long newStyle = curStyle | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
                 SetWindowLongPtr(_sessionHwnd, GWL_STYLE, newStyle);
-                SetWindowPos(_sessionHwnd, IntPtr.Zero, 0, 0, 0, 0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE);
+                
+                RECT r;
+                if (GetWindowRect(_sessionHwnd, out r))
+                {
+                    int w = r.Right - r.Left;
+                    int h = r.Bottom - r.Top;
+                    SetWindowPos(_sessionHwnd, IntPtr.Zero, r.Left, r.Top, w, h,
+                        SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE);
+                }
+                else
+                {
+                    SetWindowPos(_sessionHwnd, IntPtr.Zero, 0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE);
+                }
             }
 
             // Salva preferenza persistente su file per i successivi riavvii
@@ -502,7 +549,8 @@ namespace MySessionApp
             else if (path.EndsWith("/ping"))
             {
                 bool hasWin = (_sessionHwnd != IntPtr.Zero && IsWindow(_sessionHwnd));
-                jsonResponse = string.Format("{{\"status\":\"ok\",\"hasWindow\":{0},\"frame\":\"{1}\"}}", hasWin ? "true" : "false", _currentFrameStyle);
+                long curStyle = hasWin ? (long)GetWindowLongPtr(_sessionHwnd, GWL_STYLE) : 0;
+                jsonResponse = string.Format("{{\"status\":\"ok\",\"hasWindow\":{0},\"frame\":\"{1}\",\"style\":\"0x{2:X8}\"}}", hasWin ? "true" : "false", _currentFrameStyle, curStyle);
             }
 
             byte[] buffer = Encoding.UTF8.GetBytes(jsonResponse);
