@@ -1,0 +1,763 @@
+<script lang="ts">
+  import { themeStore } from "../../stores/theme.svelte";
+  import type { Course, SessionSnapshot } from "../../types/domain";
+  import { formatExamRoundLabel, formatItalianDateShort } from "../../utils/calendar";
+  import { generateCourseColorTokens } from "../../utils/color";
+
+  interface Props {
+    snapshot: SessionSnapshot | null;
+    selectedCourseId?: string | null;
+    onSelectCourseFilter?: (courseId: string | null) => void;
+    onJumpToDate?: (isoDate: string) => void;
+    onOpenNewCourse?: () => void;
+    onEditCourse?: (course: Course) => void;
+    onOpenNewExam?: () => void;
+    onOpenNewEvent?: () => void;
+  }
+
+  let {
+    snapshot = null,
+    selectedCourseId = null,
+    onSelectCourseFilter,
+    onJumpToDate,
+    onOpenNewCourse,
+    onEditCourse,
+    onOpenNewExam,
+    onOpenNewEvent
+  }: Props = $props();
+
+  let isCompact = $derived(themeStore.settings.sidebarState === "compact");
+  let isDark = $derived(themeStore.effectiveTheme === "dark");
+
+  let telemetry = $derived(snapshot?.telemetry ?? null);
+  let courses = $derived(snapshot?.courses ?? []);
+  let workloadsByCourse = $derived.by(() => {
+    const map = new Map<string, { progressPct: number; dailyHours: number; criticality: number }>();
+    for (const w of telemetry?.courseWorkloads ?? []) {
+      map.set(w.courseId, {
+        progressPct: Math.round(w.completionPct),
+        dailyHours: w.recommendedDailyHours,
+        criticality: w.criticalityScore
+      });
+    }
+    return map;
+  });
+
+  function toggleSidebarMode() {
+    themeStore.settings.sidebarState = isCompact ? "expanded" : "compact";
+    themeStore.persistAndSync();
+  }
+
+  function handleCourseClick(courseId: string) {
+    if (selectedCourseId === courseId) {
+      onSelectCourseFilter?.(null);
+    } else {
+      onSelectCourseFilter?.(courseId);
+    }
+  }
+</script>
+
+<aside class="app-sidebar" class:compact={isCompact} aria-label="Pannello Telemetria e Corsi">
+  <!-- Header Sidebar + Collapse Toggle -->
+  <div class="sidebar-top-row">
+    {#if !isCompact}
+      <div class="sidebar-session-meta">
+        <span class="meta-eyebrow">TELEMETRIA SESSIONE</span>
+        <h2 class="meta-title">{snapshot?.session.name ?? "Nessuna Sessione"}</h2>
+      </div>
+    {/if}
+    <button
+      type="button"
+      class="collapse-btn pressable"
+      title={isCompact ? "Espandi barra laterale" : "Compatta barra laterale"}
+      aria-label="Commuta larghezza barra laterale"
+      onclick={toggleSidebarMode}
+    >
+      <svg viewBox="0 0 16 16" fill="none">
+        <rect x="2" y="2.5" width="12" height="11" rx="2" stroke="currentColor" stroke-width="1.3" />
+        <path d="M6 2.5V13.5" stroke="currentColor" stroke-width="1.3" />
+      </svg>
+    </button>
+  </div>
+
+  {#if !isCompact}
+    <!-- 1. HERO CARD: PROSSIMO TARGET D'ESAME & COUNTDOWN -->
+    <div class="target-hero-card">
+      {#if telemetry?.nextTargetExam && telemetry?.nextTargetCourse}
+        {@const targetPalette = generateCourseColorTokens(telemetry.nextTargetCourse.colorHex, isDark)}
+        <button
+          type="button"
+          class="target-hero-trigger pressable"
+          onclick={() => {
+            if (telemetry?.nextTargetExam) {
+              onJumpToDate?.(telemetry.nextTargetExam.date);
+            }
+          }}
+          title="Salta alla data del prossimo appello nel calendario"
+        >
+          <div class="target-top">
+            <span
+              class="target-sigla-badge"
+              style:background={targetPalette.solid}
+              style:color={targetPalette.badgeText}
+            >
+              {telemetry.nextTargetCourse.sigla}
+            </span>
+            <span class="target-date-pill">
+              {formatItalianDateShort(telemetry.nextTargetExam.date)}
+              {#if telemetry.nextTargetExam.timeSlot}
+                · {telemetry.nextTargetExam.timeSlot}
+              {/if}
+            </span>
+          </div>
+
+          <div class="target-countdown-row">
+            <div class="countdown-number-wrap">
+              <span class="countdown-val">
+                {telemetry.daysToNextTarget !== null ? Math.max(0, telemetry.daysToNextTarget) : "—"}
+              </span>
+              <span class="countdown-unit">
+                {telemetry.daysToNextTarget === 1 ? "giorno" : "giorni"}
+              </span>
+            </div>
+            <div class="target-course-info">
+              <strong class="target-course-name">{telemetry.nextTargetCourse.name}</strong>
+              <span class="target-round-label">
+                {formatExamRoundLabel(telemetry.nextTargetExam.round)} · {telemetry.nextTargetCourse.cfu} CFU
+              </span>
+            </div>
+          </div>
+        </button>
+      {:else}
+        <div class="target-empty-state">
+          <span class="empty-title">Nessun appello imminente</span>
+          <span class="empty-sub">Pianifica un esame per attivare il countdown e il calcolo carico.</span>
+        </div>
+      {/if}
+    </div>
+
+    <!-- 2. GRIGLIA TELEMETRIA DETERMINISTICA -->
+    <div class="telemetry-kpi-grid">
+      <div class="kpi-box">
+        <span class="kpi-label">CFU Totali</span>
+        <strong class="kpi-value">{telemetry?.totalCfu ?? 0}</strong>
+        <span class="kpi-sub">{telemetry?.coursesCount ?? 0} materie</span>
+      </div>
+      <div class="kpi-box">
+        <span class="kpi-label">Appelli</span>
+        <strong class="kpi-value">{telemetry?.examsCount ?? 0}</strong>
+        <span class="kpi-sub">
+          {snapshot?.conflicts.length ?? 0} {snapshot?.conflicts.length === 1 ? "conflitto" : "conflitti"}
+        </span>
+      </div>
+      <div class="kpi-box">
+        <span class="kpi-label">Carico Oggi</span>
+        <strong class="kpi-value">{(telemetry?.recommendedHoursToday ?? 0).toFixed(1)}h</strong>
+        <span class="kpi-sub">studio consigliato</span>
+      </div>
+      <div class="kpi-box">
+        <span class="kpi-label">Avanzamento</span>
+        <strong class="kpi-value">{Math.round(telemetry?.overallProgressPct ?? 0)}%</strong>
+        <span class="kpi-sub">
+          {telemetry?.completedUnitsTotal ?? 0}/{telemetry?.unitsTotal ?? 0} unità
+        </span>
+      </div>
+    </div>
+
+    <!-- 3. AZIONI RAPIDE OPERATIVE -->
+    <div class="quick-actions-row">
+      <button type="button" class="action-chip primary pressable" onclick={() => onOpenNewCourse?.()}>
+        + Corso
+      </button>
+      <button type="button" class="action-chip pressable" onclick={() => onOpenNewExam?.()}>
+        + Appello
+      </button>
+      <button type="button" class="action-chip pressable" onclick={() => onOpenNewEvent?.()}>
+        + Impegno
+      </button>
+    </div>
+
+    <!-- 4. ELENCO CORSI & WORKLOAD ENGINE -->
+    <div class="courses-section-header">
+      <span>MATERIE IN SESSIONE ({courses.length})</span>
+      {#if selectedCourseId}
+        <button
+          type="button"
+          class="clear-filter-btn"
+          onclick={() => onSelectCourseFilter?.(null)}
+        >
+          Mostra tutte
+        </button>
+      {/if}
+    </div>
+
+    <div class="courses-scroll-list">
+      {#if courses.length === 0}
+        <div class="courses-empty-card">
+          <p>Nessuna materia registrata in questa sessione.</p>
+          <button type="button" class="empty-cta-btn pressable" onclick={() => onOpenNewCourse?.()}>
+            Aggiungi la prima materia
+          </button>
+        </div>
+      {:else}
+        {#each courses as course (course.id)}
+          {@const palette = generateCourseColorTokens(course.colorHex, isDark)}
+          {@const metric = workloadsByCourse.get(course.id)}
+          {@const isSelected = selectedCourseId === course.id}
+          <div
+            class="course-row-card"
+            class:selected={isSelected}
+            style:--course-solid={palette.solid}
+            style:--course-tint={palette.bgTint}
+            style:--course-border={palette.borderTint}
+            style:--course-text={palette.textContrast}
+          >
+            <button
+              type="button"
+              class="course-main-click"
+              onclick={() => handleCourseClick(course.id)}
+              title="Filtra calendario per {course.name}"
+            >
+              <div class="course-row-top">
+                <span
+                  class="course-sigla-pill"
+                  style:background={palette.solid}
+                  style:color={palette.badgeText}
+                >
+                  {course.sigla}
+                </span>
+                <span class="course-title">{course.name}</span>
+                <span class="course-cfu-badge">{course.cfu} CFU</span>
+              </div>
+
+              <div class="course-progress-track">
+                <div
+                  class="course-progress-fill"
+                  style:width="{metric?.progressPct ?? 0}%"
+                  style:background={palette.solid}
+                ></div>
+              </div>
+
+              <div class="course-row-meta">
+                <span>Avanzamento: {metric?.progressPct ?? 0}%</span>
+                {#if metric && metric.dailyHours > 0}
+                  <span>{metric.dailyHours.toFixed(1)} h/g</span>
+                {/if}
+              </div>
+            </button>
+
+            <button
+              type="button"
+              class="course-edit-icon-btn pressable"
+              title="Modifica {course.name}"
+              aria-label="Modifica corso {course.name}"
+              onclick={() => onEditCourse?.(course)}
+            >
+              <svg viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M11.2 2.5L13.5 4.8L5.3 13H3V10.7L11.2 2.5Z"
+                  stroke="currentColor"
+                  stroke-width="1.3"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+        {/each}
+      {/if}
+    </div>
+  {:else}
+    <!-- VISTA COMPATTA: Icone & Sigle Corsi -->
+    <div class="compact-courses-rail">
+      {#each courses as course (course.id)}
+        {@const palette = generateCourseColorTokens(course.colorHex, isDark)}
+        <button
+          type="button"
+          class="compact-course-avatar pressable"
+          class:selected={selectedCourseId === course.id}
+          style:background={palette.solid}
+          style:color={palette.badgeText}
+          title="{course.sigla} — {course.name} ({course.cfu} CFU)"
+          onclick={() => handleCourseClick(course.id)}
+        >
+          {course.sigla.slice(0, 3)}
+        </button>
+      {/each}
+      <button
+        type="button"
+        class="compact-add-btn pressable"
+        title="Nuovo Corso"
+        onclick={() => onOpenNewCourse?.()}
+      >
+        +
+      </button>
+    </div>
+  {/if}
+</aside>
+
+<style>
+  .app-sidebar {
+    width: 17.5rem;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.85rem;
+    background: var(--sidebar-bg);
+    backdrop-filter: blur(25px) saturate(190%);
+    -webkit-backdrop-filter: blur(25px) saturate(190%);
+    border-right: 0.5px solid var(--hairline-border);
+    flex-shrink: 0;
+    user-select: none;
+    overflow: hidden;
+    transition: width 220ms var(--spring-snappy), padding 220ms var(--spring-snappy);
+  }
+
+  .app-sidebar.compact {
+    width: 3.6rem;
+    padding: 0.75rem 0.45rem;
+    align-items: center;
+  }
+
+  .pressable {
+    transition:
+      transform 140ms var(--ease-out),
+      background-color 140ms ease,
+      border-color 140ms ease;
+  }
+
+  .pressable:active {
+    transform: scale(0.97);
+  }
+
+  .sidebar-top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .sidebar-session-meta {
+    min-width: 0;
+  }
+
+  .meta-eyebrow {
+    display: block;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+  }
+
+  .meta-title {
+    margin: 0.1rem 0 0;
+    font-size: 0.92rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .collapse-btn {
+    width: 1.85rem;
+    height: 1.85rem;
+    border-radius: var(--radius-xs);
+    border: 0.5px solid var(--hairline-border);
+    background: var(--surface-pill);
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .collapse-btn:hover {
+    background: var(--surface-pill-hover);
+    color: var(--text-primary);
+  }
+
+  .collapse-btn svg {
+    width: 0.92rem;
+    height: 0.92rem;
+  }
+
+  /* Hero Target Card */
+  .target-hero-card {
+    border-radius: var(--radius-md);
+    background: var(--surface-elevated);
+    border: 0.5px solid var(--hairline-border-strong);
+    overflow: hidden;
+  }
+
+  .target-hero-trigger {
+    width: 100%;
+    padding: 0.75rem 0.85rem;
+    border: none;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .target-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+  }
+
+  .target-sigla-badge {
+    font-size: 0.66rem;
+    font-weight: 700;
+    padding: 0.14rem 0.45rem;
+    border-radius: var(--radius-xs);
+  }
+
+  .target-date-pill {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .target-countdown-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .countdown-number-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 3.1rem;
+    padding: 0.3rem 0.45rem;
+    border-radius: var(--radius-sm);
+    background: var(--accent-soft);
+    color: var(--accent-primary);
+  }
+
+  .countdown-val {
+    font-size: 1.25rem;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .countdown-unit {
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .target-course-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.12rem;
+    min-width: 0;
+  }
+
+  .target-course-name {
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .target-round-label {
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+  }
+
+  .target-empty-state {
+    padding: 0.75rem 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .empty-title {
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .empty-sub {
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    line-height: 1.35;
+  }
+
+  /* Telemetry KPI Grid */
+  .telemetry-kpi-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.45rem;
+  }
+
+  .kpi-box {
+    padding: 0.55rem 0.65rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface-card);
+    border: 0.5px solid var(--hairline-border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .kpi-label {
+    font-size: 0.62rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-tertiary);
+  }
+
+  .kpi-value {
+    font-size: 0.98rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .kpi-sub {
+    font-size: 0.64rem;
+    color: var(--text-secondary);
+  }
+
+  /* Quick Actions */
+  .quick-actions-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.35rem;
+  }
+
+  .action-chip {
+    height: 1.85rem;
+    border-radius: var(--radius-sm);
+    border: 0.5px solid var(--hairline-border);
+    background: var(--surface-pill);
+    color: var(--text-primary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .action-chip:hover {
+    background: var(--surface-pill-hover);
+  }
+
+  .action-chip.primary {
+    background: var(--accent-primary);
+    border-color: transparent;
+    color: #ffffff;
+  }
+
+  /* Courses List */
+  .courses-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--text-tertiary);
+    padding: 0.15rem 0.1rem 0;
+  }
+
+  .clear-filter-btn {
+    border: none;
+    background: transparent;
+    color: var(--accent-primary);
+    font-size: 0.66rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .courses-scroll-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.42rem;
+    padding-right: 0.15rem;
+  }
+
+  .courses-empty-card {
+    padding: 1rem 0.75rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface-card);
+    border: 0.5px dashed var(--hairline-border-strong);
+    text-align: center;
+    font-size: 0.74rem;
+    color: var(--text-secondary);
+  }
+
+  .courses-empty-card p {
+    margin: 0 0 0.65rem;
+  }
+
+  .empty-cta-btn {
+    padding: 0.38rem 0.75rem;
+    border-radius: var(--radius-xs);
+    border: none;
+    background: var(--accent-primary);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .course-row-card {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    border-radius: var(--radius-sm);
+    background: var(--surface-card);
+    border: 0.5px solid var(--hairline-border);
+    transition:
+      border-color 140ms ease,
+      background-color 140ms ease;
+  }
+
+  .course-row-card:hover {
+    border-color: var(--course-border);
+  }
+
+  .course-row-card.selected {
+    background: var(--course-tint);
+    border-color: var(--course-solid);
+  }
+
+  .course-main-click {
+    flex: 1;
+    padding: 0.55rem 0.6rem;
+    border: none;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+  }
+
+  .course-row-top {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .course-sigla-pill {
+    font-size: 0.64rem;
+    font-weight: 700;
+    padding: 0.1rem 0.38rem;
+    border-radius: 0.3rem;
+    flex-shrink: 0;
+  }
+
+  .course-title {
+    flex: 1;
+    font-size: 0.76rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .course-cfu-badge {
+    font-size: 0.64rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  .course-progress-track {
+    width: 100%;
+    height: 3.5px;
+    border-radius: 999px;
+    background: var(--surface-pill);
+    overflow: hidden;
+  }
+
+  .course-progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 260ms var(--ease-out);
+  }
+
+  .course-row-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.64rem;
+    color: var(--text-secondary);
+  }
+
+  .course-edit-icon-btn {
+    width: 1.8rem;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-left: 0.5px solid var(--hairline-border);
+  }
+
+  .course-edit-icon-btn:hover {
+    color: var(--text-primary);
+    background: var(--surface-pill-hover);
+  }
+
+  .course-edit-icon-btn svg {
+    width: 0.8rem;
+    height: 0.8rem;
+  }
+
+  /* Compact Rail */
+  .compact-courses-rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.45rem;
+    width: 100%;
+    overflow-y: auto;
+  }
+
+  .compact-course-avatar {
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid transparent;
+    font-size: 0.65rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .compact-course-avatar.selected {
+    border-color: var(--text-primary);
+  }
+
+  .compact-add-btn {
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: var(--radius-sm);
+    border: 0.5px dashed var(--hairline-border-strong);
+    background: var(--surface-pill);
+    color: var(--text-primary);
+    font-size: 1rem;
+    cursor: pointer;
+  }
+</style>

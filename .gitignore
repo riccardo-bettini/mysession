@@ -12,3 +12,20 @@ $RECYCLE.BIN/
 *~
 .vscode/
 .idea/
+
+# Node / Vite / Svelte build artifacts
+node_modules/
+dist/
+.svelte-kit/
+
+# Rust / Tauri build artifacts
+src-tauri/target/
+src-tauri/gen/
+
+# Local SQLite database files (isolated in %APPDATA% at runtime)
+*.db
+*.db-wal
+*.db-shm
+
+# Installer di release generati da scripts/build-release.ps1
+release/

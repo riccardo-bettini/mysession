@@ -1,0 +1,80 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MySession",
+  "mainBinaryName": "MySession",
+  "version": "1.0.11",
+  "identifier": "com.mysession.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "MySession",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 900,
+        "minHeight": 620,
+        "center": true,
+        "decorations": false,
+        "transparent": true,
+        "shadow": true,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: blob: asset: http://asset.localhost",
+        "font-src": "'self' data:",
+        "connect-src": "'self' ipc: http://ipc.localhost",
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "frame-ancestors": "'none'"
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "publisher": "Riccardo Bettini",
+    "copyright": "© 2026 Riccardo Bettini. Tutti i diritti riservati.",
+    "category": "Education",
+    "shortDescription": "Gestione Sessioni Accademiche & Calendario Infinito",
+    "longDescription": "MySession — Suite desktop nativa per Windows 11 per la pianificazione delle sessioni d'esame universitarie: calendario infinito virtualizzato, Conflict Engine e Workload Engine in Rust, note Markdown, To-Do giornalieri e Assistente AI multimodale. Database SQLite locale isolato per utente in %APPDATA%.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "allowDowngrades": true,
+      "webviewInstallMode": {
+        "type": "embedBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "both",
+        "installerIcon": "icons/icon.ico",
+        "startMenuFolder": "MySession",
+        "languages": ["Italian", "English"],
+        "displayLanguageSelector": false,
+        "compression": "lzma"
+      },
+      "wix": {
+        "language": "it-IT",
+        "upgradeCode": "8f4c2b9e-6a3d-4e71-9c58-2d7b1f0a3e64"
+      }
+    }
+  }
+}
