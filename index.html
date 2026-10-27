@@ -599,613 +599,717 @@
           </button>
         </div>
 
-        <div class="settings-modal-body">
-          <!-- 1. Tema -->
-          <div class="setting-row">
-            <div class="setting-meta">
-              <span class="setting-title">Tema Interfaccia</span>
-              <span class="setting-desc">Seleziona lo stile chiaro, scuro o sincronizzato con Windows.</span>
-            </div>
-            <div class="segmented-control" id="settingsThemeSwitcher" role="radiogroup" aria-label="Tema colore">
-              <button type="button" class="seg-btn" data-theme-val="light">Chiaro</button>
-              <button type="button" class="seg-btn" data-theme-val="dark">Scuro</button>
-              <button type="button" class="seg-btn" data-theme-val="auto">Auto</button>
-            </div>
-          </div>
+        <!-- Layout suddiviso: Barra laterale a sinistra + Contenuto sezioni a destra -->
+        <div class="settings-modal-split-container">
+          <!-- Barra laterale sinistra -->
+          <aside class="settings-nav-sidebar" aria-label="Sezioni impostazioni">
+            <div class="settings-nav-list" role="tablist" aria-label="Elenco sezioni impostazioni">
+              <button type="button" class="settings-nav-item active" data-section-target="appearance" role="tab" aria-selected="true" id="tabNavAppearance">
+                <svg class="settings-nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                  <line x1="8" y1="21" x2="16" y2="21"/>
+                  <line x1="12" y1="17" x2="12" y2="21"/>
+                </svg>
+                <div class="settings-nav-label-box">
+                  <span class="settings-nav-title">Generale &amp; Aspetto</span>
+                  <span class="settings-nav-subtitle">Tema, zoom e cornice</span>
+                </div>
+              </button>
 
-          <!-- 2. Dimensioni Generali (Opzioni Predefinite Zoom) -->
-          <div class="setting-row">
-            <div class="setting-meta">
-              <span class="setting-title">Dimensioni Generali (Zoom)</span>
-              <span class="setting-desc">Seleziona la grandezza dell'interfaccia tra le opzioni predefinite.</span>
-            </div>
-            <div class="segmented-control" id="settingsUiScaleSwitcher" role="radiogroup" aria-label="Dimensioni generali interfaccia">
-              <button type="button" class="seg-btn" data-scale-val="85" title="Compatto (85%)">85%</button>
-              <button type="button" class="seg-btn" data-scale-val="90" title="Ridotto (90%)">90%</button>
-              <button type="button" class="seg-btn active" data-scale-val="100" title="Standard (100%)">100%</button>
-              <button type="button" class="seg-btn" data-scale-val="115" title="Medio (115%)">115%</button>
-              <button type="button" class="seg-btn" data-scale-val="125" title="Grande (125%)">125%</button>
-            </div>
-          </div>
+              <button type="button" class="settings-nav-item" data-section-target="calendar" role="tab" aria-selected="false" id="tabNavCalendar">
+                <svg class="settings-nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                  <line x1="16" y1="2" x2="16" y2="6"/>
+                  <line x1="8" y1="2" x2="8" y2="6"/>
+                  <line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
+                <div class="settings-nav-label-box">
+                  <span class="settings-nav-title">Calendario</span>
+                  <span class="settings-nav-subtitle">Inizio settimana e riposo</span>
+                </div>
+              </button>
 
-          <!-- 3. Personalizzazione Colori per Categoria (Slider + Colori Standard) -->
-          <div class="setting-section-header">
-            <span class="setting-section-title">Colori &amp; Evidenziazioni per Categoria</span>
-            <span class="setting-desc">Personalizza i colori con lo slider continuo dello spettro cromatico oppure seleziona i colori standard per ogni categoria.</span>
-            
-            <div class="segmented-control color-category-tabs" id="colorCategoryTabs" role="tablist" aria-label="Selettore categoria colore">
-              <button type="button" class="seg-btn active" data-color-tab="system" role="tab" aria-selected="true">Sistema &amp; Calendario</button>
-              <button type="button" class="seg-btn" data-color-tab="events" role="tab" aria-selected="false">Categorie Impegni</button>
-              <button type="button" class="seg-btn" data-color-tab="courses" role="tab" aria-selected="false">Materie &amp; Corsi</button>
-            </div>
-          </div>
+              <button type="button" class="settings-nav-item" data-section-target="colors-system" role="tab" aria-selected="false" id="tabNavColorsSystem">
+                <svg class="settings-nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 2a10 10 0 0 1 10 10"/>
+                </svg>
+                <div class="settings-nav-label-box">
+                  <span class="settings-nav-title">Colori di Sistema</span>
+                  <span class="settings-nav-subtitle">Accento, festività e domenica</span>
+                </div>
+              </button>
 
-          <!-- SCHEDA 1: Sistema & Calendario -->
-          <div class="color-tab-pane active" id="colorTabPane-system">
-            <!-- 1.1 Accento Generale -->
-            <div class="setting-row color-setting-row" data-color-id="accent">
-              <div class="setting-meta-with-preview">
+              <button type="button" class="settings-nav-item" data-section-target="colors-events" role="tab" aria-selected="false" id="tabNavColorsEvents">
+                <svg class="settings-nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                  <line x1="7" y1="7" x2="7.01" y2="7"/>
+                </svg>
+                <div class="settings-nav-label-box">
+                  <span class="settings-nav-title">Categorie Impegni</span>
+                  <span class="settings-nav-subtitle">Studio, scadenze, lezioni</span>
+                </div>
+              </button>
+
+              <button type="button" class="settings-nav-item" data-section-target="colors-courses" role="tab" aria-selected="false" id="tabNavColorsCourses">
+                <svg class="settings-nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                </svg>
+                <div class="settings-nav-label-box">
+                  <span class="settings-nav-title">Corsi &amp; Materie</span>
+                  <span class="settings-nav-subtitle">MAM, TM, MSE, DCM, PSM</span>
+                </div>
+              </button>
+            </div>
+
+            <!-- In basso alla barra sinistra: Autore e Versione (a partire da 1.0.00) -->
+            <div class="settings-sidebar-footer">
+              <div class="settings-author-card">
+                <div class="settings-author-header">
+                  <img src="app.ico" alt="MySession" class="settings-author-app-icon" width="22" height="22" />
+                  <div class="settings-author-meta">
+                    <span class="settings-app-name">MySession</span>
+                    <span class="settings-app-version">v1.0.00</span>
+                  </div>
+                </div>
+                <div class="settings-author-divider"></div>
+                <div class="settings-author-details">
+                  <span class="settings-author-badge-label">Autore</span>
+                  <span class="settings-author-name">Riccardo Bettini</span>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          <!-- Area Contenuto Sezioni a Destra -->
+          <div class="settings-main-content">
+            <!-- 1. Generale & Aspetto -->
+            <section class="settings-section-panel active" id="settingsSection-appearance" role="tabpanel" aria-labelledby="tabNavAppearance">
+              <div class="settings-section-header">
+                <h3 class="settings-section-title">Generale &amp; Aspetto</h3>
+                <p class="settings-section-desc">Personalizza il tema visivo, lo zoom dell'interfaccia e la cornice della finestra desktop.</p>
+              </div>
+
+              <!-- 1.1 Tema -->
+              <div class="setting-row">
                 <div class="setting-meta">
-                  <span class="setting-title">Colore Generale (Accento UI)</span>
-                  <span class="setting-desc">Tonalità di accento per pulsanti attivi, indicatori, selezioni e pillole.</span>
+                  <span class="setting-title">Tema Interfaccia</span>
+                  <span class="setting-desc">Seleziona lo stile chiaro, scuro o sincronizzato con Windows.</span>
                 </div>
-                <div class="color-preview-badge" id="previewBadge_accent">
-                  <span class="color-preview-indicator" id="previewInd_accent" style="background-color: #007AFF;"></span>
-                  <span class="preview-text mono" id="previewText_accent">#007AFF</span>
-                </div>
-              </div>
-              <div class="color-picker-control-group">
-                <div class="swatches-label-row">
-                  <span class="swatches-label">Colori standard</span>
-                </div>
-                <div class="swatches-row" id="swatches_accent"></div>
-                <div class="color-slider-wrapper">
-                  <div class="slider-header-row">
-                    <span class="slider-label">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
-                      Selettore a slider (Tonalità)
-                    </span>
-                    <span class="slider-val-tag" id="sliderVal_accent">211°</span>
-                  </div>
-                  <div class="slider-track-wrap">
-                    <input type="range" class="color-hue-slider" id="slider_accent" min="0" max="360" step="1" value="211" aria-label="Slider spettro colore accento" />
-                  </div>
-                </div>
-                <div class="color-hex-field-box">
-                  <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
-                    <input type="color" id="nativeColor_accent" class="native-color-input" value="#007AFF" />
-                    <span class="palette-icon">🎨</span>
-                  </div>
-                  <input type="text" id="hex_accent" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#007AFF" aria-label="Codice esadecimale colore accento" />
-                  <button type="button" class="btn-copy-color-hex" id="copyBtn_accent" title="Copia codice colore accento">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    <span>Copia</span>
-                  </button>
+                <div class="segmented-control" id="settingsThemeSwitcher" role="radiogroup" aria-label="Tema colore">
+                  <button type="button" class="seg-btn" data-theme-val="light">Chiaro</button>
+                  <button type="button" class="seg-btn" data-theme-val="dark">Scuro</button>
+                  <button type="button" class="seg-btn" data-theme-val="auto">Auto</button>
                 </div>
               </div>
-            </div>
 
-            <!-- 1.2 Festività Nazionali -->
-            <div class="setting-row color-setting-row" data-color-id="holiday">
-              <div class="setting-meta-with-preview">
+              <!-- 1.2 Dimensioni Generali (Opzioni Predefinite Zoom) -->
+              <div class="setting-row">
                 <div class="setting-meta">
-                  <span class="setting-title">Colore Festività Nazionali</span>
-                  <span class="setting-desc">Evidenziazione nel calendario per le festività ufficiali italiane, Pasqua e Pasquetta.</span>
+                  <span class="setting-title">Dimensioni Generali (Zoom)</span>
+                  <span class="setting-desc">Seleziona la grandezza dell'interfaccia tra le opzioni predefinite.</span>
                 </div>
-                <div class="color-preview-badge" id="previewBadge_holiday">
-                  <span class="color-preview-indicator" id="previewInd_holiday" style="background-color: #FF3B30;"></span>
-                  <span class="preview-text mono" id="previewText_holiday">#FF3B30</span>
-                </div>
-              </div>
-              <div class="color-picker-control-group">
-                <div class="swatches-label-row">
-                  <span class="swatches-label">Colori standard</span>
-                </div>
-                <div class="swatches-row" id="swatches_holiday"></div>
-                <div class="color-slider-wrapper">
-                  <div class="slider-header-row">
-                    <span class="slider-label">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
-                      Selettore a slider (Tonalità)
-                    </span>
-                    <span class="slider-val-tag" id="sliderVal_holiday">4°</span>
-                  </div>
-                  <div class="slider-track-wrap">
-                    <input type="range" class="color-hue-slider" id="slider_holiday" min="0" max="360" step="1" value="4" aria-label="Slider spettro colore festività" />
-                  </div>
-                </div>
-                <div class="color-hex-field-box">
-                  <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
-                    <input type="color" id="nativeColor_holiday" class="native-color-input" value="#FF3B30" />
-                    <span class="palette-icon">🎨</span>
-                  </div>
-                  <input type="text" id="hex_holiday" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#FF3B30" aria-label="Codice esadecimale colore festività" />
-                  <button type="button" class="btn-copy-color-hex" id="copyBtn_holiday" title="Copia codice colore festività">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    <span>Copia</span>
-                  </button>
+                <div class="segmented-control" id="settingsUiScaleSwitcher" role="radiogroup" aria-label="Dimensioni generali interfaccia">
+                  <button type="button" class="seg-btn" data-scale-val="85" title="Compatto (85%)">85%</button>
+                  <button type="button" class="seg-btn" data-scale-val="90" title="Ridotto (90%)">90%</button>
+                  <button type="button" class="seg-btn active" data-scale-val="100" title="Standard (100%)">100%</button>
+                  <button type="button" class="seg-btn" data-scale-val="115" title="Medio (115%)">115%</button>
+                  <button type="button" class="seg-btn" data-scale-val="125" title="Grande (125%)">125%</button>
                 </div>
               </div>
-            </div>
 
-            <!-- 1.3 Domenica & Giorno di Riposo -->
-            <div class="setting-row color-setting-row" data-color-id="sunday">
-              <div class="setting-meta-with-preview">
+              <!-- 1.3 Stile Cornice & Bordi Finestra Windows -->
+              <div class="setting-row">
                 <div class="setting-meta">
-                  <span class="setting-title">Colore Domenica / Giorno di Riposo</span>
-                  <span class="setting-desc">Tonalità dedicata per il numero, l'intestazione e lo sfondo della colonna festiva settimanale.</span>
+                  <span class="setting-title">Stile Cornice &amp; Bordi Finestra</span>
+                  <span class="setting-desc">Rimuove la barra classica di Windows integrando la cornice personalizzata dell'app con pulsanti di controllo integrati e bordi continui.</span>
                 </div>
-                <div class="color-preview-badge" id="previewBadge_sunday">
-                  <span class="color-preview-indicator" id="previewInd_sunday" style="background-color: #FF9500;"></span>
-                  <span class="preview-text mono" id="previewText_sunday">#FF9500</span>
-                </div>
-              </div>
-              <div class="color-picker-control-group">
-                <div class="swatches-label-row">
-                  <span class="swatches-label">Colori standard</span>
-                </div>
-                <div class="swatches-row" id="swatches_sunday"></div>
-                <div class="color-slider-wrapper">
-                  <div class="slider-header-row">
-                    <span class="slider-label">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
-                      Selettore a slider (Tonalità)
-                    </span>
-                    <span class="slider-val-tag" id="sliderVal_sunday">35°</span>
-                  </div>
-                  <div class="slider-track-wrap">
-                    <input type="range" class="color-hue-slider" id="slider_sunday" min="0" max="360" step="1" value="35" aria-label="Slider spettro colore domenica" />
-                  </div>
-                </div>
-                <div class="color-hex-field-box">
-                  <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
-                    <input type="color" id="nativeColor_sunday" class="native-color-input" value="#FF9500" />
-                    <span class="palette-icon">🎨</span>
-                  </div>
-                  <input type="text" id="hex_sunday" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#FF9500" aria-label="Codice esadecimale colore domenica" />
-                  <button type="button" class="btn-copy-color-hex" id="copyBtn_sunday" title="Copia codice colore domenica">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    <span>Copia</span>
-                  </button>
+                <div class="segmented-control" id="settingsWindowFrameSwitcher" role="radiogroup" aria-label="Stile cornice finestra">
+                  <button type="button" class="seg-btn active" data-frame-val="custom">Personalizzato (Crafted)</button>
+                  <button type="button" class="seg-btn" data-frame-val="standard">Standard Windows</button>
                 </div>
               </div>
-            </div>
-          </div>
+            </section>
 
-          <!-- SCHEDA 2: Categorie Impegni & Eventi -->
-          <div class="color-tab-pane hidden" id="colorTabPane-events">
-            <!-- 2.1 Studio & Ripasso -->
-            <div class="setting-row color-setting-row" data-color-id="cat_studio">
-              <div class="setting-meta-with-preview">
+            <!-- 2. Calendario -->
+            <section class="settings-section-panel hidden" id="settingsSection-calendar" role="tabpanel" aria-labelledby="tabNavCalendar">
+              <div class="settings-section-header">
+                <h3 class="settings-section-title">Calendario &amp; Date</h3>
+                <p class="settings-section-desc">Configura il primo giorno della settimana e l'evidenziazione del giorno festivo di riposo.</p>
+              </div>
+
+              <!-- 2.1 Giorno di Inizio della Settimana -->
+              <div class="setting-row">
                 <div class="setting-meta">
-                  <span class="setting-title">Categoria Studio &amp; Ripasso</span>
-                  <span class="setting-desc">Sessioni di studio intensivo, ripasso teorico ed esercitazioni in vista degli appelli.</span>
+                  <span class="setting-title">Inizio della Settimana</span>
+                  <span class="setting-desc">Giorno mostrato come prima colonna nel calendario e nella vista settimanale.</span>
                 </div>
-                <div class="color-preview-badge" id="previewBadge_cat_studio">
-                  <span class="color-preview-indicator" id="previewInd_cat_studio" style="background-color: #007AFF;"></span>
-                  <span class="preview-text mono" id="previewText_cat_studio">#007AFF</span>
-                </div>
+                <select id="settingsStartDaySelect" class="form-select setting-select-field">
+                  <option value="1">Lunedì (Standard Italiano / ISO 8601)</option>
+                  <option value="0">Domenica (Standard USA / Globale)</option>
+                  <option value="6">Sabato</option>
+                </select>
               </div>
-              <div class="color-picker-control-group">
-                <div class="swatches-label-row">
-                  <span class="swatches-label">Colori standard</span>
-                </div>
-                <div class="swatches-row" id="swatches_cat_studio"></div>
-                <div class="color-slider-wrapper">
-                  <div class="slider-header-row">
-                    <span class="slider-label">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
-                      Selettore a slider (Tonalità)
-                    </span>
-                    <span class="slider-val-tag" id="sliderVal_cat_studio">211°</span>
-                  </div>
-                  <div class="slider-track-wrap">
-                    <input type="range" class="color-hue-slider" id="slider_cat_studio" min="0" max="360" step="1" value="211" aria-label="Slider spettro studio" />
-                  </div>
-                </div>
-                <div class="color-hex-field-box">
-                  <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
-                    <input type="color" id="nativeColor_cat_studio" class="native-color-input" value="#007AFF" />
-                    <span class="palette-icon">🎨</span>
-                  </div>
-                  <input type="text" id="hex_cat_studio" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#007AFF" aria-label="Codice esadecimale studio" />
-                  <button type="button" class="btn-copy-color-hex" id="copyBtn_cat_studio" title="Copia codice colore studio">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    <span>Copia</span>
-                  </button>
-                </div>
-              </div>
-            </div>
 
-            <!-- 2.2 Scadenza & Consegna -->
-            <div class="setting-row color-setting-row" data-color-id="cat_scadenza">
-              <div class="setting-meta-with-preview">
+              <!-- 2.2 Evidenziazione Giorno Festivo della Settimana -->
+              <div class="setting-row">
                 <div class="setting-meta">
-                  <span class="setting-title">Categoria Scadenza &amp; Consegna</span>
-                  <span class="setting-desc">Termini di consegna elaborati, relazioni tecniche, progetti d'anno e deadline.</span>
+                  <span class="setting-title">Giorno di Riposo Settimanale</span>
+                  <span class="setting-desc">Evidenzia questo giorno con intestazione e sfondo dedicati nel calendario.</span>
                 </div>
-                <div class="color-preview-badge" id="previewBadge_cat_scadenza">
-                  <span class="color-preview-indicator" id="previewInd_cat_scadenza" style="background-color: #FF9500;"></span>
-                  <span class="preview-text mono" id="previewText_cat_scadenza">#FF9500</span>
-                </div>
+                <select id="settingsWeeklyHolidaySelect" class="form-select setting-select-field">
+                  <option value="0">Domenica (Predefinito)</option>
+                  <option value="6">Sabato (Fine settimana)</option>
+                  <option value="1">Lunedì</option>
+                  <option value="2">Martedì</option>
+                  <option value="3">Mercoledì</option>
+                  <option value="4">Giovedì</option>
+                  <option value="5">Venerdì</option>
+                  <option value="-1">Nessuno (Tutti i giorni neutri)</option>
+                </select>
               </div>
-              <div class="color-picker-control-group">
-                <div class="swatches-label-row">
-                  <span class="swatches-label">Colori standard</span>
-                </div>
-                <div class="swatches-row" id="swatches_cat_scadenza"></div>
-                <div class="color-slider-wrapper">
-                  <div class="slider-header-row">
-                    <span class="slider-label">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
-                      Selettore a slider (Tonalità)
-                    </span>
-                    <span class="slider-val-tag" id="sliderVal_cat_scadenza">35°</span>
-                  </div>
-                  <div class="slider-track-wrap">
-                    <input type="range" class="color-hue-slider" id="slider_cat_scadenza" min="0" max="360" step="1" value="35" aria-label="Slider spettro scadenza" />
-                  </div>
-                </div>
-                <div class="color-hex-field-box">
-                  <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
-                    <input type="color" id="nativeColor_cat_scadenza" class="native-color-input" value="#FF9500" />
-                    <span class="palette-icon">🎨</span>
-                  </div>
-                  <input type="text" id="hex_cat_scadenza" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#FF9500" aria-label="Codice esadecimale scadenza" />
-                  <button type="button" class="btn-copy-color-hex" id="copyBtn_cat_scadenza" title="Copia codice colore scadenza">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    <span>Copia</span>
-                  </button>
-                </div>
-              </div>
-            </div>
+            </section>
 
-            <!-- 2.3 Lezione & Laboratorio -->
-            <div class="setting-row color-setting-row" data-color-id="cat_lezione">
-              <div class="setting-meta-with-preview">
-                <div class="setting-meta">
-                  <span class="setting-title">Categoria Lezione &amp; Laboratorio</span>
-                  <span class="setting-desc">Orari di lezione, sessioni pratiche in laboratorio, seminari e ricevimento docenti.</span>
-                </div>
-                <div class="color-preview-badge" id="previewBadge_cat_lezione">
-                  <span class="color-preview-indicator" id="previewInd_cat_lezione" style="background-color: #AF52DE;"></span>
-                  <span class="preview-text mono" id="previewText_cat_lezione">#AF52DE</span>
-                </div>
+            <!-- 3. Colori di Sistema & Calendario -->
+            <section class="settings-section-panel hidden" id="settingsSection-colors-system" role="tabpanel" aria-labelledby="tabNavColorsSystem">
+              <div class="settings-section-header">
+                <h3 class="settings-section-title">Colori di Sistema &amp; Calendario</h3>
+                <p class="settings-section-desc">Personalizza il colore di accento dell'interfaccia, le festività nazionali e la colonna festiva domenicale con lo slider continuo o i colori standard.</p>
               </div>
-              <div class="color-picker-control-group">
-                <div class="swatches-label-row">
-                  <span class="swatches-label">Colori standard</span>
-                </div>
-                <div class="swatches-row" id="swatches_cat_lezione"></div>
-                <div class="color-slider-wrapper">
-                  <div class="slider-header-row">
-                    <span class="slider-label">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
-                      Selettore a slider (Tonalità)
-                    </span>
-                    <span class="slider-val-tag" id="sliderVal_cat_lezione">280°</span>
-                  </div>
-                  <div class="slider-track-wrap">
-                    <input type="range" class="color-hue-slider" id="slider_cat_lezione" min="0" max="360" step="1" value="280" aria-label="Slider spettro lezione" />
-                  </div>
-                </div>
-                <div class="color-hex-field-box">
-                  <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
-                    <input type="color" id="nativeColor_cat_lezione" class="native-color-input" value="#AF52DE" />
-                    <span class="palette-icon">🎨</span>
-                  </div>
-                  <input type="text" id="hex_cat_lezione" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#AF52DE" aria-label="Codice esadecimale lezione" />
-                  <button type="button" class="btn-copy-color-hex" id="copyBtn_cat_lezione" title="Copia codice colore lezione">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    <span>Copia</span>
-                  </button>
-                </div>
-              </div>
-            </div>
 
-            <!-- 2.4 Personale & Altro -->
-            <div class="setting-row color-setting-row" data-color-id="cat_personale">
-              <div class="setting-meta-with-preview">
-                <div class="setting-meta">
-                  <span class="setting-title">Categoria Personale &amp; Altro</span>
-                  <span class="setting-desc">Attività personali, sport, impegni di lavoro o appuntamenti extrascolastici.</span>
+              <!-- 3.1 Accento Generale -->
+              <div class="setting-row color-setting-row" data-color-id="accent">
+                <div class="setting-meta-with-preview">
+                  <div class="setting-meta">
+                    <span class="setting-title">Colore Generale (Accento UI)</span>
+                    <span class="setting-desc">Tonalità di accento per pulsanti attivi, indicatori, selezioni e pillole.</span>
+                  </div>
+                  <div class="color-preview-badge" id="previewBadge_accent">
+                    <span class="color-preview-indicator" id="previewInd_accent" style="background-color: #007AFF;"></span>
+                    <span class="preview-text mono" id="previewText_accent">#007AFF</span>
+                  </div>
                 </div>
-                <div class="color-preview-badge" id="previewBadge_cat_personale">
-                  <span class="color-preview-indicator" id="previewInd_cat_personale" style="background-color: #34C759;"></span>
-                  <span class="preview-text mono" id="previewText_cat_personale">#34C759</span>
+                <div class="color-picker-control-group">
+                  <div class="swatches-label-row">
+                    <span class="swatches-label">Colori standard</span>
+                  </div>
+                  <div class="swatches-row" id="swatches_accent"></div>
+                  <div class="color-slider-wrapper">
+                    <div class="slider-header-row">
+                      <span class="slider-label">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+                        Selettore a slider (Tonalità)
+                      </span>
+                      <span class="slider-val-tag" id="sliderVal_accent">211°</span>
+                    </div>
+                    <div class="slider-track-wrap">
+                      <input type="range" class="color-hue-slider" id="slider_accent" min="0" max="360" step="1" value="211" aria-label="Slider spettro colore accento" />
+                    </div>
+                  </div>
+                  <div class="color-hex-field-box">
+                    <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
+                      <input type="color" id="nativeColor_accent" class="native-color-input" value="#007AFF" />
+                      <span class="palette-icon">🎨</span>
+                    </div>
+                    <input type="text" id="hex_accent" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#007AFF" aria-label="Codice esadecimale colore accento" />
+                    <button type="button" class="btn-copy-color-hex" id="copyBtn_accent" title="Copia codice colore accento">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <span>Copia</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div class="color-picker-control-group">
-                <div class="swatches-label-row">
-                  <span class="swatches-label">Colori standard</span>
-                </div>
-                <div class="swatches-row" id="swatches_cat_personale"></div>
-                <div class="color-slider-wrapper">
-                  <div class="slider-header-row">
-                    <span class="slider-label">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
-                      Selettore a slider (Tonalità)
-                    </span>
-                    <span class="slider-val-tag" id="sliderVal_cat_personale">135°</span>
-                  </div>
-                  <div class="slider-track-wrap">
-                    <input type="range" class="color-hue-slider" id="slider_cat_personale" min="0" max="360" step="1" value="135" aria-label="Slider spettro personale" />
-                  </div>
-                </div>
-                <div class="color-hex-field-box">
-                  <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
-                    <input type="color" id="nativeColor_cat_personale" class="native-color-input" value="#34C759" />
-                    <span class="palette-icon">🎨</span>
-                  </div>
-                  <input type="text" id="hex_cat_personale" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#34C759" aria-label="Codice esadecimale personale" />
-                  <button type="button" class="btn-copy-color-hex" id="copyBtn_cat_personale" title="Copia codice colore personale">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    <span>Copia</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          <!-- SCHEDA 3: Materie & Corsi della Sessione -->
-          <div class="color-tab-pane hidden" id="colorTabPane-courses">
-            <!-- 3.1 MAM -->
-            <div class="setting-row color-setting-row" data-color-id="course_mam">
-              <div class="setting-meta-with-preview">
-                <div class="setting-meta">
-                  <span class="setting-title">MAM · Meccanica Applicata alle Macchine</span>
-                  <span class="setting-desc">Colore per appelli d'esame, prove in itinere, filtri e scheda corso MAM.</span>
+              <!-- 3.2 Festività Nazionali -->
+              <div class="setting-row color-setting-row" data-color-id="holiday">
+                <div class="setting-meta-with-preview">
+                  <div class="setting-meta">
+                    <span class="setting-title">Colore Festività Nazionali</span>
+                    <span class="setting-desc">Evidenziazione nel calendario per le festività ufficiali italiane, Pasqua e Pasquetta.</span>
+                  </div>
+                  <div class="color-preview-badge" id="previewBadge_holiday">
+                    <span class="color-preview-indicator" id="previewInd_holiday" style="background-color: #FF3B30;"></span>
+                    <span class="preview-text mono" id="previewText_holiday">#FF3B30</span>
+                  </div>
                 </div>
-                <div class="color-preview-badge" id="previewBadge_course_mam">
-                  <span class="color-preview-indicator" id="previewInd_course_mam" style="background-color: #0284C7;"></span>
-                  <span class="preview-text mono" id="previewText_course_mam">#0284C7</span>
+                <div class="color-picker-control-group">
+                  <div class="swatches-label-row">
+                    <span class="swatches-label">Colori standard</span>
+                  </div>
+                  <div class="swatches-row" id="swatches_holiday"></div>
+                  <div class="color-slider-wrapper">
+                    <div class="slider-header-row">
+                      <span class="slider-label">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+                        Selettore a slider (Tonalità)
+                      </span>
+                      <span class="slider-val-tag" id="sliderVal_holiday">4°</span>
+                    </div>
+                    <div class="slider-track-wrap">
+                      <input type="range" class="color-hue-slider" id="slider_holiday" min="0" max="360" step="1" value="4" aria-label="Slider spettro colore festività" />
+                    </div>
+                  </div>
+                  <div class="color-hex-field-box">
+                    <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
+                      <input type="color" id="nativeColor_holiday" class="native-color-input" value="#FF3B30" />
+                      <span class="palette-icon">🎨</span>
+                    </div>
+                    <input type="text" id="hex_holiday" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#FF3B30" aria-label="Codice esadecimale colore festività" />
+                    <button type="button" class="btn-copy-color-hex" id="copyBtn_holiday" title="Copia codice colore festività">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <span>Copia</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div class="color-picker-control-group">
-                <div class="swatches-label-row">
-                  <span class="swatches-label">Colori standard</span>
-                </div>
-                <div class="swatches-row" id="swatches_course_mam"></div>
-                <div class="color-slider-wrapper">
-                  <div class="slider-header-row">
-                    <span class="slider-label">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
-                      Selettore a slider (Tonalità)
-                    </span>
-                    <span class="slider-val-tag" id="sliderVal_course_mam">200°</span>
-                  </div>
-                  <div class="slider-track-wrap">
-                    <input type="range" class="color-hue-slider" id="slider_course_mam" min="0" max="360" step="1" value="200" aria-label="Slider spettro MAM" />
-                  </div>
-                </div>
-                <div class="color-hex-field-box">
-                  <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
-                    <input type="color" id="nativeColor_course_mam" class="native-color-input" value="#0284C7" />
-                    <span class="palette-icon">🎨</span>
-                  </div>
-                  <input type="text" id="hex_course_mam" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#0284C7" aria-label="Codice esadecimale MAM" />
-                  <button type="button" class="btn-copy-color-hex" id="copyBtn_course_mam" title="Copia codice colore MAM">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    <span>Copia</span>
-                  </button>
-                </div>
-              </div>
-            </div>
 
-            <!-- 3.2 TM -->
-            <div class="setting-row color-setting-row" data-color-id="course_tm">
-              <div class="setting-meta-with-preview">
-                <div class="setting-meta">
-                  <span class="setting-title">TM · Tecnologia Meccanica</span>
-                  <span class="setting-desc">Colore per appelli d'esame, prove in itinere, filtri e scheda corso TM.</span>
+              <!-- 3.3 Domenica & Giorno di Riposo -->
+              <div class="setting-row color-setting-row" data-color-id="sunday">
+                <div class="setting-meta-with-preview">
+                  <div class="setting-meta">
+                    <span class="setting-title">Colore Domenica / Giorno di Riposo</span>
+                    <span class="setting-desc">Tonalità dedicata per il numero, l'intestazione e lo sfondo della colonna festiva settimanale.</span>
+                  </div>
+                  <div class="color-preview-badge" id="previewBadge_sunday">
+                    <span class="color-preview-indicator" id="previewInd_sunday" style="background-color: #FF9500;"></span>
+                    <span class="preview-text mono" id="previewText_sunday">#FF9500</span>
+                  </div>
                 </div>
-                <div class="color-preview-badge" id="previewBadge_course_tm">
-                  <span class="color-preview-indicator" id="previewInd_course_tm" style="background-color: #D97706;"></span>
-                  <span class="preview-text mono" id="previewText_course_tm">#D97706</span>
+                <div class="color-picker-control-group">
+                  <div class="swatches-label-row">
+                    <span class="swatches-label">Colori standard</span>
+                  </div>
+                  <div class="swatches-row" id="swatches_sunday"></div>
+                  <div class="color-slider-wrapper">
+                    <div class="slider-header-row">
+                      <span class="slider-label">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+                        Selettore a slider (Tonalità)
+                      </span>
+                      <span class="slider-val-tag" id="sliderVal_sunday">35°</span>
+                    </div>
+                    <div class="slider-track-wrap">
+                      <input type="range" class="color-hue-slider" id="slider_sunday" min="0" max="360" step="1" value="35" aria-label="Slider spettro colore domenica" />
+                    </div>
+                  </div>
+                  <div class="color-hex-field-box">
+                    <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
+                      <input type="color" id="nativeColor_sunday" class="native-color-input" value="#FF9500" />
+                      <span class="palette-icon">🎨</span>
+                    </div>
+                    <input type="text" id="hex_sunday" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#FF9500" aria-label="Codice esadecimale colore domenica" />
+                    <button type="button" class="btn-copy-color-hex" id="copyBtn_sunday" title="Copia codice colore domenica">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <span>Copia</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div class="color-picker-control-group">
-                <div class="swatches-label-row">
-                  <span class="swatches-label">Colori standard</span>
-                </div>
-                <div class="swatches-row" id="swatches_course_tm"></div>
-                <div class="color-slider-wrapper">
-                  <div class="slider-header-row">
-                    <span class="slider-label">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
-                      Selettore a slider (Tonalità)
-                    </span>
-                    <span class="slider-val-tag" id="sliderVal_course_tm">32°</span>
-                  </div>
-                  <div class="slider-track-wrap">
-                    <input type="range" class="color-hue-slider" id="slider_course_tm" min="0" max="360" step="1" value="32" aria-label="Slider spettro TM" />
-                  </div>
-                </div>
-                <div class="color-hex-field-box">
-                  <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
-                    <input type="color" id="nativeColor_course_tm" class="native-color-input" value="#D97706" />
-                    <span class="palette-icon">🎨</span>
-                  </div>
-                  <input type="text" id="hex_course_tm" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#D97706" aria-label="Codice esadecimale TM" />
-                  <button type="button" class="btn-copy-color-hex" id="copyBtn_course_tm" title="Copia codice colore TM">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    <span>Copia</span>
-                  </button>
-                </div>
-              </div>
-            </div>
+            </section>
 
-            <!-- 3.3 MSE -->
-            <div class="setting-row color-setting-row" data-color-id="course_mse">
-              <div class="setting-meta-with-preview">
-                <div class="setting-meta">
-                  <span class="setting-title">MSE · Misure Meccaniche / Sistemi Elettrici</span>
-                  <span class="setting-desc">Colore per appelli d'esame, prove in itinere, filtri e scheda corso MSE.</span>
-                </div>
-                <div class="color-preview-badge" id="previewBadge_course_mse">
-                  <span class="color-preview-indicator" id="previewInd_course_mse" style="background-color: #059669;"></span>
-                  <span class="preview-text mono" id="previewText_course_mse">#059669</span>
-                </div>
+            <!-- 4. Categorie Impegni -->
+            <section class="settings-section-panel hidden" id="settingsSection-colors-events" role="tabpanel" aria-labelledby="tabNavColorsEvents">
+              <div class="settings-section-header">
+                <h3 class="settings-section-title">Categorie Impegni &amp; Studio</h3>
+                <p class="settings-section-desc">Assegna colori dedicati agli eventi personali, sessioni di studio intensivo, scadenze e lezioni.</p>
               </div>
-              <div class="color-picker-control-group">
-                <div class="swatches-label-row">
-                  <span class="swatches-label">Colori standard</span>
-                </div>
-                <div class="swatches-row" id="swatches_course_mse"></div>
-                <div class="color-slider-wrapper">
-                  <div class="slider-header-row">
-                    <span class="slider-label">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
-                      Selettore a slider (Tonalità)
-                    </span>
-                    <span class="slider-val-tag" id="sliderVal_course_mse">161°</span>
-                  </div>
-                  <div class="slider-track-wrap">
-                    <input type="range" class="color-hue-slider" id="slider_course_mse" min="0" max="360" step="1" value="161" aria-label="Slider spettro MSE" />
-                  </div>
-                </div>
-                <div class="color-hex-field-box">
-                  <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
-                    <input type="color" id="nativeColor_course_mse" class="native-color-input" value="#059669" />
-                    <span class="palette-icon">🎨</span>
-                  </div>
-                  <input type="text" id="hex_course_mse" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#059669" aria-label="Codice esadecimale MSE" />
-                  <button type="button" class="btn-copy-color-hex" id="copyBtn_course_mse" title="Copia codice colore MSE">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    <span>Copia</span>
-                  </button>
-                </div>
-              </div>
-            </div>
 
-            <!-- 3.4 DCM -->
-            <div class="setting-row color-setting-row" data-color-id="course_dcm">
-              <div class="setting-meta-with-preview">
-                <div class="setting-meta">
-                  <span class="setting-title">DCM · Disegno e Costruzione di Macchine</span>
-                  <span class="setting-desc">Colore per appelli d'esame, prove in itinere, filtri e scheda corso DCM.</span>
+              <!-- 4.1 Studio & Ripasso -->
+              <div class="setting-row color-setting-row" data-color-id="cat_studio">
+                <div class="setting-meta-with-preview">
+                  <div class="setting-meta">
+                    <span class="setting-title">Categoria Studio &amp; Ripasso</span>
+                    <span class="setting-desc">Sessioni di studio intensivo, ripasso teorico ed esercitazioni in vista degli appelli.</span>
+                  </div>
+                  <div class="color-preview-badge" id="previewBadge_cat_studio">
+                    <span class="color-preview-indicator" id="previewInd_cat_studio" style="background-color: #007AFF;"></span>
+                    <span class="preview-text mono" id="previewText_cat_studio">#007AFF</span>
+                  </div>
                 </div>
-                <div class="color-preview-badge" id="previewBadge_course_dcm">
-                  <span class="color-preview-indicator" id="previewInd_course_dcm" style="background-color: #7C3AED;"></span>
-                  <span class="preview-text mono" id="previewText_course_dcm">#7C3AED</span>
+                <div class="color-picker-control-group">
+                  <div class="swatches-label-row">
+                    <span class="swatches-label">Colori standard</span>
+                  </div>
+                  <div class="swatches-row" id="swatches_cat_studio"></div>
+                  <div class="color-slider-wrapper">
+                    <div class="slider-header-row">
+                      <span class="slider-label">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+                        Selettore a slider (Tonalità)
+                      </span>
+                      <span class="slider-val-tag" id="sliderVal_cat_studio">211°</span>
+                    </div>
+                    <div class="slider-track-wrap">
+                      <input type="range" class="color-hue-slider" id="slider_cat_studio" min="0" max="360" step="1" value="211" aria-label="Slider spettro studio" />
+                    </div>
+                  </div>
+                  <div class="color-hex-field-box">
+                    <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
+                      <input type="color" id="nativeColor_cat_studio" class="native-color-input" value="#007AFF" />
+                      <span class="palette-icon">🎨</span>
+                    </div>
+                    <input type="text" id="hex_cat_studio" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#007AFF" aria-label="Codice esadecimale studio" />
+                    <button type="button" class="btn-copy-color-hex" id="copyBtn_cat_studio" title="Copia codice colore studio">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <span>Copia</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div class="color-picker-control-group">
-                <div class="swatches-label-row">
-                  <span class="swatches-label">Colori standard</span>
-                </div>
-                <div class="swatches-row" id="swatches_course_dcm"></div>
-                <div class="color-slider-wrapper">
-                  <div class="slider-header-row">
-                    <span class="slider-label">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
-                      Selettore a slider (Tonalità)
-                    </span>
-                    <span class="slider-val-tag" id="sliderVal_course_dcm">267°</span>
+
+              <!-- 4.2 Scadenza & Consegna -->
+              <div class="setting-row color-setting-row" data-color-id="cat_scadenza">
+                <div class="setting-meta-with-preview">
+                  <div class="setting-meta">
+                    <span class="setting-title">Categoria Scadenza &amp; Consegna</span>
+                    <span class="setting-desc">Termini di consegna elaborati, relazioni tecniche, progetti d'anno e deadline.</span>
                   </div>
-                  <div class="slider-track-wrap">
-                    <input type="range" class="color-hue-slider" id="slider_course_dcm" min="0" max="360" step="1" value="267" aria-label="Slider spettro DCM" />
+                  <div class="color-preview-badge" id="previewBadge_cat_scadenza">
+                    <span class="color-preview-indicator" id="previewInd_cat_scadenza" style="background-color: #FF9500;"></span>
+                    <span class="preview-text mono" id="previewText_cat_scadenza">#FF9500</span>
                   </div>
                 </div>
-                <div class="color-hex-field-box">
-                  <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
-                    <input type="color" id="nativeColor_course_dcm" class="native-color-input" value="#7C3AED" />
-                    <span class="palette-icon">🎨</span>
+                <div class="color-picker-control-group">
+                  <div class="swatches-label-row">
+                    <span class="swatches-label">Colori standard</span>
                   </div>
-                  <input type="text" id="hex_course_dcm" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#7C3AED" aria-label="Codice esadecimale DCM" />
-                  <button type="button" class="btn-copy-color-hex" id="copyBtn_course_dcm" title="Copia codice colore DCM">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    <span>Copia</span>
-                  </button>
+                  <div class="swatches-row" id="swatches_cat_scadenza"></div>
+                  <div class="color-slider-wrapper">
+                    <div class="slider-header-row">
+                      <span class="slider-label">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+                        Selettore a slider (Tonalità)
+                      </span>
+                      <span class="slider-val-tag" id="sliderVal_cat_scadenza">35°</span>
+                    </div>
+                    <div class="slider-track-wrap">
+                      <input type="range" class="color-hue-slider" id="slider_cat_scadenza" min="0" max="360" step="1" value="35" aria-label="Slider spettro scadenza" />
+                    </div>
+                  </div>
+                  <div class="color-hex-field-box">
+                    <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
+                      <input type="color" id="nativeColor_cat_scadenza" class="native-color-input" value="#FF9500" />
+                      <span class="palette-icon">🎨</span>
+                    </div>
+                    <input type="text" id="hex_cat_scadenza" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#FF9500" aria-label="Codice esadecimale scadenza" />
+                    <button type="button" class="btn-copy-color-hex" id="copyBtn_cat_scadenza" title="Copia codice colore scadenza">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <span>Copia</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <!-- 3.5 PSM -->
-            <div class="setting-row color-setting-row" data-color-id="course_psm">
-              <div class="setting-meta-with-preview">
-                <div class="setting-meta">
-                  <span class="setting-title">PSM · Progettazione Strutturale Meccanica</span>
-                  <span class="setting-desc">Colore per appelli d'esame, prove in itinere, filtri e scheda corso PSM.</span>
+              <!-- 4.3 Lezione & Laboratorio -->
+              <div class="setting-row color-setting-row" data-color-id="cat_lezione">
+                <div class="setting-meta-with-preview">
+                  <div class="setting-meta">
+                    <span class="setting-title">Categoria Lezione &amp; Laboratorio</span>
+                    <span class="setting-desc">Orari di lezione, sessioni pratiche in laboratorio, seminari e ricevimento docenti.</span>
+                  </div>
+                  <div class="color-preview-badge" id="previewBadge_cat_lezione">
+                    <span class="color-preview-indicator" id="previewInd_cat_lezione" style="background-color: #AF52DE;"></span>
+                    <span class="preview-text mono" id="previewText_cat_lezione">#AF52DE</span>
+                  </div>
                 </div>
-                <div class="color-preview-badge" id="previewBadge_course_psm">
-                  <span class="color-preview-indicator" id="previewInd_course_psm" style="background-color: #E11D48;"></span>
-                  <span class="preview-text mono" id="previewText_course_psm">#E11D48</span>
+                <div class="color-picker-control-group">
+                  <div class="swatches-label-row">
+                    <span class="swatches-label">Colori standard</span>
+                  </div>
+                  <div class="swatches-row" id="swatches_cat_lezione"></div>
+                  <div class="color-slider-wrapper">
+                    <div class="slider-header-row">
+                      <span class="slider-label">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+                        Selettore a slider (Tonalità)
+                      </span>
+                      <span class="slider-val-tag" id="sliderVal_cat_lezione">280°</span>
+                    </div>
+                    <div class="slider-track-wrap">
+                      <input type="range" class="color-hue-slider" id="slider_cat_lezione" min="0" max="360" step="1" value="280" aria-label="Slider spettro lezione" />
+                    </div>
+                  </div>
+                  <div class="color-hex-field-box">
+                    <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
+                      <input type="color" id="nativeColor_cat_lezione" class="native-color-input" value="#AF52DE" />
+                      <span class="palette-icon">🎨</span>
+                    </div>
+                    <input type="text" id="hex_cat_lezione" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#AF52DE" aria-label="Codice esadecimale lezione" />
+                    <button type="button" class="btn-copy-color-hex" id="copyBtn_cat_lezione" title="Copia codice colore lezione">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <span>Copia</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div class="color-picker-control-group">
-                <div class="swatches-label-row">
-                  <span class="swatches-label">Colori standard</span>
-                </div>
-                <div class="swatches-row" id="swatches_course_psm"></div>
-                <div class="color-slider-wrapper">
-                  <div class="slider-header-row">
-                    <span class="slider-label">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
-                      Selettore a slider (Tonalità)
-                    </span>
-                    <span class="slider-val-tag" id="sliderVal_course_psm">347°</span>
+
+              <!-- 4.4 Personale & Altro -->
+              <div class="setting-row color-setting-row" data-color-id="cat_personale">
+                <div class="setting-meta-with-preview">
+                  <div class="setting-meta">
+                    <span class="setting-title">Categoria Personale &amp; Altro</span>
+                    <span class="setting-desc">Attività personali, sport, impegni di lavoro o appuntamenti extrascolastici.</span>
                   </div>
-                  <div class="slider-track-wrap">
-                    <input type="range" class="color-hue-slider" id="slider_course_psm" min="0" max="360" step="1" value="347" aria-label="Slider spettro PSM" />
+                  <div class="color-preview-badge" id="previewBadge_cat_personale">
+                    <span class="color-preview-indicator" id="previewInd_cat_personale" style="background-color: #34C759;"></span>
+                    <span class="preview-text mono" id="previewText_cat_personale">#34C759</span>
                   </div>
                 </div>
-                <div class="color-hex-field-box">
-                  <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
-                    <input type="color" id="nativeColor_course_psm" class="native-color-input" value="#E11D48" />
-                    <span class="palette-icon">🎨</span>
+                <div class="color-picker-control-group">
+                  <div class="swatches-label-row">
+                    <span class="swatches-label">Colori standard</span>
                   </div>
-                  <input type="text" id="hex_course_psm" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#E11D48" aria-label="Codice esadecimale PSM" />
-                  <button type="button" class="btn-copy-color-hex" id="copyBtn_course_psm" title="Copia codice colore PSM">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    <span>Copia</span>
-                  </button>
+                  <div class="swatches-row" id="swatches_cat_personale"></div>
+                  <div class="color-slider-wrapper">
+                    <div class="slider-header-row">
+                      <span class="slider-label">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+                        Selettore a slider (Tonalità)
+                      </span>
+                      <span class="slider-val-tag" id="sliderVal_cat_personale">135°</span>
+                    </div>
+                    <div class="slider-track-wrap">
+                      <input type="range" class="color-hue-slider" id="slider_cat_personale" min="0" max="360" step="1" value="135" aria-label="Slider spettro personale" />
+                    </div>
+                  </div>
+                  <div class="color-hex-field-box">
+                    <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
+                      <input type="color" id="nativeColor_cat_personale" class="native-color-input" value="#34C759" />
+                      <span class="palette-icon">🎨</span>
+                    </div>
+                    <input type="text" id="hex_cat_personale" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#34C759" aria-label="Codice esadecimale personale" />
+                    <button type="button" class="btn-copy-color-hex" id="copyBtn_cat_personale" title="Copia codice colore personale">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <span>Copia</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
+            </section>
 
-          <!-- 5. Giorno di Inizio della Settimana -->
-          <div class="setting-row">
-            <div class="setting-meta">
-              <span class="setting-title">Inizio della Settimana</span>
-              <span class="setting-desc">Giorno mostrato come prima colonna nel calendario e nella vista settimanale.</span>
-            </div>
-            <select id="settingsStartDaySelect" class="form-select setting-select-field">
-              <option value="1">Lunedì (Standard Italiano / ISO 8601)</option>
-              <option value="0">Domenica (Standard USA / Globale)</option>
-              <option value="6">Sabato</option>
-            </select>
-          </div>
+            <!-- 5. Corsi & Materie della Sessione -->
+            <section class="settings-section-panel hidden" id="settingsSection-colors-courses" role="tabpanel" aria-labelledby="tabNavColorsCourses">
+              <div class="settings-section-header">
+                <h3 class="settings-section-title">Corsi &amp; Materie della Sessione</h3>
+                <p class="settings-section-desc">Personalizza la palette identificativa per ciascuna materia e i relativi appelli d'esame.</p>
+              </div>
 
-          <!-- 6. Evidenziazione Giorno Festivo della Settimana -->
-          <div class="setting-row">
-            <div class="setting-meta">
-              <span class="setting-title">Giorno di Riposo Settimanale</span>
-              <span class="setting-desc">Evidenzia questo giorno con intestazione e sfondo dedicati nel calendario.</span>
-            </div>
-            <select id="settingsWeeklyHolidaySelect" class="form-select setting-select-field">
-              <option value="0">Domenica (Predefinito)</option>
-              <option value="6">Sabato (Fine settimana)</option>
-              <option value="1">Lunedì</option>
-              <option value="2">Martedì</option>
-              <option value="3">Mercoledì</option>
-              <option value="4">Giovedì</option>
-              <option value="5">Venerdì</option>
-              <option value="-1">Nessuno (Tutti i giorni neutri)</option>
-            </select>
-          </div>
+              <!-- 5.1 MAM -->
+              <div class="setting-row color-setting-row" data-color-id="course_mam">
+                <div class="setting-meta-with-preview">
+                  <div class="setting-meta">
+                    <span class="setting-title">MAM · Meccanica Applicata alle Macchine</span>
+                    <span class="setting-desc">Colore per appelli d'esame, prove in itinere, filtri e scheda corso MAM.</span>
+                  </div>
+                  <div class="color-preview-badge" id="previewBadge_course_mam">
+                    <span class="color-preview-indicator" id="previewInd_course_mam" style="background-color: #0284C7;"></span>
+                    <span class="preview-text mono" id="previewText_course_mam">#0284C7</span>
+                  </div>
+                </div>
+                <div class="color-picker-control-group">
+                  <div class="swatches-label-row">
+                    <span class="swatches-label">Colori standard</span>
+                  </div>
+                  <div class="swatches-row" id="swatches_course_mam"></div>
+                  <div class="color-slider-wrapper">
+                    <div class="slider-header-row">
+                      <span class="slider-label">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+                        Selettore a slider (Tonalità)
+                      </span>
+                      <span class="slider-val-tag" id="sliderVal_course_mam">200°</span>
+                    </div>
+                    <div class="slider-track-wrap">
+                      <input type="range" class="color-hue-slider" id="slider_course_mam" min="0" max="360" step="1" value="200" aria-label="Slider spettro MAM" />
+                    </div>
+                  </div>
+                  <div class="color-hex-field-box">
+                    <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
+                      <input type="color" id="nativeColor_course_mam" class="native-color-input" value="#0284C7" />
+                      <span class="palette-icon">🎨</span>
+                    </div>
+                    <input type="text" id="hex_course_mam" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#0284C7" aria-label="Codice esadecimale MAM" />
+                    <button type="button" class="btn-copy-color-hex" id="copyBtn_course_mam" title="Copia codice colore MAM">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <span>Copia</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
 
-          <!-- 7. Stile Cornice & Bordi Finestra Windows -->
-          <div class="setting-row">
-            <div class="setting-meta">
-              <span class="setting-title">Stile Cornice &amp; Bordi Finestra</span>
-              <span class="setting-desc">Rimuove la barra classica di Windows integrando la cornice personalizzata dell'app con pulsanti di controllo integrati e bordi continui.</span>
-            </div>
-            <div class="segmented-control" id="settingsWindowFrameSwitcher" role="radiogroup" aria-label="Stile cornice finestra">
-              <button type="button" class="seg-btn active" data-frame-val="custom">Personalizzato (Crafted)</button>
-              <button type="button" class="seg-btn" data-frame-val="standard">Standard Windows</button>
-            </div>
+              <!-- 5.2 TM -->
+              <div class="setting-row color-setting-row" data-color-id="course_tm">
+                <div class="setting-meta-with-preview">
+                  <div class="setting-meta">
+                    <span class="setting-title">TM · Tecnologia Meccanica</span>
+                    <span class="setting-desc">Colore per appelli d'esame, prove in itinere, filtri e scheda corso TM.</span>
+                  </div>
+                  <div class="color-preview-badge" id="previewBadge_course_tm">
+                    <span class="color-preview-indicator" id="previewInd_course_tm" style="background-color: #D97706;"></span>
+                    <span class="preview-text mono" id="previewText_course_tm">#D97706</span>
+                  </div>
+                </div>
+                <div class="color-picker-control-group">
+                  <div class="swatches-label-row">
+                    <span class="swatches-label">Colori standard</span>
+                  </div>
+                  <div class="swatches-row" id="swatches_course_tm"></div>
+                  <div class="color-slider-wrapper">
+                    <div class="slider-header-row">
+                      <span class="slider-label">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+                        Selettore a slider (Tonalità)
+                      </span>
+                      <span class="slider-val-tag" id="sliderVal_course_tm">32°</span>
+                    </div>
+                    <div class="slider-track-wrap">
+                      <input type="range" class="color-hue-slider" id="slider_course_tm" min="0" max="360" step="1" value="32" aria-label="Slider spettro TM" />
+                    </div>
+                  </div>
+                  <div class="color-hex-field-box">
+                    <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
+                      <input type="color" id="nativeColor_course_tm" class="native-color-input" value="#D97706" />
+                      <span class="palette-icon">🎨</span>
+                    </div>
+                    <input type="text" id="hex_course_tm" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#D97706" aria-label="Codice esadecimale TM" />
+                    <button type="button" class="btn-copy-color-hex" id="copyBtn_course_tm" title="Copia codice colore TM">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <span>Copia</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 5.3 MSE -->
+              <div class="setting-row color-setting-row" data-color-id="course_mse">
+                <div class="setting-meta-with-preview">
+                  <div class="setting-meta">
+                    <span class="setting-title">MSE · Misure Meccaniche / Sistemi Elettrici</span>
+                    <span class="setting-desc">Colore per appelli d'esame, prove in itinere, filtri e scheda corso MSE.</span>
+                  </div>
+                  <div class="color-preview-badge" id="previewBadge_course_mse">
+                    <span class="color-preview-indicator" id="previewInd_course_mse" style="background-color: #059669;"></span>
+                    <span class="preview-text mono" id="previewText_course_mse">#059669</span>
+                  </div>
+                </div>
+                <div class="color-picker-control-group">
+                  <div class="swatches-label-row">
+                    <span class="swatches-label">Colori standard</span>
+                  </div>
+                  <div class="swatches-row" id="swatches_course_mse"></div>
+                  <div class="color-slider-wrapper">
+                    <div class="slider-header-row">
+                      <span class="slider-label">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+                        Selettore a slider (Tonalità)
+                      </span>
+                      <span class="slider-val-tag" id="sliderVal_course_mse">161°</span>
+                    </div>
+                    <div class="slider-track-wrap">
+                      <input type="range" class="color-hue-slider" id="slider_course_mse" min="0" max="360" step="1" value="161" aria-label="Slider spettro MSE" />
+                    </div>
+                  </div>
+                  <div class="color-hex-field-box">
+                    <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
+                      <input type="color" id="nativeColor_course_mse" class="native-color-input" value="#059669" />
+                      <span class="palette-icon">🎨</span>
+                    </div>
+                    <input type="text" id="hex_course_mse" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#059669" aria-label="Codice esadecimale MSE" />
+                    <button type="button" class="btn-copy-color-hex" id="copyBtn_course_mse" title="Copia codice colore MSE">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <span>Copia</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 5.4 DCM -->
+              <div class="setting-row color-setting-row" data-color-id="course_dcm">
+                <div class="setting-meta-with-preview">
+                  <div class="setting-meta">
+                    <span class="setting-title">DCM · Disegno e Costruzione di Macchine</span>
+                    <span class="setting-desc">Colore per appelli d'esame, prove in itinere, filtri e scheda corso DCM.</span>
+                  </div>
+                  <div class="color-preview-badge" id="previewBadge_course_dcm">
+                    <span class="color-preview-indicator" id="previewInd_course_dcm" style="background-color: #7C3AED;"></span>
+                    <span class="preview-text mono" id="previewText_course_dcm">#7C3AED</span>
+                  </div>
+                </div>
+                <div class="color-picker-control-group">
+                  <div class="swatches-label-row">
+                    <span class="swatches-label">Colori standard</span>
+                  </div>
+                  <div class="swatches-row" id="swatches_course_dcm"></div>
+                  <div class="color-slider-wrapper">
+                    <div class="slider-header-row">
+                      <span class="slider-label">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+                        Selettore a slider (Tonalità)
+                      </span>
+                      <span class="slider-val-tag" id="sliderVal_course_dcm">267°</span>
+                    </div>
+                    <div class="slider-track-wrap">
+                      <input type="range" class="color-hue-slider" id="slider_course_dcm" min="0" max="360" step="1" value="267" aria-label="Slider spettro DCM" />
+                    </div>
+                  </div>
+                  <div class="color-hex-field-box">
+                    <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
+                      <input type="color" id="nativeColor_course_dcm" class="native-color-input" value="#7C3AED" />
+                      <span class="palette-icon">🎨</span>
+                    </div>
+                    <input type="text" id="hex_course_dcm" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#7C3AED" aria-label="Codice esadecimale DCM" />
+                    <button type="button" class="btn-copy-color-hex" id="copyBtn_course_dcm" title="Copia codice colore DCM">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <span>Copia</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 5.5 PSM -->
+              <div class="setting-row color-setting-row" data-color-id="course_psm">
+                <div class="setting-meta-with-preview">
+                  <div class="setting-meta">
+                    <span class="setting-title">PSM · Progettazione Strutturale Meccanica</span>
+                    <span class="setting-desc">Colore per appelli d'esame, prove in itinere, filtri e scheda corso PSM.</span>
+                  </div>
+                  <div class="color-preview-badge" id="previewBadge_course_psm">
+                    <span class="color-preview-indicator" id="previewInd_course_psm" style="background-color: #E11D48;"></span>
+                    <span class="preview-text mono" id="previewText_course_psm">#E11D48</span>
+                  </div>
+                </div>
+                <div class="color-picker-control-group">
+                  <div class="swatches-label-row">
+                    <span class="swatches-label">Colori standard</span>
+                  </div>
+                  <div class="swatches-row" id="swatches_course_psm"></div>
+                  <div class="color-slider-wrapper">
+                    <div class="slider-header-row">
+                      <span class="slider-label">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+                        Selettore a slider (Tonalità)
+                      </span>
+                      <span class="slider-val-tag" id="sliderVal_course_psm">347°</span>
+                    </div>
+                    <div class="slider-track-wrap">
+                      <input type="range" class="color-hue-slider" id="slider_course_psm" min="0" max="360" step="1" value="347" aria-label="Slider spettro PSM" />
+                    </div>
+                  </div>
+                  <div class="color-hex-field-box">
+                    <div class="native-color-wrap" title="Pipetta contagocce o selettore colore nativo">
+                      <input type="color" id="nativeColor_course_psm" class="native-color-input" value="#E11D48" />
+                      <span class="palette-icon">🎨</span>
+                    </div>
+                    <input type="text" id="hex_course_psm" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#E11D48" aria-label="Codice esadecimale PSM" />
+                    <button type="button" class="btn-copy-color-hex" id="copyBtn_course_psm" title="Copia codice colore PSM">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <span>Copia</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
 

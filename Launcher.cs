@@ -13,10 +13,11 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("MySession — Gestione Sessioni di Studio & Calendario Esami")]
 [assembly: AssemblyDescription("Desktop Study Session & Exam Calendar — Multi-sessione & Calendario Infinito")]
-[assembly: AssemblyCompany("MySession")]
+[assembly: AssemblyCompany("Riccardo Bettini")]
 [assembly: AssemblyProduct("MySession")]
-[assembly: AssemblyVersion("3.1.0.0")]
-[assembly: AssemblyFileVersion("3.1.0.0")]
+[assembly: AssemblyCopyright("Copyright © 2026 Riccardo Bettini")]
+[assembly: AssemblyVersion("1.0.0.0")]
+[assembly: AssemblyFileVersion("1.0.0.0")]
 
 namespace MySessionApp
 {

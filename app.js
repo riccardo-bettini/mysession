@@ -941,6 +941,25 @@ function applyCourseColor(courseKey, hex) {
   root.style.setProperty(`--${courseKey}-text`, isDark ? adjustHexBrightness(cleanHex, 60) : adjustHexBrightness(cleanHex, -40));
 }
 
+const APP_VERSION = "1.0.00";
+const APP_AUTHOR = "Riccardo Bettini";
+
+// Palette colori standard uniforme per TUTTE le categorie
+const UNIFIED_STANDARD_PALETTE = [
+  "#007AFF", // Blu Accento / Elettrico
+  "#0284C7", // Azzurro / Sky
+  "#059669", // Smeraldo / Teal
+  "#34C759", // Verde Mela / Prato
+  "#EAB308", // Oro / Giallo Caldo
+  "#FF9500", // Arancione Vivo
+  "#FF3B30", // Rosso Corallo / Scarlatto
+  "#E11D48", // Carminio / Lampone
+  "#AF52DE", // Viola / Orchidea
+  "#7C3AED", // Indaco / Ametista
+  "#5856D6", // Blu Indaco / Iris
+  "#64748B"  // Grigio Ardesia Neutro
+];
+
 // Configurazione unificata per tutti i controlli colore delle categorie
 const COLOR_CONTROLLER_CONFIGS = [
   // 1. SISTEMA & CALENDARIO
@@ -949,21 +968,21 @@ const COLOR_CONTROLLER_CONFIGS = [
     tab: "system",
     getter: () => state.settings.accentColor,
     setter: (hex) => applyAccentColor(hex),
-    presets: ["#007AFF", "#0A84FF", "#5856D6", "#AF52DE", "#34C759", "#FF9500", "#FF2D55", "#64748B", "#059669", "#D97706"]
+    presets: UNIFIED_STANDARD_PALETTE
   },
   {
     id: "holiday",
     tab: "system",
     getter: () => state.settings.holidayColor,
     setter: (hex) => { applyHolidayColor(hex); renderApp(); },
-    presets: ["#FF3B30", "#D9381E", "#E11D48", "#C0392B", "#DC2626", "#991B1B", "#EA580C", "#B91C1C", "#F43F5E", "#F87171"]
+    presets: UNIFIED_STANDARD_PALETTE
   },
   {
     id: "sunday",
     tab: "system",
     getter: () => state.settings.sundayColor,
     setter: (hex) => { applySundayColor(hex); renderApp(); },
-    presets: ["#FF9500", "#F59E0B", "#D97706", "#F97316", "#E67E22", "#EAB308", "#10B981", "#8B5CF6", "#EC4899", "#6366F1"]
+    presets: UNIFIED_STANDARD_PALETTE
   },
 
   // 2. CATEGORIE IMPEGNI
@@ -972,28 +991,28 @@ const COLOR_CONTROLLER_CONFIGS = [
     tab: "events",
     getter: () => (state.settings.categoryColors && state.settings.categoryColors.studio) || "#007AFF",
     setter: (hex) => { applyCategoryColor("studio", hex); renderApp(); },
-    presets: ["#007AFF", "#0284C7", "#2563EB", "#3B82F6", "#6366F1", "#0EA5E9", "#1D4ED8", "#0369A1", "#38BDF8", "#4F46E5"]
+    presets: UNIFIED_STANDARD_PALETTE
   },
   {
     id: "cat_scadenza",
     tab: "events",
     getter: () => (state.settings.categoryColors && state.settings.categoryColors.scadenza) || "#FF9500",
     setter: (hex) => { applyCategoryColor("scadenza", hex); renderApp(); },
-    presets: ["#FF9500", "#F97316", "#EA580C", "#D97706", "#F59E0B", "#EF4444", "#DC2626", "#B45309", "#FB923C", "#C2410C"]
+    presets: UNIFIED_STANDARD_PALETTE
   },
   {
     id: "cat_lezione",
     tab: "events",
     getter: () => (state.settings.categoryColors && state.settings.categoryColors.lezione) || "#AF52DE",
     setter: (hex) => { applyCategoryColor("lezione", hex); renderApp(); },
-    presets: ["#AF52DE", "#8B5CF6", "#7C3AED", "#9333EA", "#A855F7", "#C084FC", "#6D28D9", "#5856D6", "#E879F9", "#4C1D95"]
+    presets: UNIFIED_STANDARD_PALETTE
   },
   {
     id: "cat_personale",
     tab: "events",
     getter: () => (state.settings.categoryColors && state.settings.categoryColors.personale) || "#34C759",
     setter: (hex) => { applyCategoryColor("personale", hex); renderApp(); },
-    presets: ["#34C759", "#10B981", "#059669", "#16A34A", "#14B8A6", "#0D9488", "#22C55E", "#15803D", "#4ADE80", "#047857"]
+    presets: UNIFIED_STANDARD_PALETTE
   },
 
   // 3. CORSI & MATERIE
@@ -1002,35 +1021,35 @@ const COLOR_CONTROLLER_CONFIGS = [
     tab: "courses",
     getter: () => (state.settings.courseColors && state.settings.courseColors.mam) || "#0284C7",
     setter: (hex) => { applyCourseColor("mam", hex); renderApp(); },
-    presets: ["#0284C7", "#007AFF", "#0369A1", "#0EA5E9", "#38BDF8", "#2563EB", "#1D4ED8", "#64748B"]
+    presets: UNIFIED_STANDARD_PALETTE
   },
   {
     id: "course_tm",
     tab: "courses",
     getter: () => (state.settings.courseColors && state.settings.courseColors.tm) || "#D97706",
     setter: (hex) => { applyCourseColor("tm", hex); renderApp(); },
-    presets: ["#D97706", "#B45309", "#92400E", "#F59E0B", "#FF9500", "#EA580C", "#C2410C", "#78350F"]
+    presets: UNIFIED_STANDARD_PALETTE
   },
   {
     id: "course_mse",
     tab: "courses",
     getter: () => (state.settings.courseColors && state.settings.courseColors.mse) || "#059669",
     setter: (hex) => { applyCourseColor("mse", hex); renderApp(); },
-    presets: ["#059669", "#047857", "#065F46", "#10B981", "#34C759", "#14B8A6", "#0D9488", "#15803D"]
+    presets: UNIFIED_STANDARD_PALETTE
   },
   {
     id: "course_dcm",
     tab: "courses",
     getter: () => (state.settings.courseColors && state.settings.courseColors.dcm) || "#7C3AED",
     setter: (hex) => { applyCourseColor("dcm", hex); renderApp(); },
-    presets: ["#7C3AED", "#6D28D9", "#5B21B6", "#8B5CF6", "#AF52DE", "#9333EA", "#5856D6", "#4C1D95"]
+    presets: UNIFIED_STANDARD_PALETTE
   },
   {
     id: "course_psm",
     tab: "courses",
     getter: () => (state.settings.courseColors && state.settings.courseColors.psm) || "#E11D48",
     setter: (hex) => { applyCourseColor("psm", hex); renderApp(); },
-    presets: ["#E11D48", "#BE123C", "#9F1239", "#FF2D55", "#FF3B30", "#DC2626", "#F43F5E", "#B91C1C"]
+    presets: UNIFIED_STANDARD_PALETTE
   }
 ];
 
@@ -1104,10 +1123,40 @@ function initSettingsModal() {
   const resetBtn = document.getElementById("btnResetSettingsDefault");
   if (!overlay) return;
 
+  // Sidebar Navigation Switcher per le Sezioni delle Impostazioni
+  const navItems = document.querySelectorAll(".settings-nav-item");
+  const sectionPanels = document.querySelectorAll(".settings-section-panel");
+
+  function switchSettingsSection(targetKey) {
+    if (!targetKey) return;
+    navItems.forEach(item => {
+      const isMatch = item.dataset.sectionTarget === targetKey;
+      item.classList.toggle("active", isMatch);
+      item.setAttribute("aria-selected", isMatch ? "true" : "false");
+    });
+    sectionPanels.forEach(panel => {
+      const isMatch = panel.id === `settingsSection-${targetKey}`;
+      panel.classList.toggle("hidden", !isMatch);
+      panel.classList.toggle("active", isMatch);
+    });
+  }
+
+  navItems.forEach(item => {
+    item.addEventListener("click", () => {
+      switchSettingsSection(item.dataset.sectionTarget);
+    });
+  });
+
   const openSettings = () => {
     overlay.classList.remove("hidden");
     overlay.setAttribute("data-open", "true");
     syncSettingsModalInputs();
+    const activeItem = document.querySelector(".settings-nav-item.active");
+    if (activeItem) {
+      switchSettingsSection(activeItem.dataset.sectionTarget);
+    } else {
+      switchSettingsSection("appearance");
+    }
   };
 
   const closeSettings = () => {
@@ -1134,22 +1183,6 @@ function initSettingsModal() {
   document.querySelectorAll("#settingsUiScaleSwitcher .seg-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       applyUiScale(parseInt(btn.dataset.scaleVal, 10));
-    });
-  });
-
-  // Category Tabs Switcher (Sistema, Eventi, Materie)
-  const catTabs = document.querySelectorAll("#colorCategoryTabs .seg-btn");
-  catTabs.forEach(tabBtn => {
-    tabBtn.addEventListener("click", () => {
-      const targetTab = tabBtn.dataset.colorTab;
-      catTabs.forEach(b => {
-        const isSelected = b === tabBtn;
-        b.classList.toggle("active", isSelected);
-        b.setAttribute("aria-selected", isSelected ? "true" : "false");
-      });
-      document.querySelectorAll(".color-tab-pane").forEach(pane => {
-        pane.classList.toggle("hidden", pane.id !== `colorTabPane-${targetTab}`);
-      });
     });
   });
 
