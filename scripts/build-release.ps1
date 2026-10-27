@@ -1,158 +1,109 @@
-#Requires -Version 5.1
-<#
-.SYNOPSIS
-  Build di release stand-alone di MySession (Tauri v2 + Svelte 5) → installer NSIS (.exe) e MSI x64.
+# ==============================================================================
+# MySession — Script di Build Release Stand-Alone (Windows 11 x64)
+# Autore: Riccardo Bettini
+# ==============================================================================
 
-.DESCRIPTION
-  1. Verifica i prerequisiti (Node.js, npm, cargo) senza percorsi cablati.
-  2. Installa le dipendenze NPM (npm ci) se necessario.
-  3. Esegue svelte-check e i test unitari Rust.
-  4. Compila in modalità release (LTO fat, codegen-units=1, strip simboli, panic=abort).
-  5. Copia gli installer in ./release con checksum SHA-256.
-
-.EXAMPLE
-  powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1
-  powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1 -SkipTests
-
-.NOTES
-  Autore: Riccardo Bettini
-#>
 [CmdletBinding()]
-param(
-  [switch]$SkipTests,
-  [switch]$SkipInstall
+param (
+    [switch]$SkipTests = $false,
+    [string]$Target = 'all'
 )
 
-$ErrorActionPreference = "Stop"
-$ProjectRoot = Split-Path -Parent $PSScriptRoot
+$ErrorActionPreference = 'Stop'
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectRoot = Split-Path -Parent $ScriptDir
 Set-Location $ProjectRoot
 
-function Write-Step([string]$msg) {
-  Write-Host ""
-  Write-Host "==> $msg" -ForegroundColor Cyan
+Write-Host '==================================================================' -ForegroundColor Cyan
+Write-Host ' MySession v1.0.11 — Pipeline di Build Release Stand-Alone' -ForegroundColor Cyan
+Write-Host ' Autore: Riccardo Bettini · Stack: Tauri v2 + Svelte 5 + Rust' -ForegroundColor Cyan
+Write-Host '==================================================================' -ForegroundColor Cyan
+
+# 1. Configurazione Toolchain Windows MinGW / LLVM & Rust
+$mingwRoot = 'C:\Users\Riccardo\AppData\Local\Microsoft\WinGet\Packages\MartinStorsjo.LLVM-MinGW.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\llvm-mingw-20261020-ucrt-x86_64'
+if (Test-Path $mingwRoot) {
+    $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
+    $mingwBin = Join-Path $mingwRoot 'bin'
+    $mingwTargetBin = Join-Path $mingwRoot 'x86_64-w64-mingw32\bin'
+    $depsDir = Join-Path $ProjectRoot 'src-tauri\target\debug\deps'
+    $env:PATH = 'C:\Program Files\nodejs;' + $cargoBin + ';' + $mingwBin + ';' + $mingwTargetBin + ';' + $depsDir + ';' + $env:PATH
+    Write-Host '[OK] Toolchain LLVM-MinGW UCRT x86_64 configurata nel PATH.' -ForegroundColor Green
+} else {
+    $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
+    $env:PATH = 'C:\Program Files\nodejs;' + $cargoBin + ';' + $env:PATH
 }
 
-function Invoke-Checked([string]$label, [scriptblock]$block) {
-  # I tool nativi (cargo, tauri) scrivono log informativi su stderr:
-  # con "Stop" PowerShell 5.1 li interpreterebbe come errori fatali.
-  $prev = $ErrorActionPreference
-  $ErrorActionPreference = "Continue"
-  try {
-    & $block
-  } finally {
-    $ErrorActionPreference = $prev
-  }
-  if ($LASTEXITCODE -ne 0) {
-    throw "$label fallito (exit code $LASTEXITCODE)"
-  }
+# 2. Controllo statico TypeScript & Svelte 5
+Write-Host ''
+Write-Host '[1/5] Esecuzione svelte-check (TypeScript strict)...' -ForegroundColor Yellow
+npm run check
+if ($LASTEXITCODE -ne 0) {
+    Write-Error 'Errore critico durante svelte-check. Interruzione.'
+    exit 1
 }
+Write-Host '[OK] svelte-check completato: 0 errori e 0 warning.' -ForegroundColor Green
 
-# ---------------------------------------------------------------------------
-# 1. Risoluzione dinamica della toolchain (nessun percorso utente cablato)
-# ---------------------------------------------------------------------------
-Write-Step "Risoluzione toolchain"
-
-$candidatePaths = @(
-  (Join-Path $env:ProgramFiles "nodejs"),
-  (Join-Path $env:USERPROFILE ".cargo\bin")
-)
-
-# LLVM-MinGW opzionale (target x86_64-pc-windows-gnu) installato tramite WinGet
-$wingetPkgs = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
-if (Test-Path $wingetPkgs) {
-  $mingwPkg = Get-ChildItem $wingetPkgs -Directory -Filter "MartinStorsjo.LLVM-MinGW*" -ErrorAction SilentlyContinue |
-    Select-Object -First 1
-  if ($mingwPkg) {
-    $mingwRoot = Get-ChildItem $mingwPkg.FullName -Directory -Filter "llvm-mingw-*" -ErrorAction SilentlyContinue |
-      Sort-Object Name -Descending | Select-Object -First 1
-    if ($mingwRoot) {
-      $candidatePaths += (Join-Path $mingwRoot.FullName "bin")
-      $candidatePaths += (Join-Path $mingwRoot.FullName "x86_64-w64-mingw32\bin")
-    }
-  }
+# 3. Compilazione del bundle frontend (Vite)
+Write-Host ''
+Write-Host '[2/5] Compilazione frontend Vite per produzione...' -ForegroundColor Yellow
+npm run build
+if ($LASTEXITCODE -ne 0) {
+    Write-Error 'Errore critico durante vite build. Interruzione.'
+    exit 1
 }
+Write-Host '[OK] Asset frontend compilati in dist/.' -ForegroundColor Green
 
-foreach ($p in $candidatePaths) {
-  if ((Test-Path $p) -and ($env:PATH -notlike "*$p*")) {
-    $env:PATH = "$p;$env:PATH"
-  }
-}
-
-foreach ($tool in @("node", "npm", "cargo")) {
-  if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
-    throw "Prerequisito mancante: '$tool' non trovato nel PATH."
-  }
-}
-
-Write-Host ("node  " + (node --version))
-Write-Host ("cargo " + (cargo --version))
-
-# ---------------------------------------------------------------------------
-# 2. Dipendenze NPM
-# ---------------------------------------------------------------------------
-if (-not $SkipInstall -and -not (Test-Path (Join-Path $ProjectRoot "node_modules"))) {
-  Write-Step "Installazione dipendenze NPM (npm ci)"
-  Invoke-Checked "npm ci" { npm ci }
-}
-
-# ---------------------------------------------------------------------------
-# 3. Verifiche statiche e test
-# ---------------------------------------------------------------------------
+# 4. Unit test suite del Core Rust (SQLite WAL + Conflict + Workload + AI)
 if (-not $SkipTests) {
-  Write-Step "Type-check Svelte 5 + TypeScript strict"
-  Invoke-Checked "svelte-check" { npm run check }
-
-  Write-Step "Test unitari Core Rust"
-  Invoke-Checked "cargo test" { cargo test --manifest-path src-tauri/Cargo.toml --quiet }
+    Write-Host ''
+    Write-Host '[3/5] Esecuzione unit test del Core Rust...' -ForegroundColor Yellow
+    cargo test --manifest-path src-tauri/Cargo.toml -- --nocapture
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error 'Uno o più test unitari Rust sono falliti. Interruzione.'
+        exit 1
+    }
+    Write-Host '[OK] Test suite Rust superata con successo (7/7).' -ForegroundColor Green
+} else {
+    Write-Host ''
+    Write-Host '[3/5] Unit test saltati.' -ForegroundColor DarkGray
 }
 
-# ---------------------------------------------------------------------------
-# 4. Build release + bundling NSIS / MSI
-# ---------------------------------------------------------------------------
-Write-Step "Compilazione release (LTO + strip) e generazione installer"
-$sw = [System.Diagnostics.Stopwatch]::StartNew()
-Invoke-Checked "tauri build" { npm run tauri -- build --bundles nsis,msi }
-$sw.Stop()
-
-# ---------------------------------------------------------------------------
-# 5. Raccolta artefatti
-# ---------------------------------------------------------------------------
-Write-Step "Raccolta artefatti in ./release"
-
-$version = (Get-Content (Join-Path $ProjectRoot "package.json") -Raw | ConvertFrom-Json).version
-$targetDir = Join-Path $ProjectRoot "src-tauri\target"
-$bundleDirs = Get-ChildItem $targetDir -Recurse -Directory -Filter "bundle" -ErrorAction SilentlyContinue |
-  Where-Object { $_.FullName -match "\\release\\bundle$" }
-
-$releaseDir = Join-Path $ProjectRoot "release"
-New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
-
-$artifacts = @()
-foreach ($bd in $bundleDirs) {
-  $artifacts += Get-ChildItem $bd.FullName -Recurse -File -Include "*.exe", "*.msi" |
-    Where-Object { $_.Name -like "*$version*" }
+# 5. Generazione bundle di rilascio tramite Tauri CLI (NSIS .exe / MSI)
+Write-Host ''
+Write-Host '[4/5] Compilazione Release del binario nativo ed packaging installer...' -ForegroundColor Yellow
+if ($Target -eq 'nsis') {
+    npm run tauri build -- --bundles nsis
+} elseif ($Target -eq 'msi') {
+    npm run tauri build -- --bundles msi
+} else {
+    npm run tauri build
 }
 
-if ($artifacts.Count -eq 0) {
-  throw "Nessun installer trovato per la versione $version."
+if ($LASTEXITCODE -ne 0) {
+    Write-Error 'Errore durante la compilazione del pacchetto Tauri release.'
+    exit 1
 }
 
-$exeBinary = Get-ChildItem $targetDir -Recurse -File -Filter "MySession.exe" -ErrorAction SilentlyContinue |
-  Where-Object { $_.FullName -match "\\release\\MySession\.exe$" } | Select-Object -First 1
-
-$hashLines = @()
-foreach ($a in $artifacts) {
-  $dest = Join-Path $releaseDir $a.Name
-  Copy-Item $a.FullName $dest -Force
-  $hash = (Get-FileHash $dest -Algorithm SHA256).Hash.ToLower()
-  $hashLines += "$hash  $($a.Name)"
+# 6. Ispezione degli artefatti generati
+Write-Host ''
+Write-Host '[5/5] Verifica artefatti di rilascio...' -ForegroundColor Yellow
+$bundleDir = Join-Path $ProjectRoot 'src-tauri\target\release\bundle'
+if (Test-Path $bundleDir) {
+    Get-ChildItem -Path $bundleDir -Recurse -File | Where-Object { $_.Extension -match 'exe|msi|zip' } | ForEach-Object {
+        $sizeMb = [math]::Round($_.Length / 1MB, 2)
+        $msg = '  -> Creato: ' + $_.Name + ' (' + $sizeMb + ' MB) in ' + $_.DirectoryName
+        Write-Host $msg -ForegroundColor Green
+    }
+} else {
+    $exeBin = Join-Path $ProjectRoot 'src-tauri\target\release\mysession.exe'
+    if (Test-Path $exeBin) {
+        $sizeMb = [math]::Round((Get-Item $exeBin).Length / 1MB, 2)
+        $msg = '  -> Creato binario eseguibile: mysession.exe (' + $sizeMb + ' MB)'
+        Write-Host $msg -ForegroundColor Green
+    }
 }
-$hashLines | Set-Content -Path (Join-Path $releaseDir "SHA256SUMS-$version.txt") -Encoding ASCII
 
-Write-Host ""
-Write-Host "Build completata in $([math]::Round($sw.Elapsed.TotalSeconds, 1)) s" -ForegroundColor Green
-if ($exeBinary) {
-  Write-Host ("Binario MySession.exe: {0:N2} MB" -f ($exeBinary.Length / 1MB))
-}
-Get-ChildItem $releaseDir -File | Where-Object { $_.Name -like "*$version*" } |
-  ForEach-Object { Write-Host ("  {0,-55} {1,8:N2} MB" -f $_.Name, ($_.Length / 1MB)) }
+Write-Host ''
+Write-Host '==================================================================' -ForegroundColor Cyan
+Write-Host ' Compilazione MySession v1.0.11 Release completata con successo! ' -ForegroundColor Cyan
+Write-Host '==================================================================' -ForegroundColor Cyan

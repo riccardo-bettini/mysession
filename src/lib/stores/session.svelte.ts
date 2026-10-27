@@ -1,5 +1,4 @@
 import { ipc } from "../api/ipc";
-import { APP_VERSION } from "../constants/version";
 import type {
   AcademicSession,
   AiAssistantResponse,
@@ -22,7 +21,7 @@ import { getTodayIso } from "../utils/calendar";
 import { themeStore } from "./theme.svelte";
 
 class SessionWorkspaceStore {
-  appVersion = $state<string>(APP_VERSION);
+  appVersion = $state<string>("1.0.11");
   dbPath = $state<string>("");
   profile = $state<UserProfile>({
     id: 1,

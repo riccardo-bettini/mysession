@@ -40,8 +40,6 @@ windows = { version = "0.58", features = [
 [profile.release]
 panic = "abort"
 codegen-units = 1
-lto = "fat"
+lto = true
 opt-level = "s"
-strip = "symbols"
-debug = false
-incremental = false
+strip = true

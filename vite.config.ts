@@ -23,12 +23,8 @@ export default defineConfig({
   },
   envPrefix: ["VITE_", "TAURI_ENV_*"],
   build: {
-    // WebView2 è evergreen (Chromium ≥ 120): nessuna transpilazione superflua
-    target: "chrome120",
+    target: "chrome105",
     minify: !process.env.TAURI_ENV_DEBUG ? "esbuild" : false,
-    cssMinify: !process.env.TAURI_ENV_DEBUG,
-    sourcemap: !!process.env.TAURI_ENV_DEBUG,
-    reportCompressedSize: false,
-    chunkSizeWarningLimit: 600
+    sourcemap: !!process.env.TAURI_ENV_DEBUG
   }
 });

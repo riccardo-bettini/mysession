@@ -15,8 +15,6 @@
     "core:window:allow-set-decorations",
     "core:window:allow-is-maximized",
     "dialog:default",
-    "fs:default",
-    "fs:allow-read-text-file",
-    "fs:allow-write-text-file"
+    "fs:default"
   ]
 }
