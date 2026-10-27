@@ -28,8 +28,9 @@ namespace MySessionApp
         private static bool _isRunning = true;
         private static string _baseDir = "";
         private static string _currentFrameStyle = "custom";
+        private static int _browserPid = 0;
 
-        // Win32 API Imports
+        // Win32 API Imports (Compatibili 32-bit e 64-bit)
         [DllImport("user32.dll")]
         private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
         private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
@@ -48,11 +49,34 @@ namespace MySessionApp
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool IsWindow(IntPtr hWnd);
 
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+        [DllImport("user32.dll", EntryPoint = "GetWindowLong", SetLastError = true)]
+        private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr", SetLastError = true)]
+        private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLong", SetLastError = true)]
+        private static extern int SetWindowLong32(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr", SetLastError = true)]
+        private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        private static long GetWindowLongPtr(IntPtr hWnd, int nIndex)
+        {
+            if (IntPtr.Size == 8)
+                return GetWindowLongPtr64(hWnd, nIndex).ToInt64();
+            return GetWindowLong32(hWnd, nIndex);
+        }
+
+        private static long SetWindowLongPtr(IntPtr hWnd, int nIndex, long dwNewLong)
+        {
+            if (IntPtr.Size == 8)
+                return SetWindowLongPtr64(hWnd, nIndex, new IntPtr(dwNewLong)).ToInt64();
+            return SetWindowLong32(hWnd, nIndex, (int)dwNewLong);
+        }
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
@@ -82,16 +106,17 @@ namespace MySessionApp
         }
 
         private const int GWL_STYLE = -16;
-        private const int WS_CAPTION = 0x00C00000;
-        private const int WS_THICKFRAME = 0x00040000;
-        private const int WS_SYSMENU = 0x00080000;
-        private const int WS_MINIMIZEBOX = 0x00020000;
-        private const int WS_MAXIMIZEBOX = 0x00010000;
+        private const long WS_CAPTION = 0x00C00000L;
+        private const long WS_THICKFRAME = 0x00040000L;
+        private const long WS_SYSMENU = 0x00080000L;
+        private const long WS_MINIMIZEBOX = 0x00020000L;
+        private const long WS_MAXIMIZEBOX = 0x00010000L;
 
         private const uint SWP_FRAMECHANGED = 0x0020;
         private const uint SWP_NOMOVE = 0x0002;
         private const uint SWP_NOSIZE = 0x0001;
         private const uint SWP_NOZORDER = 0x0004;
+        private const uint SWP_NOACTIVATE = 0x0010;
 
         private const int SW_MINIMIZE = 6;
         private const int SW_MAXIMIZE = 3;
@@ -163,7 +188,7 @@ namespace MySessionApp
                     {
                         FileName = browserPath,
                         Arguments = string.Format(
-                            "--app=\"{0}\" --window-size=1440,920 --user-data-dir=\"{1}\" --no-first-run --disable-extensions",
+                            "--app=\"{0}\" --window-size=1440,920 --user-data-dir=\"{1}\" --no-first-run --no-default-browser-check --disable-extensions",
                             fileUri,
                             profileDir
                         ),
@@ -172,6 +197,10 @@ namespace MySessionApp
                     try
                     {
                         browserProc = Process.Start(psi);
+                        if (browserProc != null)
+                        {
+                            try { _browserPid = browserProc.Id; } catch { }
+                        }
                         break;
                     }
                     catch { }
@@ -227,21 +256,45 @@ namespace MySessionApp
 
         private static void MonitorWindowLoop()
         {
+            // Fase 1: Ricerca iniziale e prima applicazione dello stile (fino a 10 secondi)
             int attempts = 0;
-            while (_isRunning && _sessionHwnd == IntPtr.Zero && attempts < 250)
+            while (_isRunning && attempts < 100)
             {
-                _sessionHwnd = FindMySessionWindow();
+                if (_sessionHwnd == IntPtr.Zero || !IsWindow(_sessionHwnd))
+                {
+                    _sessionHwnd = FindMySessionWindow();
+                }
+
                 if (_sessionHwnd != IntPtr.Zero)
                 {
-                    break;
+                    ApplyWindowFrameStyleInternal(_currentFrameStyle);
+                    // Una volta agganciata stabilmente l'applicazione per almeno 15 iterazioni, passa alla fase 2
+                    if (attempts > 15) break;
                 }
+
                 Thread.Sleep(100);
                 attempts++;
             }
 
-            if (_sessionHwnd != IntPtr.Zero)
+            // Fase 2: Monitoraggio continuo in background
+            // Assicura che la barra nativa di Windows non riappaia dopo redraw/navigazioni interne del browser
+            while (_isRunning)
             {
-                ApplyWindowFrameStyleInternal(_currentFrameStyle);
+                Thread.Sleep(400);
+                if (_sessionHwnd == IntPtr.Zero || !IsWindow(_sessionHwnd))
+                {
+                    _sessionHwnd = FindMySessionWindow();
+                }
+
+                if (_sessionHwnd != IntPtr.Zero && _currentFrameStyle == "custom")
+                {
+                    long curStyle = GetWindowLongPtr(_sessionHwnd, GWL_STYLE);
+                    if ((curStyle & WS_CAPTION) != 0)
+                    {
+                        // Il browser ha ripristinato WS_CAPTION: riapplica la rimozione della barra nativa
+                        ApplyWindowFrameStyleInternal("custom");
+                    }
+                }
             }
         }
 
@@ -259,11 +312,19 @@ namespace MySessionApp
                     string title = sbTitle.ToString();
                     string className = sbClass.ToString();
 
-                    if ((title.Contains("MySession") || title.Contains("Calendario")) &&
-                        (className == "Chrome_WidgetWin_1" || className.Contains("Chrome")))
+                    if (className == "Chrome_WidgetWin_1" || className.Contains("Chrome"))
                     {
-                        found = hWnd;
-                        return false;
+                        uint pid = 0;
+                        GetWindowThreadProcessId(hWnd, out pid);
+
+                        bool matchPid = (_browserPid != 0 && pid == (uint)_browserPid);
+                        bool matchTitle = (title.Contains("MySession") || title.Contains("Calendario") || title.Contains("Sessione"));
+
+                        if (matchTitle || (matchPid && !string.IsNullOrEmpty(title)))
+                        {
+                            found = hWnd;
+                            return false;
+                        }
                     }
                 }
                 return true;
@@ -273,7 +334,7 @@ namespace MySessionApp
 
         public static void ApplyWindowFrameStyleInternal(string style)
         {
-            if (_sessionHwnd == IntPtr.Zero)
+            if (_sessionHwnd == IntPtr.Zero || !IsWindow(_sessionHwnd))
             {
                 _sessionHwnd = FindMySessionWindow();
             }
@@ -283,14 +344,15 @@ namespace MySessionApp
 
             if (_currentFrameStyle == "custom")
             {
-                int curStyle = GetWindowLong(_sessionHwnd, GWL_STYLE);
-                // Rimuove WS_CAPTION (nasconde la barra classica e la cornice Windows)
-                // Mantiene WS_THICKFRAME per consentire il ridimensionamento dai bordi
-                int newStyle = (curStyle & ~WS_CAPTION) | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
-                SetWindowLong(_sessionHwnd, GWL_STYLE, newStyle);
-                SetWindowPos(_sessionHwnd, IntPtr.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+                long curStyle = GetWindowLongPtr(_sessionHwnd, GWL_STYLE);
+                // Rimuove completamente WS_CAPTION (0x00C00000 = WS_BORDER | WS_DLGFRAME)
+                // Mantiene WS_THICKFRAME per consentire ridimensionamento e Aero Snap di Windows 11
+                long newStyle = (curStyle & ~WS_CAPTION) | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+                SetWindowLongPtr(_sessionHwnd, GWL_STYLE, newStyle);
+                SetWindowPos(_sessionHwnd, IntPtr.Zero, 0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE);
 
-                // Estende il frame DWM per mantenere l'ombreggiatura morbida e l'effetto nativo di Windows 11
+                // Estende il frame DWM per mantenere l'ombreggiatura morbida e i bordi arrotondati di Windows 11
                 try
                 {
                     MARGINS margins = new MARGINS();
@@ -304,11 +366,12 @@ namespace MySessionApp
             }
             else
             {
-                int curStyle = GetWindowLong(_sessionHwnd, GWL_STYLE);
+                long curStyle = GetWindowLongPtr(_sessionHwnd, GWL_STYLE);
                 // Ripristina la barra del titolo classica e il menu di sistema nativo di Windows
-                int newStyle = curStyle | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
-                SetWindowLong(_sessionHwnd, GWL_STYLE, newStyle);
-                SetWindowPos(_sessionHwnd, IntPtr.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+                long newStyle = curStyle | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+                SetWindowLongPtr(_sessionHwnd, GWL_STYLE, newStyle);
+                SetWindowPos(_sessionHwnd, IntPtr.Zero, 0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE);
             }
 
             // Salva preferenza persistente su file per i successivi riavvii
@@ -405,6 +468,14 @@ namespace MySessionApp
                     isMax = IsZoomed(_sessionHwnd);
                     ShowWindow(_sessionHwnd, isMax ? SW_RESTORE : SW_MAXIMIZE);
                     isMax = !isMax;
+                    if (_currentFrameStyle == "custom")
+                    {
+                        ThreadPool.QueueUserWorkItem(delegate
+                        {
+                            Thread.Sleep(60);
+                            ApplyWindowFrameStyleInternal("custom");
+                        });
+                    }
                 }
                 jsonResponse = string.Format("{{\"status\":\"ok\",\"isMaximized\":{0}}}", isMax ? "true" : "false");
             }
