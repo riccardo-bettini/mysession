@@ -502,6 +502,19 @@ let state = {
     accentColor: localStorage.getItem("polimi_accent_color") || "#007AFF",
     holidayColor: localStorage.getItem("polimi_holiday_color") || "#FF3B30",
     sundayColor: localStorage.getItem("polimi_sunday_color") || "#FF9500",
+    categoryColors: {
+      studio: localStorage.getItem("polimi_cat_color_studio") || "#007AFF",
+      scadenza: localStorage.getItem("polimi_cat_color_scadenza") || "#FF9500",
+      lezione: localStorage.getItem("polimi_cat_color_lezione") || "#AF52DE",
+      personale: localStorage.getItem("polimi_cat_color_personale") || "#34C759"
+    },
+    courseColors: {
+      mam: localStorage.getItem("polimi_course_color_mam") || "#0284C7",
+      tm: localStorage.getItem("polimi_course_color_tm") || "#D97706",
+      mse: localStorage.getItem("polimi_course_color_mse") || "#059669",
+      dcm: localStorage.getItem("polimi_course_color_dcm") || "#7C3AED",
+      psm: localStorage.getItem("polimi_course_color_psm") || "#E11D48"
+    },
     startDayOfWeek: parseInt(localStorage.getItem("polimi_start_day") || "1", 10), // 1 = Lunedì
     weeklyHolidayDay: parseInt(localStorage.getItem("polimi_weekly_holiday") || "0", 10), // 0 = Domenica
     windowFrameStyle: localStorage.getItem("polimi_window_frame_style") || "custom"
@@ -580,6 +593,17 @@ function applyEffectiveTheme() {
     btn.classList.toggle("active", isSelected);
     btn.setAttribute("aria-checked", isSelected ? "true" : "false");
   });
+
+  if (state.settings && state.settings.categoryColors) {
+    Object.keys(state.settings.categoryColors).forEach(cat => {
+      applyCategoryColor(cat, state.settings.categoryColors[cat]);
+    });
+  }
+  if (state.settings && state.settings.courseColors) {
+    Object.keys(state.settings.courseColors).forEach(courseKey => {
+      applyCourseColor(courseKey, state.settings.courseColors[courseKey]);
+    });
+  }
 }
 
 function cycleTheme() {
@@ -588,12 +612,22 @@ function cycleTheme() {
   setThemeChoice(next);
 }
 
-// Settings Engine (Scale, Accent, Holiday, Sunday, Calendar Days, Modal UI)
+// Settings Engine (Scale, Accent, Holiday, Sunday, Categories, Courses, Calendar Days, Modal UI)
 function initSettingsEngine() {
   applyUiScale(state.settings.uiScale);
   applyAccentColor(state.settings.accentColor);
   applyHolidayColor(state.settings.holidayColor);
   applySundayColor(state.settings.sundayColor);
+  if (state.settings.categoryColors) {
+    Object.keys(state.settings.categoryColors).forEach(cat => {
+      applyCategoryColor(cat, state.settings.categoryColors[cat]);
+    });
+  }
+  if (state.settings.courseColors) {
+    Object.keys(state.settings.courseColors).forEach(courseKey => {
+      applyCourseColor(courseKey, state.settings.courseColors[courseKey]);
+    });
+  }
   applyWindowFrameStyle(state.settings.windowFrameStyle);
   renderStickyWeekdayHeader();
   initSettingsModal();
@@ -748,6 +782,57 @@ function normalizeHexColor(str) {
   return null;
 }
 
+function hexToHsl(hex) {
+  let c = (hex || "#007AFF").replace("#", "");
+  if (c.length === 3) c = c.split("").map(x => x + x).join("");
+  const num = parseInt(c, 16);
+  if (isNaN(num)) return { h: 211, s: 100, l: 50 };
+  const r = ((num >> 16) & 255) / 255;
+  const g = ((num >> 8) & 255) / 255;
+  const b = (num & 255) / 255;
+
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0, l = (max + min) / 2;
+
+  if (max === min) {
+    h = s = 0;
+  } else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h /= 6;
+  }
+  return {
+    h: Math.round(h * 360),
+    s: Math.round(s * 100),
+    l: Math.round(l * 100)
+  };
+}
+
+function hslToHex(h, s, l) {
+  h = ((h % 360) + 360) % 360;
+  s = Math.max(0, Math.min(100, s)) / 100;
+  l = Math.max(0, Math.min(100, l)) / 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (0 <= h && h < 60) { r = c; g = x; b = 0; }
+  else if (60 <= h && h < 120) { r = x; g = c; b = 0; }
+  else if (120 <= h && h < 180) { r = 0; g = c; b = x; }
+  else if (180 <= h && h < 240) { r = 0; g = x; b = c; }
+  else if (240 <= h && h < 300) { r = x; g = 0; b = c; }
+  else if (300 <= h && h <= 360) { r = c; g = 0; b = x; }
+  const rHex = Math.round((r + m) * 255).toString(16).padStart(2, "0");
+  const gHex = Math.round((g + m) * 255).toString(16).padStart(2, "0");
+  const bHex = Math.round((b + m) * 255).toString(16).padStart(2, "0");
+  return `#${rHex}${gHex}${bHex}`.toUpperCase();
+}
+
 function copyColorHex(hex, btnEl) {
   if (!hex) return;
   const cleanHex = normalizeHexColor(hex) || hex.toUpperCase();
@@ -803,18 +888,6 @@ function applyAccentColor(hex) {
   root.style.setProperty("--accent-soft", hexToRgba(cleanHex, 0.12));
   root.style.setProperty("--accent-border", hexToRgba(cleanHex, 0.32));
   root.style.setProperty("--border-focus", hexToRgba(cleanHex, 0.45));
-
-  document.querySelectorAll("#settingsAccentSwatches .color-swatch-chip").forEach(chip => {
-    chip.classList.toggle("active", chip.dataset.color.toLowerCase() === cleanHex.toLowerCase());
-  });
-  const customInput = document.getElementById("settingsCustomAccentColor");
-  if (customInput && customInput.value.toLowerCase() !== cleanHex.toLowerCase()) {
-    customInput.value = cleanHex;
-  }
-  const hexInput = document.getElementById("settingsAccentHexInput");
-  if (hexInput && hexInput.value.toUpperCase() !== cleanHex.toUpperCase()) {
-    hexInput.value = cleanHex.toUpperCase();
-  }
 }
 
 function applyHolidayColor(hex) {
@@ -827,18 +900,6 @@ function applyHolidayColor(hex) {
   root.style.setProperty("--holiday-border", cleanHex);
   root.style.setProperty("--holiday-text", cleanHex);
   root.style.setProperty("--holiday-bg", hexToRgba(cleanHex, 0.12));
-
-  document.querySelectorAll("#settingsHolidaySwatches .color-swatch-chip").forEach(chip => {
-    chip.classList.toggle("active", chip.dataset.color.toLowerCase() === cleanHex.toLowerCase());
-  });
-  const customInput = document.getElementById("settingsCustomHolidayColor");
-  if (customInput && customInput.value.toLowerCase() !== cleanHex.toLowerCase()) {
-    customInput.value = cleanHex;
-  }
-  const hexInput = document.getElementById("settingsHolidayHexInput");
-  if (hexInput && hexInput.value.toUpperCase() !== cleanHex.toUpperCase()) {
-    hexInput.value = cleanHex.toUpperCase();
-  }
 }
 
 function applySundayColor(hex) {
@@ -850,17 +911,166 @@ function applySundayColor(hex) {
   const root = document.documentElement;
   root.style.setProperty("--sunday-text", cleanHex);
   root.style.setProperty("--sunday-wash", hexToRgba(cleanHex, 0.055));
+}
 
-  document.querySelectorAll("#settingsSundaySwatches .color-swatch-chip").forEach(chip => {
-    chip.classList.toggle("active", chip.dataset.color.toLowerCase() === cleanHex.toLowerCase());
-  });
-  const customInput = document.getElementById("settingsCustomSundayColor");
-  if (customInput && customInput.value.toLowerCase() !== cleanHex.toLowerCase()) {
-    customInput.value = cleanHex;
+function applyCategoryColor(catKey, hex) {
+  if (!hex) return;
+  const cleanHex = normalizeHexColor(hex) || hex;
+  if (!state.settings.categoryColors) state.settings.categoryColors = {};
+  state.settings.categoryColors[catKey] = cleanHex;
+  localStorage.setItem("polimi_cat_color_" + catKey, cleanHex);
+
+  const root = document.documentElement;
+  const isDark = root.getAttribute("data-theme") === "dark";
+  root.style.setProperty(`--cat-${catKey}-color`, cleanHex);
+  root.style.setProperty(`--cat-${catKey}-bg`, hexToRgba(cleanHex, isDark ? 0.16 : 0.08));
+}
+
+function applyCourseColor(courseKey, hex) {
+  if (!hex) return;
+  const cleanHex = normalizeHexColor(hex) || hex;
+  if (!state.settings.courseColors) state.settings.courseColors = {};
+  state.settings.courseColors[courseKey] = cleanHex;
+  localStorage.setItem("polimi_course_color_" + courseKey, cleanHex);
+
+  const root = document.documentElement;
+  const isDark = root.getAttribute("data-theme") === "dark";
+  root.style.setProperty(`--${courseKey}-border`, cleanHex);
+  root.style.setProperty(`--${courseKey}-bg`, hexToRgba(cleanHex, isDark ? 0.14 : 0.10));
+  root.style.setProperty(`--${courseKey}-bg-hover`, hexToRgba(cleanHex, isDark ? 0.22 : 0.16));
+  root.style.setProperty(`--${courseKey}-text`, isDark ? adjustHexBrightness(cleanHex, 60) : adjustHexBrightness(cleanHex, -40));
+}
+
+// Configurazione unificata per tutti i controlli colore delle categorie
+const COLOR_CONTROLLER_CONFIGS = [
+  // 1. SISTEMA & CALENDARIO
+  {
+    id: "accent",
+    tab: "system",
+    getter: () => state.settings.accentColor,
+    setter: (hex) => applyAccentColor(hex),
+    presets: ["#007AFF", "#0A84FF", "#5856D6", "#AF52DE", "#34C759", "#FF9500", "#FF2D55", "#64748B", "#059669", "#D97706"]
+  },
+  {
+    id: "holiday",
+    tab: "system",
+    getter: () => state.settings.holidayColor,
+    setter: (hex) => { applyHolidayColor(hex); renderApp(); },
+    presets: ["#FF3B30", "#D9381E", "#E11D48", "#C0392B", "#DC2626", "#991B1B", "#EA580C", "#B91C1C", "#F43F5E", "#F87171"]
+  },
+  {
+    id: "sunday",
+    tab: "system",
+    getter: () => state.settings.sundayColor,
+    setter: (hex) => { applySundayColor(hex); renderApp(); },
+    presets: ["#FF9500", "#F59E0B", "#D97706", "#F97316", "#E67E22", "#EAB308", "#10B981", "#8B5CF6", "#EC4899", "#6366F1"]
+  },
+
+  // 2. CATEGORIE IMPEGNI
+  {
+    id: "cat_studio",
+    tab: "events",
+    getter: () => (state.settings.categoryColors && state.settings.categoryColors.studio) || "#007AFF",
+    setter: (hex) => { applyCategoryColor("studio", hex); renderApp(); },
+    presets: ["#007AFF", "#0284C7", "#2563EB", "#3B82F6", "#6366F1", "#0EA5E9", "#1D4ED8", "#0369A1", "#38BDF8", "#4F46E5"]
+  },
+  {
+    id: "cat_scadenza",
+    tab: "events",
+    getter: () => (state.settings.categoryColors && state.settings.categoryColors.scadenza) || "#FF9500",
+    setter: (hex) => { applyCategoryColor("scadenza", hex); renderApp(); },
+    presets: ["#FF9500", "#F97316", "#EA580C", "#D97706", "#F59E0B", "#EF4444", "#DC2626", "#B45309", "#FB923C", "#C2410C"]
+  },
+  {
+    id: "cat_lezione",
+    tab: "events",
+    getter: () => (state.settings.categoryColors && state.settings.categoryColors.lezione) || "#AF52DE",
+    setter: (hex) => { applyCategoryColor("lezione", hex); renderApp(); },
+    presets: ["#AF52DE", "#8B5CF6", "#7C3AED", "#9333EA", "#A855F7", "#C084FC", "#6D28D9", "#5856D6", "#E879F9", "#4C1D95"]
+  },
+  {
+    id: "cat_personale",
+    tab: "events",
+    getter: () => (state.settings.categoryColors && state.settings.categoryColors.personale) || "#34C759",
+    setter: (hex) => { applyCategoryColor("personale", hex); renderApp(); },
+    presets: ["#34C759", "#10B981", "#059669", "#16A34A", "#14B8A6", "#0D9488", "#22C55E", "#15803D", "#4ADE80", "#047857"]
+  },
+
+  // 3. CORSI & MATERIE
+  {
+    id: "course_mam",
+    tab: "courses",
+    getter: () => (state.settings.courseColors && state.settings.courseColors.mam) || "#0284C7",
+    setter: (hex) => { applyCourseColor("mam", hex); renderApp(); },
+    presets: ["#0284C7", "#007AFF", "#0369A1", "#0EA5E9", "#38BDF8", "#2563EB", "#1D4ED8", "#64748B"]
+  },
+  {
+    id: "course_tm",
+    tab: "courses",
+    getter: () => (state.settings.courseColors && state.settings.courseColors.tm) || "#D97706",
+    setter: (hex) => { applyCourseColor("tm", hex); renderApp(); },
+    presets: ["#D97706", "#B45309", "#92400E", "#F59E0B", "#FF9500", "#EA580C", "#C2410C", "#78350F"]
+  },
+  {
+    id: "course_mse",
+    tab: "courses",
+    getter: () => (state.settings.courseColors && state.settings.courseColors.mse) || "#059669",
+    setter: (hex) => { applyCourseColor("mse", hex); renderApp(); },
+    presets: ["#059669", "#047857", "#065F46", "#10B981", "#34C759", "#14B8A6", "#0D9488", "#15803D"]
+  },
+  {
+    id: "course_dcm",
+    tab: "courses",
+    getter: () => (state.settings.courseColors && state.settings.courseColors.dcm) || "#7C3AED",
+    setter: (hex) => { applyCourseColor("dcm", hex); renderApp(); },
+    presets: ["#7C3AED", "#6D28D9", "#5B21B6", "#8B5CF6", "#AF52DE", "#9333EA", "#5856D6", "#4C1D95"]
+  },
+  {
+    id: "course_psm",
+    tab: "courses",
+    getter: () => (state.settings.courseColors && state.settings.courseColors.psm) || "#E11D48",
+    setter: (hex) => { applyCourseColor("psm", hex); renderApp(); },
+    presets: ["#E11D48", "#BE123C", "#9F1239", "#FF2D55", "#FF3B30", "#DC2626", "#F43F5E", "#B91C1C"]
   }
-  const hexInput = document.getElementById("settingsSundayHexInput");
+];
+
+function syncColorControl(cfg) {
+  const hex = cfg.getter();
+  if (!hex) return;
+  const cleanHex = normalizeHexColor(hex) || hex;
+  const { h } = hexToHsl(cleanHex);
+
+  const slider = document.getElementById(`slider_${cfg.id}`);
+  const sliderVal = document.getElementById(`sliderVal_${cfg.id}`);
+  const hexInput = document.getElementById(`hex_${cfg.id}`);
+  const nativeColor = document.getElementById(`nativeColor_${cfg.id}`);
+  const previewInd = document.getElementById(`previewInd_${cfg.id}`);
+  const previewText = document.getElementById(`previewText_${cfg.id}`);
+  const swatchesContainer = document.getElementById(`swatches_${cfg.id}`);
+
+  if (slider) {
+    slider.value = h;
+    slider.style.setProperty("--thumb-color", cleanHex);
+  }
+  if (sliderVal) {
+    sliderVal.textContent = `${h}°`;
+  }
   if (hexInput && hexInput.value.toUpperCase() !== cleanHex.toUpperCase()) {
     hexInput.value = cleanHex.toUpperCase();
+  }
+  if (nativeColor && nativeColor.value.toLowerCase() !== cleanHex.toLowerCase()) {
+    nativeColor.value = cleanHex;
+  }
+  if (previewInd) {
+    previewInd.style.backgroundColor = cleanHex;
+  }
+  if (previewText) {
+    previewText.textContent = cleanHex.toUpperCase();
+  }
+  if (swatchesContainer) {
+    swatchesContainer.querySelectorAll(".color-swatch-chip").forEach(chip => {
+      chip.classList.toggle("active", chip.dataset.color.toUpperCase() === cleanHex.toUpperCase());
+    });
   }
 }
 
@@ -927,188 +1137,105 @@ function initSettingsModal() {
     });
   });
 
-  // Accent Swatches Setup
-  const accentContainer = document.getElementById("settingsAccentSwatches");
-  const accentPresets = ["#007AFF", "#0A84FF", "#5856D6", "#AF52DE", "#34C759", "#FF9500", "#FF2D55", "#64748B"];
-  if (accentContainer) {
-    const customAccentInput = document.getElementById("settingsCustomAccentColor");
-    accentPresets.forEach(color => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "color-swatch-chip";
-      btn.dataset.color = color;
-      btn.style.backgroundColor = color;
-      btn.title = `Colore accento ${color}`;
-      btn.addEventListener("click", () => applyAccentColor(color));
-      accentContainer.insertBefore(btn, customAccentInput);
-    });
-
-    if (customAccentInput) {
-      customAccentInput.addEventListener("input", (e) => applyAccentColor(e.target.value));
-      customAccentInput.addEventListener("change", (e) => applyAccentColor(e.target.value));
-    }
-  }
-
-  // Accent Hex Input & Copy
-  const accentHexInput = document.getElementById("settingsAccentHexInput");
-  const btnCopyAccentHex = document.getElementById("btnCopyAccentHex");
-  if (accentHexInput) {
-    accentHexInput.addEventListener("input", (e) => {
-      const normalized = normalizeHexColor(e.target.value);
-      if (normalized) applyAccentColor(normalized);
-    });
-    accentHexInput.addEventListener("change", (e) => {
-      const normalized = normalizeHexColor(e.target.value);
-      if (normalized) applyAccentColor(normalized);
-      else e.target.value = state.settings.accentColor.toUpperCase();
-    });
-    accentHexInput.addEventListener("blur", (e) => {
-      const normalized = normalizeHexColor(e.target.value);
-      if (normalized) applyAccentColor(normalized);
-      else e.target.value = state.settings.accentColor.toUpperCase();
-    });
-  }
-  if (btnCopyAccentHex) {
-    btnCopyAccentHex.addEventListener("click", () => {
-      copyColorHex(state.settings.accentColor, btnCopyAccentHex);
-    });
-  }
-
-  // Holiday Swatches Setup
-  const holidayContainer = document.getElementById("settingsHolidaySwatches");
-  const holidayPresets = ["#FF3B30", "#D9381E", "#E11D48", "#C0392B", "#DC2626", "#991B1B", "#EA580C", "#B91C1C"];
-  if (holidayContainer) {
-    const customHolidayInput = document.getElementById("settingsCustomHolidayColor");
-    holidayPresets.forEach(color => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "color-swatch-chip";
-      btn.dataset.color = color;
-      btn.style.backgroundColor = color;
-      btn.title = `Colore festività ${color}`;
-      btn.addEventListener("click", () => {
-        applyHolidayColor(color);
-        renderApp();
+  // Category Tabs Switcher (Sistema, Eventi, Materie)
+  const catTabs = document.querySelectorAll("#colorCategoryTabs .seg-btn");
+  catTabs.forEach(tabBtn => {
+    tabBtn.addEventListener("click", () => {
+      const targetTab = tabBtn.dataset.colorTab;
+      catTabs.forEach(b => {
+        const isSelected = b === tabBtn;
+        b.classList.toggle("active", isSelected);
+        b.setAttribute("aria-selected", isSelected ? "true" : "false");
       });
-      holidayContainer.insertBefore(btn, customHolidayInput);
-    });
-
-    if (customHolidayInput) {
-      customHolidayInput.addEventListener("input", (e) => {
-        applyHolidayColor(e.target.value);
-        renderApp();
+      document.querySelectorAll(".color-tab-pane").forEach(pane => {
+        pane.classList.toggle("hidden", pane.id !== `colorTabPane-${targetTab}`);
       });
-      customHolidayInput.addEventListener("change", (e) => {
-        applyHolidayColor(e.target.value);
-        renderApp();
+    });
+  });
+
+  // Inizializzazione interattiva di tutti i controller colore (Slider + Palette Standard + Hex + Native Picker)
+  COLOR_CONTROLLER_CONFIGS.forEach(cfg => {
+    const swatchesContainer = document.getElementById(`swatches_${cfg.id}`);
+    const slider = document.getElementById(`slider_${cfg.id}`);
+    const hexInput = document.getElementById(`hex_${cfg.id}`);
+    const nativeColor = document.getElementById(`nativeColor_${cfg.id}`);
+    const copyBtn = document.getElementById(`copyBtn_${cfg.id}`);
+
+    // Generazione chip colori standard
+    if (swatchesContainer) {
+      swatchesContainer.innerHTML = "";
+      cfg.presets.forEach(color => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "color-swatch-chip";
+        btn.dataset.color = color;
+        btn.style.backgroundColor = color;
+        btn.title = `Colore standard ${color}`;
+        btn.addEventListener("click", () => {
+          cfg.setter(color);
+          syncColorControl(cfg);
+        });
+        swatchesContainer.appendChild(btn);
       });
     }
-  }
 
-  // Holiday Hex Input & Copy
-  const holidayHexInput = document.getElementById("settingsHolidayHexInput");
-  const btnCopyHolidayHex = document.getElementById("btnCopyHolidayHex");
-  if (holidayHexInput) {
-    holidayHexInput.addEventListener("input", (e) => {
-      const normalized = normalizeHexColor(e.target.value);
-      if (normalized) {
-        applyHolidayColor(normalized);
-        renderApp();
-      }
-    });
-    holidayHexInput.addEventListener("change", (e) => {
-      const normalized = normalizeHexColor(e.target.value);
-      if (normalized) {
-        applyHolidayColor(normalized);
-        renderApp();
-      } else {
-        e.target.value = state.settings.holidayColor.toUpperCase();
-      }
-    });
-    holidayHexInput.addEventListener("blur", (e) => {
-      const normalized = normalizeHexColor(e.target.value);
-      if (normalized) {
-        applyHolidayColor(normalized);
-        renderApp();
-      } else {
-        e.target.value = state.settings.holidayColor.toUpperCase();
-      }
-    });
-  }
-  if (btnCopyHolidayHex) {
-    btnCopyHolidayHex.addEventListener("click", () => {
-      copyColorHex(state.settings.holidayColor, btnCopyHolidayHex);
-    });
-  }
-
-  // Sunday Swatches Setup (Distinct from Holidays)
-  const sundayContainer = document.getElementById("settingsSundaySwatches");
-  const sundayPresets = ["#FF9500", "#F59E0B", "#D97706", "#F97316", "#E67E22", "#EAB308", "#10B981", "#8B5CF6"];
-  if (sundayContainer) {
-    const customSundayInput = document.getElementById("settingsCustomSundayColor");
-    sundayPresets.forEach(color => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "color-swatch-chip";
-      btn.dataset.color = color;
-      btn.style.backgroundColor = color;
-      btn.title = `Colore domenica ${color}`;
-      btn.addEventListener("click", () => {
-        applySundayColor(color);
-        renderApp();
-      });
-      sundayContainer.insertBefore(btn, customSundayInput);
-    });
-
-    if (customSundayInput) {
-      customSundayInput.addEventListener("input", (e) => {
-        applySundayColor(e.target.value);
-        renderApp();
-      });
-      customSundayInput.addEventListener("change", (e) => {
-        applySundayColor(e.target.value);
-        renderApp();
+    // Selettore a slider (spettro cromatico con aggiornamento istantaneo a 60fps)
+    if (slider) {
+      slider.addEventListener("input", (e) => {
+        const h = parseInt(e.target.value, 10);
+        const currentHex = cfg.getter();
+        const currentHsl = hexToHsl(currentHex);
+        const s = Math.max(75, Math.min(100, currentHsl.s || 88));
+        const l = Math.max(42, Math.min(56, currentHsl.l || 50));
+        const newHex = hslToHex(h, s, l);
+        cfg.setter(newHex);
+        syncColorControl(cfg);
       });
     }
-  }
 
-  // Sunday Hex Input & Copy
-  const sundayHexInput = document.getElementById("settingsSundayHexInput");
-  const btnCopySundayHex = document.getElementById("btnCopySundayHex");
-  if (sundayHexInput) {
-    sundayHexInput.addEventListener("input", (e) => {
-      const normalized = normalizeHexColor(e.target.value);
-      if (normalized) {
-        applySundayColor(normalized);
-        renderApp();
-      }
-    });
-    sundayHexInput.addEventListener("change", (e) => {
-      const normalized = normalizeHexColor(e.target.value);
-      if (normalized) {
-        applySundayColor(normalized);
-        renderApp();
-      } else {
-        e.target.value = state.settings.sundayColor.toUpperCase();
-      }
-    });
-    sundayHexInput.addEventListener("blur", (e) => {
-      const normalized = normalizeHexColor(e.target.value);
-      if (normalized) {
-        applySundayColor(normalized);
-        renderApp();
-      } else {
-        e.target.value = state.settings.sundayColor.toUpperCase();
-      }
-    });
-  }
-  if (btnCopySundayHex) {
-    btnCopySundayHex.addEventListener("click", () => {
-      copyColorHex(state.settings.sundayColor, btnCopySundayHex);
-    });
-  }
+    // Casella codice esadecimale con validazione in tempo reale
+    if (hexInput) {
+      const handleHexChange = () => {
+        const normalized = normalizeHexColor(hexInput.value);
+        if (normalized) {
+          cfg.setter(normalized);
+          syncColorControl(cfg);
+        } else {
+          hexInput.value = (cfg.getter() || "").toUpperCase();
+        }
+      };
+      hexInput.addEventListener("input", () => {
+        const normalized = normalizeHexColor(hexInput.value);
+        if (normalized) {
+          cfg.setter(normalized);
+          syncColorControl(cfg);
+        }
+      });
+      hexInput.addEventListener("change", handleHexChange);
+      hexInput.addEventListener("blur", handleHexChange);
+    }
 
-  // Start Day Select
+    // Selettore nativo / Pipetta contagocce
+    if (nativeColor) {
+      nativeColor.addEventListener("input", (e) => {
+        cfg.setter(e.target.value);
+        syncColorControl(cfg);
+      });
+      nativeColor.addEventListener("change", (e) => {
+        cfg.setter(e.target.value);
+        syncColorControl(cfg);
+      });
+    }
+
+    // Pulsante Copia Codice Esadecimale
+    if (copyBtn) {
+      copyBtn.addEventListener("click", () => {
+        copyColorHex(cfg.getter(), copyBtn);
+      });
+    }
+  });
+
+  // Giorno Inizio Settimana
   const startDaySelect = document.getElementById("settingsStartDaySelect");
   if (startDaySelect) {
     startDaySelect.addEventListener("change", (e) => {
@@ -1119,7 +1246,7 @@ function initSettingsModal() {
     });
   }
 
-  // Weekly Holiday Select
+  // Giorno Festivo Settimanale
   const weeklyHolidaySelect = document.getElementById("settingsWeeklyHolidaySelect");
   if (weeklyHolidaySelect) {
     weeklyHolidaySelect.addEventListener("change", (e) => {
@@ -1130,7 +1257,7 @@ function initSettingsModal() {
     });
   }
 
-  // Window Frame Switcher
+  // Selettore Cornice Finestra Personalizzata / Standard
   const frameBtns = document.querySelectorAll("#settingsWindowFrameSwitcher .seg-btn");
   frameBtns.forEach(btn => {
     btn.addEventListener("click", () => {
@@ -1138,22 +1265,36 @@ function initSettingsModal() {
     });
   });
 
-  // Reset defaults
+  // Ripristina Predefiniti
   if (resetBtn) {
     resetBtn.addEventListener("click", () => {
       setThemeChoice("auto");
       applyUiScale(100);
-      applyAccentColor("#007AFF");
-      applyHolidayColor("#FF3B30");
-      applySundayColor("#FF9500");
       applyWindowFrameStyle("custom");
       state.settings.startDayOfWeek = 1;
       localStorage.setItem("polimi_start_day", "1");
       state.settings.weeklyHolidayDay = 0;
       localStorage.setItem("polimi_weekly_holiday", "0");
+
+      applyAccentColor("#007AFF");
+      applyHolidayColor("#FF3B30");
+      applySundayColor("#FF9500");
+
+      applyCategoryColor("studio", "#007AFF");
+      applyCategoryColor("scadenza", "#FF9500");
+      applyCategoryColor("lezione", "#AF52DE");
+      applyCategoryColor("personale", "#34C759");
+
+      applyCourseColor("mam", "#0284C7");
+      applyCourseColor("tm", "#D97706");
+      applyCourseColor("mse", "#059669");
+      applyCourseColor("dcm", "#7C3AED");
+      applyCourseColor("psm", "#E11D48");
+
       syncSettingsModalInputs();
       renderStickyWeekdayHeader();
       renderApp();
+      showAiToast("✓ Impostazioni e colori ripristinati ai valori predefiniti");
     });
   }
 }
@@ -1161,35 +1302,21 @@ function initSettingsModal() {
 function syncSettingsModalInputs() {
   const startDaySelect = document.getElementById("settingsStartDaySelect");
   const weeklyHolidaySelect = document.getElementById("settingsWeeklyHolidaySelect");
-  const customAccent = document.getElementById("settingsCustomAccentColor");
-  const customHoliday = document.getElementById("settingsCustomHolidayColor");
-  const customSunday = document.getElementById("settingsCustomSundayColor");
-
-  const accentHex = document.getElementById("settingsAccentHexInput");
-  const holidayHex = document.getElementById("settingsHolidayHexInput");
-  const sundayHex = document.getElementById("settingsSundayHexInput");
 
   document.querySelectorAll("#settingsUiScaleSwitcher .seg-btn").forEach(btn => {
     btn.classList.toggle("active", parseInt(btn.dataset.scaleVal, 10) === state.settings.uiScale);
   });
   if (startDaySelect) startDaySelect.value = state.settings.startDayOfWeek;
   if (weeklyHolidaySelect) weeklyHolidaySelect.value = state.settings.weeklyHolidayDay;
-  if (customAccent) customAccent.value = state.settings.accentColor;
-  if (customHoliday) customHoliday.value = state.settings.holidayColor;
-  if (customSunday) customSunday.value = state.settings.sundayColor;
-
-  if (accentHex) accentHex.value = state.settings.accentColor.toUpperCase();
-  if (holidayHex) holidayHex.value = state.settings.holidayColor.toUpperCase();
-  if (sundayHex) sundayHex.value = state.settings.sundayColor.toUpperCase();
 
   document.querySelectorAll("#settingsWindowFrameSwitcher .seg-btn").forEach(b => {
     b.classList.toggle("active", b.dataset.frameVal === state.settings.windowFrameStyle);
   });
 
   applyEffectiveTheme();
-  applyAccentColor(state.settings.accentColor);
-  applyHolidayColor(state.settings.holidayColor);
-  applySundayColor(state.settings.sundayColor);
+  COLOR_CONTROLLER_CONFIGS.forEach(cfg => {
+    syncColorControl(cfg);
+  });
 }
 
 // ==========================================================================
@@ -2407,16 +2534,16 @@ function handleAiInputSubmission(rawText) {
   // 3a. Comandi Copia Codice Colore
   if (lower.includes("copia") && (lower.includes("colore") || lower.includes("hex") || lower.includes("esadecimale"))) {
     if (isSundayColorMention) {
-      copyColorHex(state.settings.sundayColor, document.getElementById("btnCopySundayHex"));
+      copyColorHex(state.settings.sundayColor, document.getElementById("copyBtn_sunday") || document.getElementById("btnCopySundayHex"));
       clearAiInput();
       return;
     }
     if (isHolidayMention) {
-      copyColorHex(state.settings.holidayColor, document.getElementById("btnCopyHolidayHex"));
+      copyColorHex(state.settings.holidayColor, document.getElementById("copyBtn_holiday") || document.getElementById("btnCopyHolidayHex"));
       clearAiInput();
       return;
     }
-    copyColorHex(state.settings.accentColor, document.getElementById("btnCopyAccentHex"));
+    copyColorHex(state.settings.accentColor, document.getElementById("copyBtn_accent") || document.getElementById("btnCopyAccentHex"));
     clearAiInput();
     return;
   }
