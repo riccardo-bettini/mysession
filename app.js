@@ -941,7 +941,7 @@ function applyCourseColor(courseKey, hex) {
   root.style.setProperty(`--${courseKey}-text`, isDark ? adjustHexBrightness(cleanHex, 60) : adjustHexBrightness(cleanHex, -40));
 }
 
-const APP_VERSION = "1.0.03";
+const APP_VERSION = "1.0.04";
 const APP_AUTHOR = "Riccardo Bettini";
 
 // Palette colori standard uniforme per TUTTE le categorie

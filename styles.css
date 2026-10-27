@@ -2466,10 +2466,10 @@ kbd {
 
 .ai-floating-island {
   pointer-events: auto;
-  height: clamp(40px, 5vh, 46px);
-  width: min(480px, calc(100% - 28px));
-  min-width: min(290px, calc(100% - 28px));
-  max-width: calc(100% - 28px);
+  height: clamp(42px, 5.2vh, 48px);
+  width: min(720px, calc(100% - 32px));
+  min-width: min(320px, calc(100% - 32px));
+  max-width: calc(100% - 32px);
   background: var(--glass-floating-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
@@ -2478,8 +2478,8 @@ kbd {
   box-shadow: var(--shadow-island), var(--glass-specular);
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 8px 5px 6px;
+  gap: 10px;
+  padding: 6px 10px 6px 8px;
   transition:
     transform var(--dur-normal) var(--spring-snappy),
     box-shadow var(--dur-normal) var(--ease-out),
@@ -2630,8 +2630,8 @@ kbd {
 /* Clarification Interactive Popover */
 .ai-clarify-sheet {
   pointer-events: auto;
-  width: 380px;
-  max-width: calc(100% - 40px);
+  width: min(560px, calc(100% - 32px));
+  max-width: calc(100% - 32px);
   background: var(--glass-floating-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
@@ -4390,7 +4390,7 @@ kbd {
   }
 
   .ai-floating-island {
-    width: min(440px, calc(100% - 28px));
+    width: min(580px, calc(100% - 28px));
   }
 }
 
