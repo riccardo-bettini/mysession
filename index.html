@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="it" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#007AFF" />
+  <title>MySession — Calendario &amp; Gestione Sessioni di Studio</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="app.ico" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Custom Windows 11 Title Bar & Window Frame (Toggleable in Settings) -->
+  <header class="custom-app-titlebar" id="customAppTitlebar" aria-label="Barra del titolo personalizzata">
+    <div class="custom-titlebar-leading">
+      <img src="app.ico" alt="MySession" class="custom-titlebar-icon" width="16" height="16" />
+      <span class="custom-titlebar-app-name">MySession</span>
+      <span class="custom-titlebar-sep" aria-hidden="true">·</span>
+      <span class="custom-titlebar-session" id="customTitlebarSessionName">Sessione Invernale 2026/27</span>
+    </div>
+    <div class="custom-titlebar-drag-region" id="customTitlebarDragRegion" title="Doppio clic per ingrandire / ripristinare">
+      <!-- Native drag surface for moving window -->
+    </div>
+    <div class="custom-titlebar-controls" aria-label="Controlli finestra">
+      <button type="button" class="win-ctrl-btn win-btn-minimize" id="btnWinMinimize" title="Riduci a icona" aria-label="Riduci a icona">
+        <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
+      </button>
+      <button type="button" class="win-ctrl-btn win-btn-maximize" id="btnWinMaximize" title="Ingrandisci / Ripristina finestra" aria-label="Ingrandisci o Ripristina">
+        <svg class="icon-max" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="0.5" y="0.5" width="9" height="9"/></svg>
+        <svg class="icon-restore hidden" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="2.5" y="0.5" width="7" height="7"/><polyline points="0.5 2.5 0.5 9.5 7.5 9.5"/></svg>
+      </button>
+      <button type="button" class="win-ctrl-btn win-btn-close" id="btnWinClose" title="Chiudi applicazione" aria-label="Chiudi">
+        <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><line x1="1" y1="1" x2="9" y2="9"/><line x1="9" y1="1" x2="1" y2="9"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="app-layout" id="appLayout">
+    <!-- Functional Layer: Sidebar (macOS Inset Translucent Material) -->
+    <aside class="sidebar" id="appSidebar" aria-label="Navigazione Sessione e Filtri">
+      <!-- Session Switcher Header -->
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-logo mono" aria-hidden="true">MS</div>
+          <div class="brand-info">
+            <button type="button" class="session-dropdown-trigger prominent-session-btn" id="btnSessionMenu" aria-haspopup="true" aria-expanded="false" title="Cambia o crea sessione di studio">
+              <span class="session-active-indicator" aria-hidden="true"></span>
+              <span class="session-compact-monogram mono" aria-hidden="true">MS</span>
+              <span class="session-name-display" id="sidebarSessionTitle">Sessione Invernale 2026/27</span>
+              <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <span class="session-sub-display" id="sidebarSessionSubtitle">PoliMi · Ingegneria Meccanica</span>
+          </div>
+        </div>
+
+        <!-- Origin-Aware Session Dropdown Popover Menu -->
+        <div class="session-dropdown-menu hidden" id="sessionDropdownMenu" data-open="false" role="menu">
+          <div class="dropdown-header">Le tue Sessioni</div>
+          <div class="session-items-list" id="sessionDropdownList">
+            <!-- Populated dynamically by app.js -->
+          </div>
+          <div class="dropdown-divider"></div>
+          <button type="button" class="dropdown-action-btn" id="btnOpenNewSessionModal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>Nuova Sessione...</span>
+          </button>
+          <button type="button" class="dropdown-action-btn" id="btnOpenManageSessionsModal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span>Gestisci Sessioni...</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Primary Telemetry Widget (Apple Widget Style) -->
+      <section class="telemetry-card" aria-label="Stato Sessione">
+        <div class="telemetry-top">
+          <span class="telemetry-eyebrow" id="telemetryEyebrow">Prossimo Target</span>
+          <span class="telemetry-code mono" id="telemetryTargetCode">054828 · 10 CFU</span>
+        </div>
+        <div class="telemetry-main">
+          <div class="telemetry-days mono" id="telemetryCountdown">-- gg</div>
+          <div class="telemetry-target" id="telemetryTargetDesc">
+            <strong>MAM · 1° Appello</strong><br />
+            Ven 08 Gen 2027
+          </div>
+        </div>
+        <div class="telemetry-metrics">
+          <div class="metric-cell">
+            <span class="metric-val mono" id="metricCoursesCount">5</span>
+            <span class="metric-lbl">Materie</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-val mono" id="metricExamsCount">10</span>
+            <span class="metric-lbl">Appelli</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-val mono" id="metricTotalCfu">46</span>
+            <span class="metric-lbl">CFU Tot.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Active Session Notes / Conflict Notice slot -->
+      <div id="sidebarNoticeContainer" class="sidebar-notice-slot">
+        <!-- Injected if session has conflict notes -->
+      </div>
+
+      <!-- Session Active Months -->
+      <nav class="sidebar-section" aria-label="Mesi Chiave della Sessione">
+        <div class="section-title-row">
+          <span class="section-label">Mesi di Sessione</span>
+          <span class="tag-infinite mono">Infinito</span>
+        </div>
+        <div class="quick-months" id="quickMonthsList">
+          <!-- Populated dynamically based on active session date range -->
+        </div>
+      </nav>
+
+      <!-- Course Filters (Multi-Selection Enabled) -->
+      <section class="sidebar-section sidebar-section-grow" aria-label="Filtro Corsi">
+        <div class="section-title-row">
+          <span class="section-label">Corsi della Sessione</span>
+          <button type="button" class="btn-link-inline" id="btnResetFilters" title="Mostra tutti i corsi registrati">Mostra tutti</button>
+        </div>
+        <div class="exam-filters" id="examFiltersList">
+          <!-- Populated by app.js with multi-select support -->
+        </div>
+        <button type="button" class="btn-add-course-outline" id="btnOpenAddExamModal">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>Aggiungi Esame / Appello</span>
+        </button>
+      </section>
+
+      <!-- Keyboard Shortcuts Footer & Compact Toggle -->
+      <div class="shortcuts-card" aria-label="Scorciatoie da tastiera">
+        <div class="shortcut-row"><span>Scorrimento</span><span><kbd>Rotella</kbd> / <kbd>↑</kbd><kbd>↓</kbd></span></div>
+        <div class="shortcut-row"><span>Sidebar Compatta</span><kbd>S</kbd></div>
+        <div class="shortcut-row"><span>Vai a Oggi</span><kbd>T</kbd></div>
+        <div class="shortcut-row"><span>Nuova Sessione</span><kbd>Alt+N</kbd></div>
+        <div class="shortcut-row"><span>Cambia Tema</span><kbd>Alt+T</kbd></div>
+      </div>
+    </aside>
+
+    <!-- Main Workspace Canvas -->
+    <main class="main-content">
+      <!-- Floating Functional Layer Toolbar (Liquid Glass Regular) -->
+      <header class="top-bar">
+        <!-- Leading Edge: Sidebar Toggle + Navigation Stepper + Active Month Title -->
+        <div class="toolbar-leading">
+          <button type="button" class="btn-toolbar-icon active" id="btnToggleSidebar" aria-label="Mostra, riduci o nascondi barra laterale" title="Espandi/Riduci Barra Laterale (S)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+          </button>
+
+          <div class="nav-stepper" role="group" aria-label="Navigazione Mese">
+            <button type="button" class="btn-step" id="btnPrevMonth" aria-label="Mese precedente" title="Mese precedente (Freccia Su / PagSu)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button type="button" class="btn-step btn-step-today" id="btnToday" title="Vai a Oggi (T)">Oggi</button>
+            <button type="button" class="btn-step" id="btnNextMonth" aria-label="Mese successivo" title="Mese successivo (Freccia Giù / PagGiù)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+
+          <!-- Clickable Month/Year Display with Year Jump Picker -->
+          <div class="month-title-wrapper">
+            <h2 class="current-month-display" id="currentMonthDisplay">Gennaio 2027</h2>
+            <input type="month" id="hiddenMonthPicker" class="hidden-month-input" aria-label="Seleziona mese e anno" />
+            <button type="button" class="btn-jump-month" id="btnJumpMonth" title="Salta a un mese o anno specifico">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2.5" ry="2.5"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Center Area: View Switcher + Round Filter -->
+        <div class="toolbar-center">
+          <div class="segmented-control" role="tablist" aria-label="Modalità di visualizzazione">
+            <button type="button" class="seg-btn active" data-view="continuous" id="btnViewContinuous" role="tab" aria-selected="true" title="Scorrimento verticale continuo infinito">
+              <span class="seg-label-full">↕ Continuo</span>
+              <span class="seg-label-short">Cont.</span>
+            </button>
+            <button type="button" class="seg-btn" data-view="month" id="btnViewMonth" role="tab" aria-selected="false" title="Mese singolo">
+              <span>Mese</span>
+            </button>
+            <button type="button" class="seg-btn" data-view="week" id="btnViewWeek" role="tab" aria-selected="false" title="Vista Settimana">
+              <span class="seg-label-full">Settimana</span>
+              <span class="seg-label-short">Sett.</span>
+            </button>
+            <button type="button" class="seg-btn" data-view="agenda" id="btnViewAgenda" role="tab" aria-selected="false" title="Elenco cronologico degli appelli">
+              <span>Appelli</span>
+            </button>
+          </div>
+
+          <div class="segmented-control" id="toolbarRoundFilter" role="group" aria-label="Filtra per giro di appelli">
+            <button type="button" class="seg-btn pill-round active" data-round="all">Tutti</button>
+            <button type="button" class="seg-btn pill-round" data-round="1">
+              <span class="round-label-full">1° Giro</span>
+              <span class="round-label-short">1°</span>
+            </button>
+            <button type="button" class="seg-btn pill-round" data-round="2">
+              <span class="round-label-full">2° Giro</span>
+              <span class="round-label-short">2°</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Trailing Edge: Dedicated Alert Button + Add Exam + Appearance Switcher -->
+        <div class="toolbar-trailing">
+          <!-- Dedicated Alerts Button (Coincidenze / Errori) -->
+          <div class="alert-btn-wrapper">
+            <button type="button" class="btn-toolbar-alert" id="btnToolbarAlert" aria-haspopup="true" aria-expanded="false" title="Centro Segnalazioni & Conflitti">
+              <svg class="alert-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span class="alert-btn-label">Alert</span>
+              <span id="alertCountBadge" class="alert-badge">0</span>
+            </button>
+
+            <!-- Alert Popover -->
+            <div class="alert-popover-menu hidden" id="alertPopoverMenu" data-open="false">
+              <div class="alert-popover-header">
+                <span class="alert-popover-title">Conflitti &amp; Coincidenze</span>
+                <span id="alertPopoverSubtitle" class="alert-popover-sub">0 segnalazioni</span>
+              </div>
+              <div class="alert-popover-list" id="alertPopoverList">
+                <!-- Populated dynamically by app.js -->
+              </div>
+            </div>
+          </div>
+
+          <button type="button" class="btn-toolbar-accent" id="btnTopAddExam" title="Aggiungi nuovo esame o appello alla sessione attiva">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span class="btn-add-label-full">Aggiungi Esame</span>
+            <span class="btn-add-label-short">Esame</span>
+          </button>
+
+          <div class="segmented-control" id="themeSwitcher" role="radiogroup" aria-label="Tema colore dell'interfaccia">
+            <button type="button" class="seg-btn theme-btn" data-theme-choice="light" role="radio" aria-checked="false" title="Tema Chiaro">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+              <span>Chiaro</span>
+            </button>
+            <button type="button" class="seg-btn theme-btn" data-theme-choice="dark" role="radio" aria-checked="false" title="Tema Scuro">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              <span>Scuro</span>
+            </button>
+            <button type="button" class="seg-btn theme-btn active" data-theme-choice="auto" role="radio" aria-checked="true" title="Segui impostazione di Windows">
+              <span>Auto</span>
+            </button>
+          </div>
+
+          <!-- Settings Button -->
+          <button type="button" class="btn-toolbar-icon" id="btnOpenSettings" title="Impostazioni (Tema, Dimensioni, Colori, Calendario)" aria-label="Apri Impostazioni">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Signature Element: Dynamic Session Horizon Ribbon -->
+      <section class="session-horizon-bar" aria-label="Linea temporale della sessione attiva">
+        <div class="horizon-label mono">
+          <span class="horizon-dot" aria-hidden="true"></span>
+          <span id="horizonLabelSessionName">Orizzonte Sessione</span>
+        </div>
+        <div class="horizon-track-wrapper">
+          <div class="horizon-track" id="horizonTrack">
+            <!-- Populated dynamically by app.js based on active session -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Infinite Scrollable Viewport with Liquid Glass Scroll Edge Effect -->
+      <div class="calendar-view-container" id="calendarViewContainer" tabindex="0" aria-label="Area Calendario Scorrevole">
+        <div class="scroll-edge-top" aria-hidden="true"></div>
+
+        <!-- Sticky Weekday Bar (Liquid Glass Functional Header) -->
+        <div class="weekdays-sticky-bar" id="weekdaysBar">
+          <div>Lunedì</div>
+          <div>Martedì</div>
+          <div>Mercoledì</div>
+          <div>Giovedì</div>
+          <div>Venerdì</div>
+          <div class="weekend">Sabato</div>
+          <div class="weekend sunday-header">Domenica</div>
+        </div>
+
+        <!-- Dynamic Continuous Infinite Multi-Month Stack -->
+        <div class="months-scroll-stack" id="monthsScrollStack">
+          <!-- Populated and dynamically expanded in both directions by app.js -->
+        </div>
+
+        <!-- Week View -->
+        <div class="calendar-week-view hidden" id="weekView">
+          <div class="week-header-nav">
+            <button type="button" class="btn-toolbar-icon btn-week-step" id="btnPrevWeek">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+              <span>Settimana Prec.</span>
+            </button>
+            <span id="weekRangeLabel" class="week-range-label">--</span>
+            <button type="button" class="btn-toolbar-icon btn-week-step" id="btnNextWeek">
+              <span>Settimana Succ.</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+          <div class="week-grid" id="weekGrid">
+            <!-- Populated by app.js -->
+          </div>
+        </div>
+
+        <!-- Agenda / Appelli List View -->
+        <div class="calendar-agenda-view hidden" id="agendaView">
+          <div id="agendaList">
+            <!-- Populated by app.js -->
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Floating Island (Bottom-Center Liquid Glass Controller) -->
+      <div class="ai-floating-island-container">
+        <!-- Interactive Clarification Sheet (shown when AI needs more info) -->
+        <div class="ai-clarify-sheet hidden" id="aiClarifySheet" data-open="false">
+          <div class="ai-clarify-header">
+            <span class="ai-clarify-title">Assistente MySession</span>
+            <button type="button" class="btn-close-clarify" id="btnCloseAiClarify" aria-label="Chiudi chiarimento">×</button>
+          </div>
+          <p class="ai-clarify-prompt" id="aiClarifyPrompt">Qual è la materia dell'esame?</p>
+          <div class="ai-clarify-options" id="aiClarifyOptions">
+            <!-- Populated dynamically with one-click choices or input -->
+          </div>
+        </div>
+
+        <!-- Feedback Toast Capsule (Apple Glass Dynamic Spring Toast) -->
+        <div class="ai-island-toast hidden" id="aiIslandToast" aria-live="polite"></div>
+
+        <!-- Main Dynamic Island Pill -->
+        <div class="ai-floating-island" id="aiFloatingIsland" role="region" aria-label="Copilot AI: aggiungi esami, eventi, to-do o modifica impostazioni e viste">
+          <button type="button" class="ai-island-mic-btn" id="btnAiIslandMic" title="Detta a voce comandi, esami o impostazioni (Microfono)">
+            <svg class="mic-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </button>
+          <div class="ai-island-input-wrap">
+            <input type="text" id="inputAiIslandText" class="ai-island-input" placeholder="Chiedi all'IA: 'imposta tema scuro', 'mostra solo MAM', 'zoom 120%', 'esame il 15 gen'..." aria-label="Chiedi all'IA un comando o descrivi un evento" />
+            <div id="aiIslandListeningWave" class="ai-island-wave hidden" aria-hidden="true">
+              <span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <button type="button" class="ai-island-submit-btn" id="btnAiIslandSubmit" title="Invia ed esegui comando">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Slide-Over Inspector Sheet (Functional Layer) -->
+    <div class="drawer-overlay" id="drawerOverlay"></div>
+    <aside class="day-drawer" id="dayDrawer" role="dialog" aria-modal="true" aria-labelledby="drawerDateTitle">
+      <div class="drawer-header">
+        <div>
+          <span class="drawer-subtitle" id="drawerDateSubtitle">Dettaglio Giornata</span>
+          <h2 id="drawerDateTitle">--</h2>
+        </div>
+        <button type="button" class="btn-close-drawer" id="btnCloseDrawer" aria-label="Chiudi pannello">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div class="drawer-body">
+        <!-- Holiday Banner in Drawer if date is holiday -->
+        <div id="drawerHolidayNotice" class="drawer-holiday-banner hidden"></div>
+
+        <!-- Daily To-Do List Section -->
+        <div class="drawer-section">
+          <div class="section-title-row">
+            <h3>Attività del Giorno (To-Do)</h3>
+            <span id="drawerTodoProgress" class="todo-progress-label mono">0/0</span>
+          </div>
+          <div class="todo-input-row">
+            <input type="text" id="inputNewTodo" class="todo-input" placeholder="Nuovo task per questa data..." />
+            <button type="button" class="btn-primary" id="btnAddTodo" style="height:32px; padding:0 10px;">Aggiungi</button>
+          </div>
+          <div class="todo-list" id="drawerTodoList">
+            <!-- Populated dynamically by app.js -->
+          </div>
+        </div>
+
+        <!-- Exam Section -->
+        <div class="drawer-section">
+          <div class="section-title-row">
+            <h3>Esami &amp; Prove in questa data</h3>
+            <button type="button" class="btn-link-inline" id="btnDrawerAddExamOnDate">+ Aggiungi</button>
+          </div>
+          <div id="drawerExamList"></div>
+        </div>
+
+        <!-- Generic Events Section (Lezioni, Scadenze, Studio) -->
+        <div class="drawer-section">
+          <div class="section-title-row">
+            <h3>Altri Eventi &amp; Impegni</h3>
+            <button type="button" class="btn-link-inline" id="btnDrawerAddGenericEvent">+ Evento</button>
+          </div>
+          <div id="drawerGenericEventsList"></div>
+        </div>
+
+        <!-- Study Schedule Slot -->
+        <div class="drawer-section">
+          <h3>Piano di Studio Giornaliero</h3>
+          <div class="study-plan-card" id="drawerStudyCard">
+            <p><strong>Percorso di Studio:</strong> Pronto per l'allocazione giornaliera dei moduli.</p>
+            <div class="modules-accordion" id="drawerCourseModules"></div>
+          </div>
+        </div>
+
+        <!-- Personal Notes -->
+        <div class="drawer-section">
+          <h3>Note e Appunti del Giorno</h3>
+          <textarea id="drawerUserNotes" class="user-notes-input" placeholder="Annota esercizi, argomenti o promemoria per questa data..."></textarea>
+          <div class="drawer-notes-actions">
+            <button type="button" class="btn-primary" id="btnSaveNotes">Salva Nota</button>
+            <span id="noteSavedStatus" class="save-status-msg" role="status" aria-live="polite"></span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Modal Sheet: Nuova Sessione -->
+    <div class="modal-overlay hidden" id="modalNewSessionOverlay" data-open="false">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="newSessionModalTitle">
+        <div class="modal-header">
+          <h2 id="newSessionModalTitle">Crea Nuova Sessione di Studio</h2>
+          <button type="button" class="btn-close-modal" id="btnCloseNewSessionModal" aria-label="Chiudi finestra">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <form id="formNewSession" class="modal-form">
+          <div class="form-group">
+            <label for="inputSessionName">Nome della Sessione *</label>
+            <input type="text" id="inputSessionName" class="form-input" placeholder="Es. Sessione Estiva 2027" required />
+          </div>
+          <div class="form-group">
+            <label for="inputSessionSub">Ateneo / Corso di Studi</label>
+            <input type="text" id="inputSessionSub" class="form-input" placeholder="Es. Politecnico di Milano — Ingegneria Meccanica" />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="inputSessionStart">Data Inizio *</label>
+              <input type="date" id="inputSessionStart" class="form-input" required />
+            </div>
+            <div class="form-group">
+              <label for="inputSessionEnd">Data Fine *</label>
+              <input type="date" id="inputSessionEnd" class="form-input" required />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" id="btnCancelNewSession">Annulla</button>
+            <button type="submit" class="btn-primary">Crea Sessione</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal Sheet: Aggiungi Esame / Appello / Prove in Itinere -->
+    <div class="modal-overlay hidden" id="modalAddExamOverlay" data-open="false">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="addExamModalTitle">
+        <div class="modal-header">
+          <h2 id="addExamModalTitle">Aggiungi Appello o Prove in Itinere</h2>
+          <button type="button" class="btn-close-modal" id="btnCloseAddExamModal" aria-label="Chiudi finestra">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <form id="formAddExam" class="modal-form">
+          <div class="form-group">
+            <label for="selectExamCourse">Materia / Corso *</label>
+            <select id="selectExamCourse" class="form-input" required>
+              <!-- Populated by app.js -->
+            </select>
+          </div>
+          <div class="form-row" id="newCourseRow" style="display:none;">
+            <div class="form-group">
+              <label for="inputNewCourseSigla">Sigla Materia (es. FIS)</label>
+              <input type="text" id="inputNewCourseSigla" class="form-input" placeholder="Es. FIS" />
+            </div>
+            <div class="form-group">
+              <label for="inputNewCourseName">Nome Completo</label>
+              <input type="text" id="inputNewCourseName" class="form-input" placeholder="Es. Fisica 1" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="selectExamRound">Tipologia d'Esame / Turno *</label>
+            <select id="selectExamRound" class="form-input" required>
+              <option value="1">1° Appello (Tentativo Principale)</option>
+              <option value="2">2° Appello (Slot di Recupero)</option>
+              <option value="3">Appello Straordinario</option>
+              <option value="itinere">📝 Prove in Itinere (1° e 2° Parziale)</option>
+            </select>
+          </div>
+
+          <!-- Standard Single Date Row -->
+          <div class="form-group" id="singleDateRow">
+            <label for="inputExamDate">Data Appello *</label>
+            <input type="date" id="inputExamDate" class="form-input" required />
+          </div>
+
+          <!-- Dual Date Row for Prove in Itinere -->
+          <div class="form-row" id="itinereDatesRow" style="display:none;">
+            <div class="form-group">
+              <label for="inputExamDateItinere1">Data 1ª Prova in Itinere *</label>
+              <input type="date" id="inputExamDateItinere1" class="form-input" />
+            </div>
+            <div class="form-group">
+              <label for="inputExamDateItinere2">Data 2ª Prova in Itinere *</label>
+              <input type="date" id="inputExamDateItinere2" class="form-input" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="inputExamDetails">Note o Modalità d'Esame</label>
+            <input type="text" id="inputExamDetails" class="form-input" placeholder="Es. Scritto Sez. A + B ore 09:00 aula B.2.1" />
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" id="btnCancelAddExam">Annulla</button>
+            <button type="submit" class="btn-primary">Salva nel Calendario</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal Sheet: Aggiungi Evento Generico (Studio, Lezione, Scadenza, Personale) -->
+    <div class="modal-overlay hidden" id="modalAddGenericEventOverlay" data-open="false">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="addGenericEventModalTitle">
+        <div class="modal-header">
+          <h2 id="addGenericEventModalTitle">Aggiungi Evento o Promemoria</h2>
+          <button type="button" class="btn-close-modal" id="btnCloseAddGenericEventModal" aria-label="Chiudi finestra">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <form id="formAddGenericEvent" class="modal-form">
+          <div class="form-group">
+            <label for="inputGenericEventTitle">Titolo Evento *</label>
+            <input type="text" id="inputGenericEventTitle" class="form-input" placeholder="Es. Sessione studio con gruppo / Consegna progetto" required />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="inputGenericEventDate">Data *</label>
+              <input type="date" id="inputGenericEventDate" class="form-input" required />
+            </div>
+            <div class="form-group">
+              <label for="inputGenericEventTime">Orario (opzionale)</label>
+              <input type="time" id="inputGenericEventTime" class="form-input" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="selectGenericEventCategory">Categoria *</label>
+            <select id="selectGenericEventCategory" class="form-input" required>
+              <option value="studio">📖 Studio / Ripasso Intensivo</option>
+              <option value="scadenza">⚠️ Scadenza / Consegna Elaborato</option>
+              <option value="lezione">🎓 Lezione / Laboratorio</option>
+              <option value="personale">📌 Personale / Altro</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="inputGenericEventDetails">Dettagli</label>
+            <input type="text" id="inputGenericEventDetails" class="form-input" placeholder="Es. Argomenti: capitoli 4 e 5, aula studio 3" />
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" id="btnCancelAddGenericEvent">Annulla</button>
+            <button type="submit" class="btn-primary">Aggiungi Evento</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal Sheet: Gestisci Sessioni -->
+    <div class="modal-overlay hidden" id="modalManageSessionsOverlay" data-open="false">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="manageModalTitle">
+        <div class="modal-header">
+          <h2 id="manageModalTitle">Gestione Sessioni di Studio</h2>
+          <button type="button" class="btn-close-modal" id="btnCloseManageSessionsModal" aria-label="Chiudi finestra">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="modal-body-list" id="manageSessionsList">
+          <!-- Populated by app.js -->
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" id="btnCloseManageSessions">Chiudi</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Sheet: Impostazioni & Personalizzazione UI -->
+    <div class="modal-overlay hidden" id="modalSettingsOverlay" data-open="false">
+      <div class="modal-card modal-card-settings" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+        <div class="modal-header">
+          <div class="modal-title-box">
+            <h2 id="settingsModalTitle">Impostazioni MySession</h2>
+            <p class="modal-subtitle">Personalizza tema, dimensioni, colori ed evidenziazione del calendario</p>
+          </div>
+          <button type="button" class="btn-close-modal" id="btnCloseSettingsModal" aria-label="Chiudi finestra impostazioni">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <div class="settings-modal-body">
+          <!-- 1. Tema -->
+          <div class="setting-row">
+            <div class="setting-meta">
+              <span class="setting-title">Tema Interfaccia</span>
+              <span class="setting-desc">Seleziona lo stile chiaro, scuro o sincronizzato con Windows.</span>
+            </div>
+            <div class="segmented-control" id="settingsThemeSwitcher" role="radiogroup" aria-label="Tema colore">
+              <button type="button" class="seg-btn" data-theme-val="light">Chiaro</button>
+              <button type="button" class="seg-btn" data-theme-val="dark">Scuro</button>
+              <button type="button" class="seg-btn" data-theme-val="auto">Auto</button>
+            </div>
+          </div>
+
+          <!-- 2. Dimensioni Generali (Opzioni Predefinite Zoom) -->
+          <div class="setting-row">
+            <div class="setting-meta">
+              <span class="setting-title">Dimensioni Generali (Zoom)</span>
+              <span class="setting-desc">Seleziona la grandezza dell'interfaccia tra le opzioni predefinite.</span>
+            </div>
+            <div class="segmented-control" id="settingsUiScaleSwitcher" role="radiogroup" aria-label="Dimensioni generali interfaccia">
+              <button type="button" class="seg-btn" data-scale-val="85" title="Compatto (85%)">85%</button>
+              <button type="button" class="seg-btn" data-scale-val="90" title="Ridotto (90%)">90%</button>
+              <button type="button" class="seg-btn active" data-scale-val="100" title="Standard (100%)">100%</button>
+              <button type="button" class="seg-btn" data-scale-val="115" title="Medio (115%)">115%</button>
+              <button type="button" class="seg-btn" data-scale-val="125" title="Grande (125%)">125%</button>
+            </div>
+          </div>
+
+          <!-- 3. Colore Generale dell'Applicazione (Accent Color) -->
+          <div class="setting-row">
+            <div class="setting-meta">
+              <span class="setting-title">Colore Generale (Accento)</span>
+              <span class="setting-desc">Tonalità di accento per pulsanti attivi, indicatori e selezioni.</span>
+            </div>
+            <div class="color-picker-control-group">
+              <div class="swatches-row" id="settingsAccentSwatches">
+                <!-- Preset chips populated dynamically by app.js -->
+                <input type="color" id="settingsCustomAccentColor" class="custom-color-input" title="Selettore visivo colore accento" />
+              </div>
+              <div class="color-hex-field-box">
+                <input type="text" id="settingsAccentHexInput" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#007AFF" aria-label="Codice esadecimale colore accento" />
+                <button type="button" class="btn-copy-color-hex" id="btnCopyAccentHex" title="Copia codice colore accento">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  <span>Copia</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. Colore delle Festività -->
+          <div class="setting-row">
+            <div class="setting-meta">
+              <span class="setting-title">Colore delle Festività</span>
+              <span class="setting-desc">Evidenziazione per le festività nazionali ufficiali, Pasqua e Pasquetta.</span>
+            </div>
+            <div class="color-picker-control-group">
+              <div class="swatches-row" id="settingsHolidaySwatches">
+                <!-- Preset chips populated dynamically by app.js -->
+                <input type="color" id="settingsCustomHolidayColor" class="custom-color-input" title="Selettore visivo colore festività" />
+              </div>
+              <div class="color-hex-field-box">
+                <input type="text" id="settingsHolidayHexInput" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#FF3B30" aria-label="Codice esadecimale colore festività" />
+                <button type="button" class="btn-copy-color-hex" id="btnCopyHolidayHex" title="Copia codice colore festività">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  <span>Copia</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. Colore Evidenziazione Domenica / Giorno di Riposo -->
+          <div class="setting-row">
+            <div class="setting-meta">
+              <span class="setting-title">Colore Evidenziazione Domenica</span>
+              <span class="setting-desc">Tonalità dedicata per il numero, l'intestazione e lo sfondo del giorno di riposo settimanale (diversa dalle festività).</span>
+            </div>
+            <div class="color-picker-control-group">
+              <div class="swatches-row" id="settingsSundaySwatches">
+                <!-- Preset chips populated dynamically by app.js -->
+                <input type="color" id="settingsCustomSundayColor" class="custom-color-input" title="Selettore visivo colore domenica" />
+              </div>
+              <div class="color-hex-field-box">
+                <input type="text" id="settingsSundayHexInput" class="color-hex-text mono" maxlength="7" spellcheck="false" placeholder="#FF9500" aria-label="Codice esadecimale colore domenica" />
+                <button type="button" class="btn-copy-color-hex" id="btnCopySundayHex" title="Copia codice colore domenica">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  <span>Copia</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. Giorno di Inizio della Settimana -->
+          <div class="setting-row">
+            <div class="setting-meta">
+              <span class="setting-title">Inizio della Settimana</span>
+              <span class="setting-desc">Giorno mostrato come prima colonna nel calendario e nella vista settimanale.</span>
+            </div>
+            <select id="settingsStartDaySelect" class="form-select setting-select-field">
+              <option value="1">Lunedì (Standard Italiano / ISO 8601)</option>
+              <option value="0">Domenica (Standard USA / Globale)</option>
+              <option value="6">Sabato</option>
+            </select>
+          </div>
+
+          <!-- 6. Evidenziazione Giorno Festivo della Settimana -->
+          <div class="setting-row">
+            <div class="setting-meta">
+              <span class="setting-title">Giorno di Riposo Settimanale</span>
+              <span class="setting-desc">Evidenzia questo giorno con intestazione e sfondo dedicati nel calendario.</span>
+            </div>
+            <select id="settingsWeeklyHolidaySelect" class="form-select setting-select-field">
+              <option value="0">Domenica (Predefinito)</option>
+              <option value="6">Sabato (Fine settimana)</option>
+              <option value="1">Lunedì</option>
+              <option value="2">Martedì</option>
+              <option value="3">Mercoledì</option>
+              <option value="4">Giovedì</option>
+              <option value="5">Venerdì</option>
+              <option value="-1">Nessuno (Tutti i giorni neutri)</option>
+            </select>
+          </div>
+
+          <!-- 7. Stile Cornice & Bordi Finestra Windows -->
+          <div class="setting-row">
+            <div class="setting-meta">
+              <span class="setting-title">Stile Cornice &amp; Bordi Finestra</span>
+              <span class="setting-desc">Rimuove la barra classica di Windows integrando la cornice personalizzata dell'app con pulsanti di controllo integrati e bordi continui.</span>
+            </div>
+            <div class="segmented-control" id="settingsWindowFrameSwitcher" role="radiogroup" aria-label="Stile cornice finestra">
+              <button type="button" class="seg-btn active" data-frame-val="custom">Personalizzato (Crafted)</button>
+              <button type="button" class="seg-btn" data-frame-val="standard">Standard Windows</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" id="btnResetSettingsDefault">Ripristina Predefiniti</button>
+          <button type="button" class="btn-primary" id="btnSaveCloseSettings">Fatto</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "MySession — Gestione Sessioni di Studio & Calendario Esami",
+  "short_name": "MySession",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#0D0F12",
+  "theme_color": "#00629B",
+  "icons": [
+    {
+      "src": "app.ico",
+      "sizes": "64x64 32x32 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}
