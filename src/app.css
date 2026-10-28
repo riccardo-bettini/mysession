@@ -106,6 +106,51 @@ body {
   overflow: hidden;
 }
 
+/* Micro-interazioni a molla condivise Apple HIG (Emil Kowalski feedback) */
+.pressable {
+  will-change: transform;
+  transition:
+    transform 120ms var(--spring-press),
+    background-color 130ms ease,
+    border-color 130ms ease,
+    box-shadow 130ms ease,
+    color 130ms ease;
+}
+
+.pressable:active {
+  transform: scale(0.97);
+}
+
+/* Focus ring accessibile rifinito macOS */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-primary), 0 0 0 4px var(--accent-soft);
+}
+
+/* Animazioni standard modali a molla Apple HIG */
+@keyframes backdropFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modalSheetEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
 /* Accessibilità: Reduced Motion & Reduced Transparency (Apple HIG §14) */
 @media (prefers-reduced-motion: reduce) {
   *,

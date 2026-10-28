@@ -516,17 +516,30 @@
     bottom: 1.25rem;
     left: 50%;
     transform: translateX(-50%);
-    padding: 0.55rem 1rem;
+    padding: 0.55rem 1.15rem;
     border-radius: var(--radius-pill);
     background: var(--popover-bg);
-    backdrop-filter: blur(25px) saturate(190%);
-    -webkit-backdrop-filter: blur(25px) saturate(190%);
+    backdrop-filter: blur(28px) saturate(190%);
+    -webkit-backdrop-filter: blur(28px) saturate(190%);
     border: 0.5px solid var(--hairline-border-strong);
     color: var(--text-primary);
     font-size: 0.78rem;
     font-weight: 600;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+    letter-spacing: -0.01em;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12), 0 16px 36px rgba(0, 0, 0, 0.22);
     z-index: 500;
     pointer-events: none;
+    animation: toastSpringUp 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes toastSpringUp {
+    from {
+      opacity: 0;
+      transform: translate(-50%, 10px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, 0) scale(1);
+    }
   }
 </style>

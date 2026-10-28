@@ -197,7 +197,7 @@
         <span class="sheet-kicker">PREFERENZE DI SISTEMA & AI</span>
         <h2 class="sheet-title">Impostazioni MySession</h2>
       </div>
-      <button type="button" class="close-btn" onclick={onClose} aria-label="Chiudi">
+      <button type="button" class="close-btn pressable" onclick={onClose} aria-label="Chiudi">
         ✕
       </button>
     </header>
@@ -207,7 +207,7 @@
       <nav class="settings-nav">
         <button
           type="button"
-          class="nav-item"
+          class="nav-item pressable"
           class:active={activeTab === "appearance"}
           onclick={() => (activeTab = "appearance")}
         >
@@ -216,7 +216,7 @@
         </button>
         <button
           type="button"
-          class="nav-item"
+          class="nav-item pressable"
           class:active={activeTab === "calendar"}
           onclick={() => (activeTab = "calendar")}
         >
@@ -225,7 +225,7 @@
         </button>
         <button
           type="button"
-          class="nav-item"
+          class="nav-item pressable"
           class:active={activeTab === "ai"}
           onclick={() => (activeTab = "ai")}
         >
@@ -234,7 +234,7 @@
         </button>
         <button
           type="button"
-          class="nav-item"
+          class="nav-item pressable"
           class:active={activeTab === "profile"}
           onclick={() => (activeTab = "profile")}
         >
@@ -243,7 +243,7 @@
         </button>
         <button
           type="button"
-          class="nav-item"
+          class="nav-item pressable"
           class:active={activeTab === "backup"}
           onclick={() => (activeTab = "backup")}
         >
@@ -265,7 +265,7 @@
               ] as item (item.id)}
                 <button
                   type="button"
-                  class="seg-option"
+                  class="seg-option pressable"
                   class:active={themeStore.settings.theme === item.id}
                   onclick={() => handleThemeSelect(item.id as ThemeChoice)}
                 >
@@ -283,7 +283,7 @@
               ] as mat (mat.id)}
                 <button
                   type="button"
-                  class="seg-option"
+                  class="seg-option pressable"
                   class:active={themeStore.settings.backdropMaterial === mat.id}
                   onclick={() => handleMaterialSelect(mat.id as BackdropMaterial)}
                 >
@@ -298,7 +298,7 @@
             <div class="segmented-row">
               <button
                 type="button"
-                class="seg-option"
+                class="seg-option pressable"
                 class:active={themeStore.settings.windowControlsStyle === "macos-left"}
                 onclick={() => handleControlsStyleSelect("macos-left")}
               >
@@ -306,7 +306,7 @@
               </button>
               <button
                 type="button"
-                class="seg-option"
+                class="seg-option pressable"
                 class:active={themeStore.settings.windowControlsStyle === "win11-right"}
                 onclick={() => handleControlsStyleSelect("win11-right")}
               >
@@ -332,7 +332,7 @@
                 {#each [85, 100, 110, 125, 140] as pct (pct)}
                   <button
                     type="button"
-                    class="preset-chip"
+                    class="preset-chip pressable"
                     class:active={themeStore.settings.uiScale === pct}
                     onclick={() => themeStore.setUiScale(pct)}
                   >
@@ -380,7 +380,7 @@
               ] as v (v.id)}
                 <button
                   type="button"
-                  class="seg-option"
+                  class="seg-option pressable"
                   class:active={themeStore.settings.defaultView === v.id}
                   onclick={() => handleDefaultViewSelect(v.id as CalendarViewMode)}
                 >
@@ -425,7 +425,7 @@
               ] as p (p.id)}
                 <button
                   type="button"
-                  class="seg-option"
+                  class="seg-option pressable"
                   class:active={aiProvider === p.id}
                   onclick={() => (aiProvider = p.id as AiProvider)}
                 >
@@ -629,13 +629,26 @@
   }
 
   .close-btn {
-    width: 28px;
-    height: 28px;
-    border-radius: var(--radius-pill);
-    border: none;
-    background: rgba(128, 128, 128, 0.14);
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 999px;
+    border: 0.5px solid var(--hairline-border);
+    background: var(--surface-pill);
     color: var(--text-secondary);
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), background 120ms ease, color 120ms ease;
+  }
+
+  .close-btn:hover {
+    background: var(--surface-card);
+    color: var(--text-primary);
+  }
+
+  .close-btn:active {
+    transform: scale(0.92);
   }
 
   .settings-layout {
@@ -668,7 +681,11 @@
     font-weight: 600;
     text-align: left;
     cursor: pointer;
-    transition: all 120ms ease;
+    transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), background 120ms ease, color 120ms ease;
+  }
+
+  .nav-item:active {
+    transform: scale(0.98);
   }
 
   .nav-item:hover {
@@ -714,19 +731,24 @@
 
   .seg-option {
     padding: 0.42rem 0.55rem;
-    border-radius: 7px;
+    border-radius: var(--radius-xs);
     border: none;
     background: transparent;
     color: var(--text-secondary);
     font-size: 0.73rem;
     font-weight: 600;
     cursor: pointer;
+    transition: all 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .seg-option:active {
+    transform: scale(0.98);
   }
 
   .seg-option.active {
-    background: var(--surface-elevated);
+    background: var(--surface-card);
     color: var(--text-primary);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
+    box-shadow: 0 1.5px 5px rgba(0, 0, 0, 0.14);
   }
 
   .zoom-control-box {
@@ -797,6 +819,12 @@
     color: var(--text-primary);
     font-size: 0.8rem;
     outline: none;
+    transition: border-color 140ms ease, box-shadow 140ms ease;
+  }
+
+  .field input:focus-visible {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2.5px var(--accent-soft);
   }
 
   .field-hint {

@@ -197,7 +197,7 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 0.75rem 1rem 1rem;
+    padding: 0.85rem 1.15rem 1.15rem;
     overflow: hidden;
   }
 
@@ -205,41 +205,56 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 0.6rem;
+    margin-bottom: 0.75rem;
     flex-shrink: 0;
   }
 
   .week-heading {
     margin: 0;
     font-family: var(--font-display);
-    font-size: 1.3rem;
+    font-size: 1.35rem;
     font-weight: 800;
-    letter-spacing: -0.024em;
+    letter-spacing: var(--tracking-tight);
+    color: var(--text-primary);
   }
 
   .week-actions {
     display: flex;
-    gap: 0.4rem;
+    gap: 0.45rem;
   }
 
   .step-btn {
-    height: 1.85rem;
-    padding: 0 0.7rem;
-    border-radius: var(--radius-xs);
+    height: 1.95rem;
+    padding: 0 0.75rem;
+    border-radius: var(--radius-sm);
     border: 0.5px solid var(--hairline-border);
     background: var(--surface-pill);
+    box-shadow: var(--shadow-pill);
     color: var(--text-primary);
     font-size: 0.74rem;
     font-weight: 600;
+    letter-spacing: var(--tracking-normal);
     cursor: pointer;
+    will-change: transform;
+    transition: transform 120ms var(--spring-press), background-color 130ms ease;
+  }
+
+  .step-btn:hover {
+    background: var(--surface-pill-hover);
+    border-color: var(--hairline-border-strong);
+  }
+
+  .step-btn:active {
+    transform: scale(0.96);
   }
 
   .week-columns-grid {
     flex: 1;
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     border: 0.5px solid var(--hairline-border);
+    box-shadow: var(--shadow-pill);
     overflow: hidden;
     min-height: 0;
   }
@@ -251,10 +266,20 @@
     border-right: 0.5px solid var(--hairline-border);
     cursor: pointer;
     min-height: 0;
+    transition: background-color 110ms ease;
   }
 
   .week-day-column:last-child {
     border-right: none;
+  }
+
+  .week-day-column:hover {
+    background: var(--calendar-cell-hover);
+  }
+
+  .week-day-column:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--accent-primary);
   }
 
   .week-day-column.is-today {
@@ -269,8 +294,8 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.18rem;
-    padding: 0.6rem 0.65rem;
+    gap: 0.2rem;
+    padding: 0.65rem 0.75rem;
     background: var(--calendar-header-bg);
     border-bottom: 0.5px solid var(--hairline-border);
   }
@@ -279,44 +304,50 @@
     font-size: 0.66rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: var(--tracking-caps);
     color: var(--text-tertiary);
   }
 
   .col-day-num {
-    font-size: 1.15rem;
+    font-size: 1.2rem;
     font-weight: 800;
-    letter-spacing: -0.02em;
+    letter-spacing: var(--tracking-tight);
+    font-variant-numeric: tabular-nums;
   }
 
   .col-day-num.today-pill {
-    padding: 0.1rem 0.48rem;
+    padding: 0.12rem 0.5rem;
     border-radius: var(--radius-pill);
     background: var(--accent-primary);
     color: #fff;
+    box-shadow: 0 1px 3px rgba(10, 132, 255, 0.35);
   }
 
   .col-holiday {
     font-size: 0.62rem;
     font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
   }
 
   .col-body {
     flex: 1;
     overflow-y: auto;
-    padding: 0.55rem;
+    padding: 0.6rem;
     display: flex;
     flex-direction: column;
-    gap: 0.45rem;
+    gap: 0.5rem;
   }
 
   .week-conflict-banner {
-    padding: 0.38rem 0.45rem;
+    padding: 0.4rem 0.5rem;
     border-radius: var(--radius-xs);
     background: rgba(255, 69, 58, 0.15);
     border: 0.5px solid rgba(255, 69, 58, 0.45);
     color: #ff6961;
-    font-size: 0.64rem;
+    font-size: 0.65rem;
     font-weight: 600;
   }
 
@@ -324,10 +355,11 @@
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 0.2rem;
-    padding: 0.5rem 0.55rem;
+    gap: 0.22rem;
+    padding: 0.55rem 0.65rem;
     border-radius: var(--radius-sm);
     border: 0.5px solid transparent;
+    box-shadow: var(--shadow-pill);
     text-align: left;
     cursor: pointer;
   }
@@ -341,8 +373,9 @@
   .we-sigla {
     font-size: 0.62rem;
     font-weight: 800;
-    padding: 0.08rem 0.35rem;
-    border-radius: 0.25rem;
+    padding: 0.1rem 0.38rem;
+    border-radius: 0.28rem;
+    letter-spacing: var(--tracking-wide);
   }
 
   .we-time {
@@ -352,8 +385,9 @@
   }
 
   .we-name {
-    font-size: 0.74rem;
+    font-size: 0.76rem;
     font-weight: 700;
+    letter-spacing: var(--tracking-normal);
   }
 
   .we-round,
@@ -363,13 +397,14 @@
   }
 
   .week-generic-card {
-    padding: 0.42rem 0.5rem;
+    padding: 0.45rem 0.55rem;
     border-radius: var(--radius-xs);
     background: var(--surface-card);
     border: 0.5px solid var(--hairline-border);
+    box-shadow: var(--shadow-pill);
     display: flex;
     flex-direction: column;
-    gap: 0.15rem;
+    gap: 0.18rem;
   }
 
   .wg-top {
@@ -379,25 +414,27 @@
     text-transform: uppercase;
     color: var(--text-tertiary);
     font-weight: 700;
+    letter-spacing: var(--tracking-caps);
   }
 
   .wg-title {
-    font-size: 0.72rem;
+    font-size: 0.74rem;
   }
 
   .week-section-block {
-    padding: 0.4rem 0.45rem;
+    padding: 0.45rem 0.55rem;
     border-radius: var(--radius-xs);
     background: var(--surface-pill);
+    border: 0.5px solid var(--hairline-border);
     display: flex;
     flex-direction: column;
-    gap: 0.22rem;
+    gap: 0.25rem;
   }
 
   .ws-title {
-    font-size: 0.58rem;
+    font-size: 0.6rem;
     font-weight: 700;
-    letter-spacing: 0.04em;
+    letter-spacing: var(--tracking-caps);
     color: var(--text-tertiary);
   }
 
@@ -405,15 +442,15 @@
   .week-todo-row {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
-    font-size: 0.66rem;
+    gap: 0.35rem;
+    font-size: 0.68rem;
     color: var(--text-secondary);
   }
 
   .week-unit-row.done,
   .week-todo-row.done {
     text-decoration: line-through;
-    opacity: 0.6;
+    opacity: 0.55;
   }
 
   .wu-badge {
@@ -422,9 +459,9 @@
   }
 
   .col-footer {
-    padding: 0.38rem 0.55rem;
+    padding: 0.42rem 0.65rem;
     border-top: 0.5px solid var(--hairline-border);
-    font-size: 0.64rem;
+    font-size: 0.65rem;
     color: var(--text-secondary);
   }
 </style>

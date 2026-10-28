@@ -188,7 +188,7 @@
             <strong>Hai già un file di backup <code>.json</code> da un altro PC?</strong>
             <p>Importalo subito per ripristinare tutte le tue sessioni, i corsi e gli appelli.</p>
           </div>
-          <button type="button" class="import-btn" onclick={handleImportExistingBackup}>
+          <button type="button" class="import-btn pressable" onclick={handleImportExistingBackup}>
             ⬆ Importa Backup .json
           </button>
           <input
@@ -203,7 +203,7 @@
 
       <footer class="wizard-footer">
         <span class="author-note">Autore: {APP_AUTHOR}</span>
-        <button type="button" class="primary-btn" onclick={() => (step = 2)}>
+        <button type="button" class="primary-btn pressable" onclick={() => (step = 2)}>
           Continua →
         </button>
       </footer>
@@ -227,7 +227,7 @@
             ] as t (t.id)}
               <button
                 type="button"
-                class="seg-btn"
+                class="seg-btn pressable"
                 class:active={themeStore.settings.theme === t.id}
                 onclick={() => themeStore.setTheme(t.id as ThemeChoice)}
               >
@@ -244,7 +244,7 @@
             ] as m (m.id)}
               <button
                 type="button"
-                class="seg-btn"
+                class="seg-btn pressable"
                 class:active={themeStore.settings.backdropMaterial === m.id}
                 onclick={() => themeStore.setBackdropMaterial(m.id as BackdropMaterial)}
               >
@@ -256,7 +256,7 @@
           <div class="seg-row">
             <button
               type="button"
-              class="seg-btn"
+              class="seg-btn pressable"
               class:active={themeStore.settings.windowControlsStyle === "macos-left"}
               onclick={() =>
                 themeStore.setWindowControlsStyle("macos-left" as WindowControlsStyle)}
@@ -265,7 +265,7 @@
             </button>
             <button
               type="button"
-              class="seg-btn"
+              class="seg-btn pressable"
               class:active={themeStore.settings.windowControlsStyle === "win11-right"}
               onclick={() =>
                 themeStore.setWindowControlsStyle("win11-right" as WindowControlsStyle)}
@@ -301,10 +301,10 @@
       </div>
 
       <footer class="wizard-footer">
-        <button type="button" class="secondary-btn" onclick={() => (step = 1)}>
+        <button type="button" class="secondary-btn pressable" onclick={() => (step = 1)}>
           ← Indietro
         </button>
-        <button type="button" class="primary-btn" onclick={() => (step = 3)}>
+        <button type="button" class="primary-btn pressable" onclick={() => (step = 3)}>
           Continua →
         </button>
       </footer>
@@ -327,7 +327,7 @@
           ] as p (p.id)}
             <button
               type="button"
-              class="seg-btn"
+              class="seg-btn pressable"
               class:active={aiProvider === p.id}
               onclick={() => (aiProvider = p.id as AiProvider)}
             >
@@ -363,12 +363,12 @@
       </div>
 
       <footer class="wizard-footer">
-        <button type="button" class="secondary-btn" onclick={() => (step = 2)}>
+        <button type="button" class="secondary-btn pressable" onclick={() => (step = 2)}>
           ← Indietro
         </button>
         <button
           type="button"
-          class="primary-btn"
+          class="primary-btn pressable"
           onclick={handleFinishOnboarding}
           disabled={isSubmitting}
         >
@@ -517,6 +517,13 @@
     color: var(--text-primary);
     font-size: 0.8rem;
     outline: none;
+    transition: border-color 140ms ease, box-shadow 140ms ease;
+  }
+
+  .field input:focus-visible,
+  .field select:focus-visible {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2.5px var(--accent-soft);
   }
 
   .import-callout {
@@ -547,6 +554,11 @@
     font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
+    transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), filter 120ms ease;
+  }
+
+  .import-btn:active {
+    transform: scale(0.97);
   }
 
   .segmented-group {
@@ -573,19 +585,24 @@
 
   .seg-btn {
     padding: 0.4rem 0.55rem;
-    border-radius: 7px;
+    border-radius: var(--radius-xs);
     border: none;
     background: transparent;
     color: var(--text-secondary);
     font-size: 0.72rem;
     font-weight: 600;
     cursor: pointer;
+    transition: all 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .seg-btn:active {
+    transform: scale(0.98);
   }
 
   .seg-btn.active {
-    background: var(--surface-elevated);
+    background: var(--surface-card);
     color: var(--text-primary);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
+    box-shadow: 0 1.5px 5px rgba(0, 0, 0, 0.14);
   }
 
   .local-engine-card {
@@ -624,6 +641,11 @@
     font-size: 0.78rem;
     font-weight: 600;
     cursor: pointer;
+    transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), background 120ms ease;
+  }
+
+  .secondary-btn:active {
+    transform: scale(0.97);
   }
 
   .primary-btn {
@@ -635,5 +657,10 @@
     font-size: 0.8rem;
     font-weight: 600;
     cursor: pointer;
+    transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), filter 120ms ease;
+  }
+
+  .primary-btn:active {
+    transform: scale(0.97);
   }
 </style>

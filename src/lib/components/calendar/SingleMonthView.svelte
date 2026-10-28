@@ -109,7 +109,7 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 0.75rem 1rem 1rem;
+    padding: 0.85rem 1.15rem 1.15rem;
     overflow: hidden;
   }
 
@@ -117,51 +117,57 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 0.6rem;
+    margin-bottom: 0.75rem;
     flex-shrink: 0;
   }
 
   .month-heading {
     margin: 0;
     font-family: var(--font-display);
-    font-size: 1.35rem;
+    font-size: 1.4rem;
     font-weight: 800;
-    letter-spacing: -0.024em;
+    letter-spacing: var(--tracking-tight);
+    color: var(--text-primary);
   }
 
   .bar-right {
     display: flex;
-    gap: 0.4rem;
+    gap: 0.45rem;
   }
 
   .step-btn {
-    height: 1.85rem;
-    padding: 0 0.7rem;
-    border-radius: var(--radius-xs);
+    height: 1.95rem;
+    padding: 0 0.75rem;
+    border-radius: var(--radius-sm);
     border: 0.5px solid var(--hairline-border);
     background: var(--surface-pill);
+    box-shadow: var(--shadow-pill);
     color: var(--text-primary);
     font-size: 0.74rem;
     font-weight: 600;
+    letter-spacing: var(--tracking-normal);
     cursor: pointer;
-    transition: transform 140ms var(--ease-out), background-color 140ms ease;
+    will-change: transform;
+    transition: transform 120ms var(--spring-press), background-color 130ms ease;
   }
 
   .step-btn:hover {
     background: var(--surface-pill-hover);
+    border-color: var(--hairline-border-strong);
   }
 
   .step-btn:active {
-    transform: scale(0.97);
+    transform: scale(0.96);
   }
 
   .month-grid-frame {
     flex: 1;
     display: flex;
     flex-direction: column;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     border-top: 0.5px solid var(--hairline-border);
     border-left: 0.5px solid var(--hairline-border);
+    box-shadow: var(--shadow-pill);
     overflow: hidden;
   }
 
@@ -175,11 +181,11 @@
   }
 
   .weekday-cell {
-    padding: 0.48rem 0.65rem;
+    padding: 0.5rem 0.75rem;
     font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: var(--tracking-caps);
     color: var(--text-tertiary);
   }
 

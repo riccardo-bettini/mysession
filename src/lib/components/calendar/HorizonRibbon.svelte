@@ -111,7 +111,7 @@
   .ribbon-title {
     font-size: 0.62rem;
     font-weight: 700;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.08em;
     color: var(--text-tertiary);
   }
 
@@ -120,6 +120,7 @@
     font-weight: 600;
     color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
   }
 
   .ribbon-track-container {
@@ -185,7 +186,7 @@
     height: 8px;
     border-radius: 999px;
     background: var(--accent-primary);
-    box-shadow: 0 0 8px var(--accent-glow);
+    box-shadow: 0 0 10px var(--accent-glow);
   }
 
   .today-tag {
@@ -206,7 +207,7 @@
     padding: 0;
     cursor: pointer;
     z-index: 3;
-    transition: transform 140ms var(--ease-out);
+    transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 160ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .ribbon-exam-pin:hover {
@@ -215,7 +216,7 @@
   }
 
   .ribbon-exam-pin:active {
-    transform: translate(-50%, -50%) scale(0.95);
+    transform: translate(-50%, -50%) scale(0.94);
   }
 
   .pin-pill {

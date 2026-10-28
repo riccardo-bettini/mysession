@@ -182,16 +182,20 @@
     justify-content: center;
     cursor: pointer;
     padding: 0;
-    transition: transform 120ms var(--ease-out);
+    transition: transform 140ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 140ms ease;
   }
 
   .swatch-btn:hover {
-    transform: scale(1.1);
+    transform: scale(1.12);
+  }
+
+  .swatch-btn:active {
+    transform: scale(0.92);
   }
 
   .swatch-btn.active {
     border-color: var(--text-primary);
-    box-shadow: 0 0 0 2px var(--accent-soft);
+    box-shadow: 0 0 0 2px var(--surface-card), 0 0 0 4px var(--accent-primary);
   }
 
   .swatch-btn svg {
@@ -237,5 +241,12 @@
     font-size: 0.72rem;
     font-weight: 600;
     text-align: center;
+    transition: border-color 140ms ease, box-shadow 140ms ease;
+  }
+
+  .hex-input:focus-visible {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2.5px var(--accent-soft);
   }
 </style>

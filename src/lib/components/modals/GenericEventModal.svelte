@@ -99,7 +99,7 @@
         <span class="sheet-eyebrow">AGENDA GIORNALIERA</span>
         <h2>{initialEvent ? "Modifica Impegno" : "Nuovo Impegno / Scadenza"}</h2>
       </div>
-      <button type="button" class="sheet-close-btn" onclick={() => onClose?.()}>✕</button>
+      <button type="button" class="sheet-close-btn pressable" onclick={() => onClose?.()}>✕</button>
     </header>
 
     <div class="sheet-body">
@@ -150,7 +150,7 @@
 
     <footer class="sheet-footer">
       {#if initialEvent}
-        <button type="button" class="btn-danger" disabled={isSaving} onclick={handleDelete}>
+        <button type="button" class="btn-danger pressable" disabled={isSaving} onclick={handleDelete}>
           Elimina Impegno
         </button>
       {:else}
@@ -158,8 +158,8 @@
       {/if}
 
       <div class="footer-right">
-        <button type="button" class="btn-secondary" onclick={() => onClose?.()}>Annulla</button>
-        <button type="submit" class="btn-primary" disabled={isSaving}>
+        <button type="button" class="btn-secondary pressable" onclick={() => onClose?.()}>Annulla</button>
+        <button type="submit" class="btn-primary pressable" disabled={isSaving}>
           {isSaving ? "Salvataggio…" : initialEvent ? "Salva Modifiche" : "Aggiungi Impegno"}
         </button>
       </div>
@@ -173,25 +173,28 @@
     inset: 0;
     z-index: 400;
     background: rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(16px) saturate(170%);
+    -webkit-backdrop-filter: blur(16px) saturate(170%);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 1.5rem;
+    animation: backdropFade 160ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .modal-sheet {
     width: 100%;
-    max-width: 32rem;
+    max-width: 34rem;
     border-radius: var(--radius-xl);
     background: var(--popover-bg);
     backdrop-filter: blur(28px) saturate(195%);
     -webkit-backdrop-filter: blur(28px) saturate(195%);
     border: 0.5px solid var(--hairline-border-strong);
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--shadow-modal);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    animation: modalSheetEnter 260ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .sheet-header {
@@ -224,6 +227,19 @@
     background: var(--surface-pill);
     color: var(--text-secondary);
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), background 120ms ease, color 120ms ease;
+  }
+
+  .sheet-close-btn:hover {
+    background: var(--surface-card);
+    color: var(--text-primary);
+  }
+
+  .sheet-close-btn:active {
+    transform: scale(0.92);
   }
 
   .sheet-body {
@@ -261,6 +277,15 @@
     color: var(--text-primary);
     font-family: var(--font-sans);
     font-size: 0.8rem;
+    transition: border-color 140ms ease, box-shadow 140ms ease;
+  }
+
+  .form-field input:focus-visible,
+  .form-field select:focus-visible,
+  .form-field textarea:focus-visible {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2.5px var(--accent-soft);
   }
 
   .sheet-footer {
@@ -286,6 +311,13 @@
     font-size: 0.76rem;
     font-weight: 600;
     cursor: pointer;
+    transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), filter 120ms ease;
+  }
+
+  .btn-primary:active,
+  .btn-secondary:active,
+  .btn-danger:active {
+    transform: scale(0.97);
   }
 
   .btn-primary {

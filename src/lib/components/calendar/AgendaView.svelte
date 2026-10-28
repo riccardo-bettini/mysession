@@ -248,7 +248,7 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 0.9rem 1.25rem 1.25rem;
+    padding: 0.95rem 1.25rem 1.25rem;
     overflow: hidden;
   }
 
@@ -257,21 +257,23 @@
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    margin-bottom: 0.9rem;
+    margin-bottom: 0.95rem;
     flex-shrink: 0;
   }
 
   .agenda-title {
     margin: 0;
     font-family: var(--font-display);
-    font-size: 1.35rem;
+    font-size: 1.4rem;
     font-weight: 800;
-    letter-spacing: -0.024em;
+    letter-spacing: var(--tracking-tight);
+    color: var(--text-primary);
   }
 
   .agenda-subtitle {
     margin: 0.2rem 0 0;
     font-size: 0.78rem;
+    letter-spacing: var(--tracking-normal);
     color: var(--text-secondary);
   }
 
@@ -283,44 +285,50 @@
   .agenda-toolbar-right {
     display: flex;
     align-items: center;
-    gap: 0.55rem;
+    gap: 0.6rem;
   }
 
   .group-segmented {
     display: inline-flex;
-    padding: 0.14rem;
+    padding: 0.15rem;
     background: var(--surface-pill);
     border: 0.5px solid var(--hairline-border);
+    box-shadow: var(--shadow-pill);
     border-radius: var(--radius-sm);
+    gap: 0.12rem;
   }
 
   .group-btn {
-    height: 1.7rem;
-    padding: 0 0.65rem;
+    height: 1.75rem;
+    padding: 0 0.7rem;
     border: none;
     border-radius: var(--radius-xs);
     background: transparent;
     color: var(--text-secondary);
-    font-size: 0.73rem;
+    font-size: 0.74rem;
     font-weight: 600;
+    letter-spacing: var(--tracking-normal);
     cursor: pointer;
   }
 
   .group-btn.active {
     background: var(--segment-active-bg);
     color: var(--text-primary);
+    box-shadow: var(--shadow-segment-active);
   }
 
   .new-exam-btn {
-    height: 1.95rem;
-    padding: 0 0.85rem;
+    height: 2.05rem;
+    padding: 0 0.9rem;
     border-radius: var(--radius-sm);
     border: none;
     background: var(--accent-primary);
     color: #fff;
     font-size: 0.75rem;
     font-weight: 600;
+    letter-spacing: var(--tracking-normal);
     cursor: pointer;
+    box-shadow: 0 1px 3px rgba(10, 132, 255, 0.3);
   }
 
   .agenda-scroll-body {
@@ -335,23 +343,25 @@
   .agenda-empty-card {
     margin: auto;
     max-width: 26rem;
-    padding: 2rem;
-    border-radius: var(--radius-lg);
+    padding: 2.2rem;
+    border-radius: var(--radius-xl);
     background: var(--surface-elevated);
     border: 0.5px solid var(--hairline-border-strong);
+    box-shadow: var(--shadow-pill);
     text-align: center;
   }
 
   .agenda-empty-card h3 {
-    margin: 0 0 0.4rem;
-    font-size: 1.05rem;
+    margin: 0 0 0.45rem;
+    font-size: 1.1rem;
+    font-weight: 700;
   }
 
   .agenda-empty-card p {
-    margin: 0 0 1.1rem;
-    font-size: 0.8rem;
+    margin: 0 0 1.2rem;
+    font-size: 0.82rem;
     color: var(--text-secondary);
-    line-height: 1.45;
+    line-height: 1.5;
   }
 
   .agenda-cards-list {
@@ -363,17 +373,24 @@
   .agenda-exam-row {
     display: flex;
     align-items: stretch;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background: var(--surface-card);
     border: 0.5px solid var(--hairline-border);
+    box-shadow: var(--shadow-pill);
     overflow: hidden;
     cursor: pointer;
-    transition: transform 140ms var(--ease-out), border-color 140ms ease;
+    will-change: transform;
+    transition: transform 120ms var(--spring-press), border-color 130ms ease, background-color 130ms ease;
   }
 
   .agenda-exam-row:hover {
     transform: translateY(-1px);
     border-color: var(--hairline-border-strong);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  .agenda-exam-row:active {
+    transform: scale(0.985);
   }
 
   .row-left-accent {
@@ -383,10 +400,10 @@
 
   .row-main-info {
     flex: 1;
-    padding: 0.75rem 1rem;
+    padding: 0.8rem 1.1rem;
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
+    gap: 0.32rem;
   }
 
   .row-top-badges {
@@ -401,6 +418,7 @@
     font-weight: 800;
     padding: 0.12rem 0.45rem;
     border-radius: 0.3rem;
+    letter-spacing: var(--tracking-wide);
   }
 
   .round-pill,
@@ -411,14 +429,15 @@
     padding: 0.1rem 0.42rem;
     border-radius: 0.3rem;
     background: var(--surface-pill);
+    border: 0.5px solid var(--hairline-border);
     color: var(--text-secondary);
   }
 
   .row-course-title {
     margin: 0;
-    font-size: 0.96rem;
+    font-size: 0.98rem;
     font-weight: 700;
-    letter-spacing: -0.015em;
+    letter-spacing: var(--tracking-tight);
   }
 
   .row-date-line {
@@ -437,9 +456,10 @@
   }
 
   .conflict-inline-alert {
-    padding: 0.3rem 0.55rem;
+    padding: 0.35rem 0.6rem;
     border-radius: var(--radius-xs);
     background: rgba(255, 159, 10, 0.15);
+    border: 0.5px solid rgba(255, 159, 10, 0.35);
     color: var(--conflict-warning);
     font-size: 0.68rem;
     font-weight: 600;
@@ -447,6 +467,7 @@
 
   .conflict-inline-alert.critical {
     background: rgba(255, 69, 58, 0.16);
+    border-color: rgba(255, 69, 58, 0.4);
     color: var(--conflict-critical);
   }
 
@@ -455,40 +476,44 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-width: 5.5rem;
+    min-width: 5.8rem;
     padding: 0 1rem;
     border-left: 0.5px solid var(--hairline-border);
     background: var(--surface-pill);
   }
 
   .cd-num {
-    font-size: 1.15rem;
+    font-size: 1.25rem;
     font-weight: 800;
+    letter-spacing: var(--tracking-tight);
     font-variant-numeric: tabular-nums;
     color: var(--accent-primary);
   }
 
   .cd-lbl {
     font-size: 0.62rem;
+    font-weight: 600;
     text-transform: uppercase;
+    letter-spacing: var(--tracking-caps);
     color: var(--text-secondary);
   }
 
   .cd-today {
-    font-size: 0.72rem;
+    font-size: 0.74rem;
     font-weight: 800;
     color: #34c759;
+    letter-spacing: var(--tracking-wide);
   }
 
   .cd-past {
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     color: var(--text-tertiary);
   }
 
   .round-bucket-section {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.55rem;
   }
 
   .bucket-heading {
@@ -496,7 +521,7 @@
     font-size: 0.76rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: var(--tracking-caps);
     color: var(--text-tertiary);
   }
 </style>

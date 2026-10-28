@@ -33,7 +33,7 @@
         <span class="sheet-eyebrow">CONFLICT ENGINE IN TEMPO REALE (RUST)</span>
         <h2>Analisi Collisioni & Buffer CFU ({conflicts.length})</h2>
       </div>
-      <button type="button" class="sheet-close-btn" onclick={() => onClose?.()}>✕</button>
+      <button type="button" class="sheet-close-btn pressable" onclick={() => onClose?.()}>✕</button>
     </header>
 
     <div class="sheet-body">
@@ -66,7 +66,7 @@
               <div class="cf-dates-actions">
                 <button
                   type="button"
-                  class="jump-btn"
+                  class="jump-btn pressable"
                   onclick={() => {
                     onSelectDate?.(cf.date);
                     onClose?.();
@@ -77,7 +77,7 @@
                 {#if cf.secondaryDate && cf.secondaryDate !== cf.date}
                   <button
                     type="button"
-                    class="jump-btn"
+                    class="jump-btn pressable"
                     onclick={() => {
                       if (cf.secondaryDate) onSelectDate?.(cf.secondaryDate);
                       onClose?.();
@@ -101,11 +101,13 @@
     inset: 0;
     z-index: 420;
     background: rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(16px) saturate(170%);
+    -webkit-backdrop-filter: blur(16px) saturate(170%);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 1.5rem;
+    animation: backdropFade 160ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .modal-sheet {
@@ -117,10 +119,11 @@
     backdrop-filter: blur(28px) saturate(195%);
     -webkit-backdrop-filter: blur(28px) saturate(195%);
     border: 0.5px solid var(--hairline-border-strong);
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--shadow-modal);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    animation: modalSheetEnter 260ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .sheet-header {
@@ -153,6 +156,19 @@
     background: var(--surface-pill);
     color: var(--text-secondary);
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), background 120ms ease, color 120ms ease;
+  }
+
+  .sheet-close-btn:hover {
+    background: var(--surface-card);
+    color: var(--text-primary);
+  }
+
+  .sheet-close-btn:active {
+    transform: scale(0.92);
   }
 
   .sheet-body {
@@ -253,5 +269,14 @@
     font-size: 0.7rem;
     font-weight: 600;
     cursor: pointer;
+    transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), background 120ms ease;
+  }
+
+  .jump-btn:hover {
+    background: var(--surface-pill);
+  }
+
+  .jump-btn:active {
+    transform: scale(0.97);
   }
 </style>

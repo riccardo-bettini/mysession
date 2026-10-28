@@ -214,15 +214,15 @@
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    min-height: 6.4rem;
-    padding: 0.42rem 0.48rem;
+    min-height: 6.6rem;
+    padding: 0.42rem 0.5rem;
     background: var(--calendar-cell-bg);
     border-right: 0.5px solid var(--hairline-border);
     border-bottom: 0.5px solid var(--hairline-border);
     cursor: pointer;
     overflow: hidden;
     user-select: none;
-    transition: background-color 120ms ease;
+    transition: background-color 110ms ease;
   }
 
   .calendar-day-cell.compact {
@@ -233,9 +233,14 @@
     background: var(--calendar-cell-hover);
   }
 
+  .calendar-day-cell:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--accent-primary);
+  }
+
   .calendar-day-cell.outside-month {
     background: var(--calendar-cell-outside);
-    opacity: 0.56;
+    opacity: 0.54;
   }
 
   .calendar-day-cell.is-today {
@@ -248,7 +253,7 @@
   }
 
   .calendar-day-cell.has-conflict {
-    box-shadow: inset 0 0 0 1px rgba(255, 69, 58, 0.55);
+    box-shadow: inset 0 0 0 1.5px rgba(255, 69, 58, 0.65);
   }
 
   .day-cell-header {
@@ -256,13 +261,13 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.25rem;
-    margin-bottom: 0.28rem;
+    margin-bottom: 0.3rem;
   }
 
   .day-number-group {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: 0.32rem;
     min-width: 0;
   }
 
@@ -270,8 +275,9 @@
     display: inline-flex;
     align-items: baseline;
     gap: 0.2rem;
-    font-size: 0.78rem;
+    font-size: 0.8rem;
     font-weight: 700;
+    letter-spacing: var(--tracking-normal);
     font-variant-numeric: tabular-nums;
     color: var(--text-primary);
     line-height: 1;
@@ -280,14 +286,16 @@
   .is-today .day-number-badge {
     background: var(--accent-primary);
     color: #ffffff;
-    padding: 0.18rem 0.42rem;
+    padding: 0.16rem 0.44rem;
     border-radius: var(--radius-pill);
+    box-shadow: 0 1px 3px rgba(10, 132, 255, 0.35);
   }
 
   .month-inline-tag {
     font-size: 0.62rem;
     font-weight: 600;
     opacity: 0.85;
+    letter-spacing: var(--tracking-normal);
   }
 
   .holiday-name-label {
@@ -296,20 +304,20 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 5.8rem;
+    max-width: 6rem;
   }
 
   .day-meta-indicators {
     display: inline-flex;
     align-items: center;
-    gap: 0.22rem;
+    gap: 0.25rem;
     flex-shrink: 0;
   }
 
   .conflict-cell-badge {
     width: 14px;
     height: 14px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--conflict-warning);
     color: #000;
     font-size: 0.62rem;
@@ -322,21 +330,23 @@
   .conflict-cell-badge.critical {
     background: var(--conflict-critical);
     color: #fff;
+    box-shadow: 0 0 6px rgba(255, 69, 58, 0.5);
   }
 
   .note-dot {
     width: 6px;
     height: 6px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--accent-primary);
   }
 
   .todo-counter-pill {
     font-size: 0.58rem;
     font-weight: 700;
-    padding: 0.06rem 0.3rem;
+    padding: 0.08rem 0.32rem;
     border-radius: var(--radius-pill);
     background: var(--surface-pill);
+    border: 0.5px solid var(--hairline-border);
     color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
   }
@@ -350,7 +360,7 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 0.2rem;
+    gap: 0.22rem;
     min-width: 0;
   }
 
@@ -358,16 +368,19 @@
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 0.28rem;
-    padding: 0.18rem 0.36rem;
-    border-radius: 0.36rem;
+    gap: 0.32rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: var(--radius-xs);
     border: 0.5px solid transparent;
-    font-size: 0.66rem;
+    box-shadow: var(--shadow-pill);
+    font-size: 0.68rem;
     font-weight: 700;
+    letter-spacing: var(--tracking-normal);
     text-align: left;
     cursor: pointer;
     overflow: hidden;
-    transition: transform 120ms var(--ease-out);
+    will-change: transform;
+    transition: transform 120ms var(--spring-press);
   }
 
   .exam-cell-pill:hover {
@@ -380,19 +393,19 @@
 
   .exam-color-bar {
     width: 3px;
-    height: 0.75rem;
-    border-radius: 999px;
+    height: 0.8rem;
+    border-radius: var(--radius-pill);
     flex-shrink: 0;
   }
 
   .exam-sigla {
     font-weight: 800;
-    letter-spacing: -0.01em;
+    letter-spacing: var(--tracking-wide);
     flex-shrink: 0;
   }
 
   .exam-round-tag {
-    font-size: 0.6rem;
+    font-size: 0.62rem;
     font-weight: 600;
     opacity: 0.9;
     white-space: nowrap;
@@ -402,17 +415,17 @@
 
   .exam-time {
     margin-left: auto;
-    font-size: 0.58rem;
-    opacity: 0.82;
+    font-size: 0.6rem;
+    opacity: 0.85;
     font-variant-numeric: tabular-nums;
   }
 
   .generic-event-chip {
     display: flex;
     align-items: center;
-    gap: 0.28rem;
-    padding: 0.1rem 0.25rem;
-    font-size: 0.62rem;
+    gap: 0.3rem;
+    padding: 0.12rem 0.28rem;
+    font-size: 0.63rem;
     color: var(--text-secondary);
     white-space: nowrap;
     overflow: hidden;
@@ -422,7 +435,7 @@
   .event-dot {
     width: 5px;
     height: 5px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     flex-shrink: 0;
   }
 
@@ -434,14 +447,14 @@
   .units-chip-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.18rem;
+    gap: 0.2rem;
     margin-top: 0.05rem;
   }
 
   .unit-mini-tag {
-    font-size: 0.56rem;
+    font-size: 0.58rem;
     font-weight: 700;
-    padding: 0.05rem 0.28rem;
+    padding: 0.06rem 0.3rem;
     border-radius: 0.25rem;
     background: var(--surface-pill);
     border: 0.5px solid var(--hairline-border);
@@ -450,11 +463,11 @@
 
   .unit-mini-tag.completed {
     text-decoration: line-through;
-    opacity: 0.6;
+    opacity: 0.55;
   }
 
   .unit-more {
-    font-size: 0.56rem;
+    font-size: 0.58rem;
     color: var(--text-tertiary);
   }
 
@@ -463,13 +476,13 @@
     left: 0;
     right: 0;
     bottom: 0;
-    height: 2px;
+    height: 2.5px;
     background: transparent;
   }
 
   .workload-fill {
     height: 100%;
     background: var(--accent-primary);
-    opacity: 0.55;
+    opacity: 0.6;
   }
 </style>
