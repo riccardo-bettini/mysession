@@ -5,6 +5,7 @@
     buildMonthGrid,
     getWeekdayHeaders,
     MESI_ITALIANI,
+    parseIsoDate,
     type DayAggregatedData
   } from "../../utils/calendar";
   import DayCell from "./DayCell.svelte";
@@ -17,6 +18,9 @@
     selectedDate?: string | null;
     selectedCourseId?: string | null;
     todayIso: string;
+    lockToSession?: boolean;
+    sessionStartDate?: string | null;
+    sessionEndDate?: string | null;
     onSelectDay?: (isoDate: string) => void;
     onSelectExam?: (exam: Exam, e: MouseEvent) => void;
     onStepMonth?: (delta: -1 | 1) => void;
@@ -30,6 +34,9 @@
     selectedDate = null,
     selectedCourseId = null,
     todayIso,
+    lockToSession = false,
+    sessionStartDate = null,
+    sessionEndDate = null,
     onSelectDay,
     onSelectExam,
     onStepMonth
@@ -44,6 +51,18 @@
   );
   let rowCount = $derived(Math.ceil(cells.length / 7));
   let monthTitle = $derived(`${MESI_ITALIANI[month - 1] ?? ""} ${year}`);
+
+  let canStepPrev = $derived.by(() => {
+    if (!lockToSession || !sessionStartDate) return true;
+    const s = parseIsoDate(sessionStartDate);
+    return year > s.year || (year === s.year && month > s.month);
+  });
+
+  let canStepNext = $derived.by(() => {
+    if (!lockToSession || !sessionEndDate) return true;
+    const e = parseIsoDate(sessionEndDate);
+    return year < e.year || (year === e.year && month < e.month);
+  });
 </script>
 
 <div class="single-month-view" aria-label="Vista Mensile {monthTitle}">
@@ -55,16 +74,20 @@
       <button
         type="button"
         class="step-btn pressable"
-        title="Mese precedente"
-        onclick={() => onStepMonth?.(-1)}
+        class:disabled={!canStepPrev}
+        disabled={!canStepPrev}
+        title={canStepPrev ? "Mese precedente" : "Limite inizio sessione (bloccato)"}
+        onclick={() => canStepPrev && onStepMonth?.(-1)}
       >
         ‹ Mese Prec.
       </button>
       <button
         type="button"
         class="step-btn pressable"
-        title="Mese successivo"
-        onclick={() => onStepMonth?.(1)}
+        class:disabled={!canStepNext}
+        disabled={!canStepNext}
+        title={canStepNext ? "Mese successivo" : "Limite fine sessione (bloccato)"}
+        onclick={() => canStepNext && onStepMonth?.(1)}
       >
         Mese Succ. ›
       </button>

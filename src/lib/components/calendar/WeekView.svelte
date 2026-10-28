@@ -17,6 +17,9 @@
     selectedDate?: string | null;
     selectedCourseId?: string | null;
     todayIso: string;
+    lockToSession?: boolean;
+    sessionStartDate?: string | null;
+    sessionEndDate?: string | null;
     onSelectDay?: (isoDate: string) => void;
     onSelectExam?: (exam: Exam, e: MouseEvent) => void;
     onStepWeek?: (deltaWeeks: -1 | 1) => void;
@@ -29,6 +32,9 @@
     selectedDate = null,
     selectedCourseId = null,
     todayIso,
+    lockToSession = false,
+    sessionStartDate = null,
+    sessionEndDate = null,
     onSelectDay,
     onSelectExam,
     onStepWeek
@@ -49,16 +55,40 @@
     const last = weekCells[weekCells.length - 1];
     return `${formatItalianDateShort(first.isoDate)} – ${formatItalianDateShort(last.isoDate)} ${last.year}`;
   });
+
+  let canStepPrev = $derived.by(() => {
+    if (!lockToSession || !sessionStartDate || weekCells.length === 0) return true;
+    return weekCells[0].isoDate > sessionStartDate;
+  });
+
+  let canStepNext = $derived.by(() => {
+    if (!lockToSession || !sessionEndDate || weekCells.length === 0) return true;
+    return weekCells[weekCells.length - 1].isoDate < sessionEndDate;
+  });
 </script>
 
 <div class="week-view-shell" aria-label="Vista Settimanale {weekRangeLabel}">
   <header class="week-top-bar">
     <h2 class="week-heading">Settimana · {weekRangeLabel}</h2>
     <div class="week-actions">
-      <button type="button" class="step-btn pressable" onclick={() => onStepWeek?.(-1)}>
+      <button
+        type="button"
+        class="step-btn pressable"
+        class:disabled={!canStepPrev}
+        disabled={!canStepPrev}
+        title={canStepPrev ? "Settimana precedente" : "Limite inizio sessione (bloccato)"}
+        onclick={() => canStepPrev && onStepWeek?.(-1)}
+      >
         ‹ Sett. Prec.
       </button>
-      <button type="button" class="step-btn pressable" onclick={() => onStepWeek?.(1)}>
+      <button
+        type="button"
+        class="step-btn pressable"
+        class:disabled={!canStepNext}
+        disabled={!canStepNext}
+        title={canStepNext ? "Settimana successiva" : "Limite fine sessione (bloccato)"}
+        onclick={() => canStepNext && onStepWeek?.(1)}
+      >
         Sett. Succ. ›
       </button>
     </div>

@@ -222,7 +222,54 @@
     handleJumpToDate(sessionStore.todayIso, false);
   }
 
+  function handleToggleSessionLock() {
+    const isLocked = sessionStore.toggleSessionLock();
+    if (isLocked) {
+      showToast("Blocco sessione attivo: calendario limitato al periodo di sessione");
+      if (sessionStore.activeSession?.startDate) {
+        handleJumpToDate(sessionStore.activeSession.startDate, false);
+      }
+    } else {
+      showToast("Scorrimento infinito sbloccato: puoi navigare liberamente in qualsiasi data");
+    }
+  }
+
   function handleNavigateStep(direction: -1 | 1) {
+    if (sessionStore.isSessionLocked && sessionStore.activeSession) {
+      const sStart = sessionStore.activeSession.startDate;
+      const sEnd = sessionStore.activeSession.endDate;
+      const pStart = parseIsoDate(sStart);
+      const pEnd = parseIsoDate(sEnd);
+
+      const view = themeStore.settings.defaultView;
+      if (view === "week") {
+        const nextWeek = addDaysIso(currentWeekAnchorIso, direction * 7);
+        if (direction < 0 && nextWeek < sStart) return;
+        if (direction > 0 && nextWeek > sEnd) return;
+        currentWeekAnchorIso = nextWeek;
+        selectedDate = currentWeekAnchorIso;
+      } else {
+        const next = addMonths(currentMonthYear.year, currentMonthYear.month, direction);
+        if (
+          direction < 0 &&
+          (next.year < pStart.year || (next.year === pStart.year && next.month < pStart.month))
+        ) {
+          return;
+        }
+        if (
+          direction > 0 &&
+          (next.year > pEnd.year || (next.year === pEnd.year && next.month > pEnd.month))
+        ) {
+          return;
+        }
+        currentMonthYear = next;
+        const targetIso = toIsoDate(next.year, next.month, 1);
+        scrollTargetIso = targetIso;
+        scrollRequestKey += 1;
+      }
+      return;
+    }
+
     const view = themeStore.settings.defaultView;
     if (view === "week") {
       currentWeekAnchorIso = addDaysIso(currentWeekAnchorIso, direction * 7);
@@ -267,6 +314,8 @@
     activeSession={sessionStore.activeSession}
     conflictCount={sessionStore.activeSnapshot?.conflicts.length ?? 0}
     {isVoiceListening}
+    isSessionLocked={sessionStore.isSessionLocked}
+    onToggleSessionLock={handleToggleSessionLock}
     onSelectSession={handleSelectSession}
     onNewSession={() => (sessionModalState = { open: true, editing: null })}
     onEditSession={() =>
@@ -317,6 +366,9 @@
             {selectedCourseId}
             todayIso={sessionStore.todayIso}
             anchorIso={sessionStore.activeSnapshot?.session.startDate ?? sessionStore.todayIso}
+            sessionStartDate={sessionStore.activeSession?.startDate ?? null}
+            sessionEndDate={sessionStore.activeSession?.endDate ?? null}
+            lockToSession={sessionStore.isSessionLocked}
             {scrollRequestKey}
             {scrollTargetIso}
             onSelectDay={handleSelectDay}
@@ -331,6 +383,9 @@
             {selectedDate}
             {selectedCourseId}
             todayIso={sessionStore.todayIso}
+            lockToSession={sessionStore.isSessionLocked}
+            sessionStartDate={sessionStore.activeSession?.startDate ?? null}
+            sessionEndDate={sessionStore.activeSession?.endDate ?? null}
             onSelectDay={handleSelectDay}
             onSelectExam={handleSelectExam}
             onStepMonth={handleNavigateStep}
@@ -343,6 +398,9 @@
             {selectedDate}
             {selectedCourseId}
             todayIso={sessionStore.todayIso}
+            lockToSession={sessionStore.isSessionLocked}
+            sessionStartDate={sessionStore.activeSession?.startDate ?? null}
+            sessionEndDate={sessionStore.activeSession?.endDate ?? null}
             onSelectDay={handleSelectDay}
             onSelectExam={handleSelectExam}
             onStepWeek={handleNavigateStep}

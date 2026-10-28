@@ -10,6 +10,7 @@
   import { themeStore } from "../../stores/theme.svelte";
   import type { Course, Exam } from "../../types/domain";
   import {
+    buildSessionVirtualMonthList,
     buildVirtualMonthList,
     parseIsoDate,
     type DayAggregatedData
@@ -23,6 +24,9 @@
     selectedCourseId?: string | null;
     todayIso: string;
     anchorIso?: string;
+    sessionStartDate?: string | null;
+    sessionEndDate?: string | null;
+    lockToSession?: boolean;
     scrollRequestKey?: number;
     scrollTargetIso?: string | null;
     onSelectDay?: (isoDate: string) => void;
@@ -37,6 +41,9 @@
     selectedCourseId = null,
     todayIso,
     anchorIso = todayIso,
+    sessionStartDate = null,
+    sessionEndDate = null,
+    lockToSession = false,
     scrollRequestKey = 0,
     scrollTargetIso = null,
     onSelectDay,
@@ -51,9 +58,12 @@
   let baseAnchor = $derived(parseIsoDate(anchorIso || todayIso));
   let startDayOfWeek = $derived(themeStore.settings.startDayOfWeek ?? 1);
 
-  let monthsList = $derived(
-    buildVirtualMonthList(baseAnchor.year, baseAnchor.month, 36, 60, startDayOfWeek)
-  );
+  let monthsList = $derived.by(() => {
+    if (lockToSession && sessionStartDate && sessionEndDate) {
+      return buildSessionVirtualMonthList(sessionStartDate, sessionEndDate, startDayOfWeek);
+    }
+    return buildVirtualMonthList(baseAnchor.year, baseAnchor.month, 60, 120, startDayOfWeek);
+  });
 
   let virtualizerInstance: Virtualizer<HTMLDivElement, HTMLElement> | null = null;
 
@@ -79,10 +89,15 @@
   }
 
   export function scrollToIsoDate(isoDate: string) {
-    if (!virtualizerInstance) return;
+    if (!virtualizerInstance || monthsList.length === 0) return;
     const { year, month } = parseIsoDate(isoDate);
     const key = `${year}-${String(month).padStart(2, "0")}`;
-    const idx = monthsList.findIndex((m) => m.key === key);
+    let idx = monthsList.findIndex((m) => m.key === key);
+    if (idx < 0) {
+      if (lockToSession && sessionStartDate && sessionEndDate) {
+        idx = isoDate < sessionStartDate ? 0 : monthsList.length - 1;
+      }
+    }
     if (idx >= 0) {
       virtualizerInstance.scrollToIndex(idx, { align: "start" });
       syncVirtualizerState();
@@ -94,6 +109,27 @@
     const target = scrollTargetIso;
     if (_req && target && virtualizerInstance) {
       scrollToIsoDate(target);
+    }
+  });
+
+  // Re-sincronizza il Virtualizer quando monthsList o lockToSession cambiano
+  $effect(() => {
+    const count = monthsList.length;
+    if (virtualizerInstance && scrollContainerEl) {
+      virtualizerInstance.setOptions({
+        count,
+        getScrollElement: () => scrollContainerEl,
+        estimateSize: (index) => estimateMonthHeight(index),
+        overscan: 2,
+        observeElementRect,
+        observeElementOffset,
+        scrollToFn: elementScroll,
+        onChange: () => {
+          syncVirtualizerState();
+        }
+      });
+      virtualizerInstance._willUpdate();
+      syncVirtualizerState();
     }
   });
 

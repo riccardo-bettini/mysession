@@ -17,12 +17,18 @@ import type {
   UpsertTodoInput,
   UserProfile
 } from "../types/domain";
+import { APP_VERSION } from "../constants/version";
 import { getTodayIso } from "../utils/calendar";
 import { themeStore } from "./theme.svelte";
 
 class SessionWorkspaceStore {
-  appVersion = $state<string>("1.0.11");
+  appVersion = $state<string>(APP_VERSION);
   dbPath = $state<string>("");
+  isSessionLocked = $state<boolean>(
+    typeof localStorage !== "undefined" && localStorage.getItem("mysession_lock_to_session") !== null
+      ? localStorage.getItem("mysession_lock_to_session") === "true"
+      : true
+  );
   profile = $state<UserProfile>({
     id: 1,
     studentName: "",
@@ -49,6 +55,14 @@ class SessionWorkspaceStore {
   courses = $derived<Course[]>(this.activeSnapshot?.courses ?? []);
   exams = $derived<Exam[]>(this.activeSnapshot?.exams ?? []);
   genericEvents = $derived<GenericEvent[]>(this.activeSnapshot?.genericEvents ?? []);
+
+  toggleSessionLock(force?: boolean): boolean {
+    this.isSessionLocked = force !== undefined ? force : !this.isSessionLocked;
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("mysession_lock_to_session", String(this.isSessionLocked));
+    }
+    return this.isSessionLocked;
+  }
 
   applyBootstrapPayload(payload: BootstrapPayload): void {
     this.appVersion = payload.appVersion;

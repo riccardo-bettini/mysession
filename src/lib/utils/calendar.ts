@@ -285,6 +285,42 @@ export function buildVirtualMonthList(
   return list;
 }
 
+/**
+ * Costruisce la lista virtualizzata vincolata rigorosamente al periodo della sessione attiva
+ * (dal mese d'inizio al mese di fine), impedendo lo scorrimento al di fuori dei limiti stabiliti.
+ */
+export function buildSessionVirtualMonthList(
+  startDateIso: string,
+  endDateIso: string,
+  startDayOfWeek = 1
+): VirtualMonthItem[] {
+  const start = parseIsoDate(startDateIso);
+  const end = parseIsoDate(endDateIso);
+
+  const totalMonths = (end.year - start.year) * 12 + (end.month - start.month);
+  const count = Math.max(1, totalMonths + 1);
+
+  const list: VirtualMonthItem[] = [];
+  for (let i = 0; i < count; i++) {
+    const { year, month } = addMonths(start.year, start.month, i);
+    const key = `${year}-${String(month).padStart(2, "0")}`;
+    const mName = MESI_ITALIANI[month - 1] ?? "";
+    const mShort = MESI_ITALIANI_SHORT[month - 1] ?? "";
+    const rowCount = getMonthRowCount(year, month, startDayOfWeek);
+
+    list.push({
+      index: i,
+      key,
+      year,
+      month,
+      title: `${mName} ${year}`,
+      shortTitle: `${mShort} '${String(year).slice(-2)}`,
+      rowCount
+    });
+  }
+  return list;
+}
+
 export function indexSnapshotByDate(
   snapshot: SessionSnapshot | null,
   holidays: HolidayInfo[]

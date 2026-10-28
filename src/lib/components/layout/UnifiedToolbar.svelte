@@ -14,10 +14,12 @@
     activeSession?: AcademicSession | null;
     conflictCount?: number;
     isVoiceListening?: boolean;
+    isSessionLocked?: boolean;
     onSelectSession?: (sessionId: string) => void;
     onNewSession?: () => void;
     onEditSession?: () => void;
     onOpenConflicts?: () => void;
+    onToggleSessionLock?: () => void;
     onNavigateToday?: () => void;
     onNavigateStep?: (direction: -1 | 1) => void;
     onOpenCommandPalette?: (startWithVoice?: boolean) => void;
@@ -28,10 +30,12 @@
     sessions = [],
     activeSession = null,
     conflictCount = 0,
+    isSessionLocked = false,
     onSelectSession,
     onNewSession,
     onEditSession,
     onOpenConflicts,
+    onToggleSessionLock,
     onNavigateToday,
     onNavigateStep,
     onOpenSettings
@@ -300,6 +304,52 @@
         <span>{conflictCount} {conflictCount === 1 ? "Conflitto" : "Conflitti"}</span>
       </button>
     {/if}
+
+    <!-- Toggle Blocco Periodo Sessione / Scorrimento Infinito con Lucchetto Animato -->
+    <button
+      type="button"
+      class="session-lock-toggle pressable"
+      class:is-locked={isSessionLocked}
+      class:has-no-session={!activeSession}
+      disabled={!activeSession}
+      aria-label={isSessionLocked ? "Blocco periodo sessione attivo" : "Scorrimento infinito sbloccato"}
+      title={!activeSession
+        ? "Nessuna sessione attiva"
+        : isSessionLocked
+          ? "Blocco sessione ATTIVO: visualizzazione limitata al periodo della sessione. Clicca per sbloccare lo scorrimento infinito."
+          : "Blocco sessione DISATTIVO: puoi scorrere all'infinito nel calendario. Clicca per bloccare il calendario sul periodo della sessione."}
+      onclick={() => onToggleSessionLock?.()}
+    >
+      <div class="lock-icon-container" aria-hidden="true">
+        <svg class="lock-svg" viewBox="0 0 16 16" fill="none">
+          <!-- Archetto lucchetto animato con fisica a molla -->
+          <path
+            class="lock-shackle"
+            d="M4.75 6.5V4.25C4.75 2.45 6.2 1.25 8 1.25C9.8 1.25 11.25 2.45 11.25 4.25V6.5"
+            stroke="currentColor"
+            stroke-width="1.45"
+            stroke-linecap="round"
+          />
+          <!-- Corpo lucchetto stile squircle Apple HIG -->
+          <rect
+            class="lock-body"
+            x="3"
+            y="6.25"
+            width="10"
+            height="8"
+            rx="2.2"
+            stroke="currentColor"
+            stroke-width="1.35"
+          />
+          <!-- Dettaglio serratura centrale -->
+          <circle cx="8" cy="9.6" r="0.9" fill="currentColor" />
+          <path d="M8 10.5V11.8" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" />
+        </svg>
+      </div>
+      <span class="lock-status-badge">
+        {isSessionLocked ? "Sessione Bloccata" : "Scorrimento Libero"}
+      </span>
+    </button>
 
     <!-- Segmented Control 4 Viste Ortogonali -->
     <div class="view-segmented-control" role="tablist" aria-label="Vista Calendario">
@@ -796,6 +846,110 @@
     height: 6px;
     border-radius: var(--radius-pill);
     background: #ef4444;
+  }
+
+  /* ==========================================================================
+     Session Lock Toggle (Lucchetto Animato Apple HIG & Transizioni a Molla)
+     ========================================================================== */
+  .session-lock-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.42rem;
+    height: 1.95rem;
+    padding: 0 0.65rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface-glass);
+    border: 0.5px solid var(--hairline-border);
+    box-shadow: var(--shadow-sm);
+    color: var(--text-secondary);
+    font-size: 0.73rem;
+    font-weight: 500;
+    letter-spacing: var(--tracking-normal);
+    cursor: pointer;
+    user-select: none;
+    flex-shrink: 0;
+    transition: background 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.2s ease,
+                color 0.2s ease,
+                box-shadow 0.2s ease,
+                transform 0.12s ease;
+  }
+
+  .session-lock-toggle:hover:not(:disabled) {
+    background: var(--hover-glass);
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.22);
+  }
+
+  .session-lock-toggle:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .session-lock-toggle:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .lock-icon-container {
+    position: relative;
+    width: 15px;
+    height: 15px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .lock-svg {
+    width: 15px;
+    height: 15px;
+    overflow: visible;
+  }
+
+  .lock-shackle {
+    transform-origin: 4.75px 6.5px;
+    transition: transform 0.34s cubic-bezier(0.34, 1.56, 0.64, 1),
+                stroke 0.2s ease;
+  }
+
+  .lock-body {
+    transition: fill 0.2s ease, fill-opacity 0.2s ease, stroke 0.2s ease;
+  }
+
+  /* STATO ATTIVO: Lucchetto chiuso (Blocco periodo sessione) */
+  .session-lock-toggle.is-locked {
+    background: rgba(0, 122, 255, 0.12);
+    border-color: rgba(0, 122, 255, 0.38);
+    color: var(--accent, #007AFF);
+    box-shadow: 0 1px 4px rgba(0, 122, 255, 0.12);
+  }
+
+  .session-lock-toggle.is-locked:hover:not(:disabled) {
+    background: rgba(0, 122, 255, 0.18);
+    border-color: rgba(0, 122, 255, 0.5);
+  }
+
+  .session-lock-toggle.is-locked .lock-shackle {
+    transform: translateY(0) rotate(0deg);
+  }
+
+  .session-lock-toggle.is-locked .lock-body {
+    fill: currentColor;
+    fill-opacity: 0.12;
+  }
+
+  /* STATO DISATTIVO: Lucchetto aperto (Scorrimento infinito libero) */
+  .session-lock-toggle:not(.is-locked) .lock-shackle {
+    transform: translateY(-2.4px) rotate(-35deg);
+  }
+
+  @media (max-width: 1120px) {
+    .lock-status-badge {
+      display: none;
+    }
+    .session-lock-toggle {
+      padding: 0 0.45rem;
+    }
   }
 
   .view-segmented-control {
