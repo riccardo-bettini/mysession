@@ -286,55 +286,8 @@
     </div>
   </div>
 
-  <!-- SEZIONE CENTRALE: Spotlight / Raycast AI Command Pill (Ctrl+K / Spazio) -->
-  <div class="toolbar-center" data-tauri-drag-region>
-    <div class="command-pill-shell" class:listening={isVoiceListening}>
-      <button
-        type="button"
-        class="command-pill-trigger"
-        onclick={() => onOpenCommandPalette?.(false)}
-        title="Apri la Command Bar AI (Ctrl+K oppure Spazio)"
-      >
-        <span class="ai-sparkle-icon" aria-hidden="true">
-          <svg viewBox="0 0 16 16" fill="none">
-            <path
-              d="M8 1.75L9.45 6.05L13.75 7.5L9.45 8.95L8 13.25L6.55 8.95L2.25 7.5L6.55 6.05L8 1.75Z"
-              stroke="currentColor"
-              stroke-width="1.35"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </span>
-        <span class="command-placeholder">
-          {isVoiceListening ? "In ascolto vocale… parla ora" : "Chiedi all'AI, aggiungi appelli o cerca…"}
-        </span>
-        <span class="shortcut-badges" aria-hidden="true">
-          <kbd>Ctrl+K</kbd>
-          <kbd>Spazio</kbd>
-        </span>
-      </button>
-
-      <button
-        type="button"
-        class="voice-trigger-btn pressable"
-        class:active={isVoiceListening}
-        title="Dettatura Vocale Assistente AI"
-        aria-label="Attiva dettatura vocale"
-        onclick={() => onOpenCommandPalette?.(true)}
-      >
-        {#if isVoiceListening}
-          <span class="voice-waveform" aria-hidden="true">
-            <span></span><span></span><span></span><span></span>
-          </span>
-        {:else}
-          <svg viewBox="0 0 16 16" fill="none">
-            <rect x="5.75" y="2.25" width="4.5" height="7.5" rx="2.25" stroke="currentColor" stroke-width="1.35" />
-            <path d="M3.5 7.75C3.5 10.2353 5.51472 12.25 8 12.25C10.4853 12.25 12.5 10.2353 12.5 7.75M8 12.25V14.25" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" />
-          </svg>
-        {/if}
-      </button>
-    </div>
-  </div>
+  <!-- SEZIONE CENTRALE: Area di trascinamento libera della finestra desktop nativa -->
+  <div class="toolbar-center" data-tauri-drag-region></div>
 
   <!-- SEZIONE DESTRA: Segmented Control Viste + Controllo Aspetto/Zoom + Controlli Windows 11 (se selezionati) -->
   <div class="toolbar-right" data-tauri-drag-region>
@@ -554,8 +507,8 @@
   .unified-toolbar {
     position: relative;
     z-index: 100;
-    display: grid;
-    grid-template-columns: minmax(260px, 1fr) minmax(280px, 460px) minmax(280px, 1fr);
+    display: flex;
+    justify-content: space-between;
     align-items: center;
     gap: 0.75rem;
     height: 3.25rem;
@@ -824,163 +777,7 @@
     transform: scale(0.96);
   }
 
-  /* ==========================================================================
-     3. Spotlight / Raycast AI Command Pill (Center)
-     ========================================================================== */
-  .command-pill-shell {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    max-width: 28rem;
-    height: 2.15rem;
-    border-radius: var(--radius-pill);
-    background: var(--command-pill-bg);
-    border: 0.5px solid var(--hairline-border-strong);
-    box-shadow:
-      0 2px 10px rgba(0, 0, 0, 0.08),
-      inset 0 0.5px 0 rgba(255, 255, 255, 0.16);
-    padding: 0 0.35rem 0 0.75rem;
-    transition:
-      border-color 160ms ease,
-      box-shadow 160ms ease,
-      background-color 160ms ease;
-  }
-
-  .command-pill-shell:hover {
-    border-color: var(--accent-primary);
-    background: var(--surface-pill-hover);
-    box-shadow:
-      0 4px 16px rgba(0, 0, 0, 0.12),
-      inset 0 0.5px 0 rgba(255, 255, 255, 0.22);
-  }
-
-  .command-pill-shell.listening {
-    border-color: #38bdf8;
-    box-shadow:
-      0 0 0 3px rgba(56, 189, 248, 0.25),
-      0 4px 16px rgba(56, 189, 248, 0.2);
-  }
-
-  .command-pill-trigger {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    height: 100%;
-    border: none;
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: 0.78rem;
-    text-align: left;
-    cursor: pointer;
-    padding: 0;
-    min-width: 0;
-  }
-
-  .ai-sparkle-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--accent-primary);
-    flex-shrink: 0;
-  }
-
-  .ai-sparkle-icon svg {
-    width: 0.95rem;
-    height: 0.95rem;
-  }
-
-  .command-placeholder {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    letter-spacing: var(--tracking-normal);
-    color: var(--text-secondary);
-  }
-
-  .shortcut-badges {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    flex-shrink: 0;
-  }
-
-  .shortcut-badges kbd {
-    font-family: var(--font-sans);
-    font-size: 0.65rem;
-    font-weight: 600;
-    padding: 0.14rem 0.42rem;
-    border-radius: var(--radius-xs);
-    background: var(--kbd-bg);
-    border: 0.5px solid var(--hairline-border);
-    color: var(--text-tertiary);
-    box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.05);
-  }
-
-  .voice-trigger-btn {
-    width: 1.65rem;
-    height: 1.65rem;
-    margin-left: 0.3rem;
-    border-radius: var(--radius-pill);
-    border: none;
-    background: var(--surface-pill);
-    color: var(--text-secondary);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-
-  .voice-trigger-btn:hover,
-  .voice-trigger-btn.active {
-    background: var(--accent-primary);
-    color: #ffffff;
-  }
-
-  .voice-trigger-btn:active {
-    transform: scale(0.92);
-  }
-
-  .voice-trigger-btn svg {
-    width: 0.85rem;
-    height: 0.85rem;
-  }
-
-  .voice-waveform {
-    display: inline-flex;
-    align-items: center;
-    gap: 1.5px;
-    height: 10px;
-  }
-
-  .voice-waveform span {
-    width: 2px;
-    height: 8px;
-    border-radius: 1px;
-    background: currentColor;
-    animation: wavePulse 700ms ease-in-out infinite alternate;
-  }
-
-  .voice-waveform span:nth-child(2) {
-    animation-delay: 120ms;
-  }
-  .voice-waveform span:nth-child(3) {
-    animation-delay: 240ms;
-  }
-  .voice-waveform span:nth-child(4) {
-    animation-delay: 360ms;
-  }
-
-  @keyframes wavePulse {
-    from {
-      transform: scaleY(0.35);
-    }
-    to {
-      transform: scaleY(1.15);
-    }
-  }
+  
 
   /* ==========================================================================
      4. Right Controls: Conflict Badge, Segmented Views, Appearance Popover, Win11 Controls

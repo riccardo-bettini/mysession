@@ -466,6 +466,66 @@
     />
   {/if}
 
+    <!-- Barra di Testo AI Fluttuante in Basso sopra la Schermata (Apple HIG Floating Island) -->
+  {#if !commandPaletteState.open}
+    <aside class="bottom-floating-ai-dock" aria-label="Assistente AI fluttuante">
+      <div
+        class="floating-ai-pill pressable"
+        class:listening={isVoiceListening}
+        role="search"
+      >
+        <button
+          type="button"
+          class="ai-pill-main-action"
+          onclick={() => (commandPaletteState = { open: true, startWithVoice: false })}
+          title="Chiedi all'Assistente AI (Ctrl+K oppure Spazio)"
+        >
+          <span class="ai-sparkle-pill" aria-hidden="true">
+            <svg viewBox="0 0 16 16" fill="none">
+              <path
+                d="M8 1.75L9.45 6.05L13.75 7.5L9.45 8.95L8 13.25L6.55 8.95L2.25 7.5L6.55 6.05L8 1.75Z"
+                stroke="currentColor"
+                stroke-width="1.35"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </span>
+          <span class="ai-pill-text">
+            {isVoiceListening
+              ? "In ascolto vocale… parla ora"
+              : "Chiedi all'AI, aggiungi appelli o cerca comandi…"}
+          </span>
+        </button>
+
+        <div class="ai-pill-controls">
+          <button
+            type="button"
+            class="ai-mic-btn pressable"
+            class:active={isVoiceListening}
+            title="Dettatura vocale con AI"
+            aria-label="Avvia dettatura vocale"
+            onclick={() => (commandPaletteState = { open: true, startWithVoice: true })}
+          >
+            {#if isVoiceListening}
+              <span class="voice-wave-mini">
+                <span></span><span></span><span></span>
+              </span>
+            {:else}
+              <svg viewBox="0 0 16 16" fill="none">
+                <rect x="5.75" y="2.25" width="4.5" height="7.5" rx="2.25" stroke="currentColor" stroke-width="1.35" />
+                <path d="M3.5 7.75C3.5 10.2353 5.51472 12.25 8 12.25C10.4853 12.25 12.5 10.2353 12.5 7.75M8 12.25V14.25" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" />
+              </svg>
+            {/if}
+          </button>
+          <div class="ai-kbd-pill" aria-hidden="true">
+            <kbd>Ctrl+K</kbd>
+            <kbd>Spazio</kbd>
+          </div>
+        </div>
+      </div>
+    </aside>
+  {/if}
+
   {#if toastMessage}
     <div class="floating-toast" role="status">
       {toastMessage}
@@ -511,9 +571,219 @@
     overflow: hidden;
   }
 
+    /* Barra di Testo AI Fluttuante in Basso sopra la Schermata */
+  .bottom-floating-ai-dock {
+    position: fixed;
+    bottom: 1.35rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 120;
+    width: min(580px, calc(100vw - 3rem));
+    display: flex;
+    justify-content: center;
+    pointer-events: auto;
+    animation: floatingAiEnter 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes floatingAiEnter {
+    from {
+      opacity: 0;
+      transform: translate(-50%, 14px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, 0) scale(1);
+    }
+  }
+
+  .floating-ai-pill {
+    width: 100%;
+    height: 2.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0 0.5rem 0 0.85rem;
+    border-radius: var(--radius-pill);
+    background: var(--popover-bg);
+    backdrop-filter: blur(28px) saturate(190%);
+    -webkit-backdrop-filter: blur(28px) saturate(190%);
+    border: 0.5px solid var(--hairline-border-strong);
+    box-shadow:
+      0 4px 16px rgba(0, 0, 0, 0.12),
+      0 16px 36px rgba(0, 0, 0, 0.22),
+      inset 0 0.5px 0 rgba(255, 255, 255, 0.18);
+    color: var(--text-primary);
+    user-select: none;
+    transition:
+      border-color 160ms ease,
+      box-shadow 160ms ease,
+      background-color 160ms ease,
+      transform 120ms var(--spring-press);
+  }
+
+  .ai-pill-main-action {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    height: 100%;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    padding: 0;
+    min-width: 0;
+    user-select: none;
+    transition:
+      border-color 160ms ease,
+      box-shadow 160ms ease,
+      background-color 160ms ease,
+      transform 120ms var(--spring-press);
+  }
+
+  .floating-ai-pill:hover {
+    border-color: var(--accent-primary);
+    box-shadow:
+      0 6px 20px rgba(0, 0, 0, 0.16),
+      0 20px 42px rgba(0, 0, 0, 0.26),
+      0 0 0 2px var(--accent-soft);
+  }
+
+  .floating-ai-pill:active {
+    transform: scale(0.98);
+  }
+
+  .floating-ai-pill.listening {
+    border-color: #38bdf8;
+    box-shadow:
+      0 0 0 3px rgba(56, 189, 248, 0.28),
+      0 8px 24px rgba(56, 189, 248, 0.25);
+  }
+
+  .ai-sparkle-pill {
+    width: 26px;
+    height: 26px;
+    border-radius: var(--radius-pill);
+    background: var(--accent-soft);
+    color: var(--accent-primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .ai-sparkle-pill svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .ai-pill-text {
+    flex: 1;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: -0.01em;
+  }
+
+  .floating-ai-pill:hover .ai-pill-text {
+    color: var(--text-primary);
+  }
+
+  .ai-pill-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-shrink: 0;
+  }
+
+  .ai-mic-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-pill);
+    border: 0.5px solid var(--hairline-border);
+    background: var(--surface-pill);
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition:
+      transform 120ms var(--spring-press),
+      background-color 140ms ease,
+      color 140ms ease;
+  }
+
+  .ai-mic-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .ai-mic-btn:hover {
+    background: var(--surface-pill-hover);
+    color: var(--text-primary);
+  }
+
+  .ai-mic-btn:active {
+    transform: scale(0.92);
+  }
+
+  .ai-mic-btn.active {
+    background: rgba(239, 68, 68, 0.16);
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #ef4444;
+  }
+
+  .voice-wave-mini {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 14px;
+  }
+
+  .voice-wave-mini span {
+    width: 2px;
+    height: 100%;
+    border-radius: var(--radius-pill);
+    background: #ef4444;
+    animation: soundWave 0.7s infinite ease-in-out alternate;
+  }
+
+  .voice-wave-mini span:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  .voice-wave-mini span:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
+  @keyframes soundWave {
+    0% { transform: scaleY(0.3); }
+    100% { transform: scaleY(1); }
+  }
+
+  .ai-kbd-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .ai-kbd-pill kbd {
+    padding: 0.15rem 0.4rem;
+    border-radius: 5px;
+    background: var(--surface-pill);
+    border: 0.5px solid var(--hairline-border);
+    font-family: var(--font-sans);
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+  }
+
   .floating-toast {
     position: fixed;
-    bottom: 1.25rem;
+    bottom: 4.85rem;
     left: 50%;
     transform: translateX(-50%);
     padding: 0.55rem 1.15rem;

@@ -415,14 +415,14 @@
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.42);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
     display: flex;
-    align-items: flex-start;
+    align-items: flex-end;
     justify-content: center;
-    padding: 4.5rem 1.25rem 1.5rem;
+    padding: 1.25rem 1.25rem 1.35rem;
     z-index: 380;
-    animation: backdropFade 120ms var(--ease-out);
+    animation: backdropFade 140ms var(--ease-out);
   }
 
   @keyframes backdropFade {
@@ -447,14 +447,14 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    transform-origin: center top;
-    animation: commandHudEnter 160ms var(--spring-snappy);
+    transform-origin: center bottom;
+    animation: commandHudEnterBottom 220ms var(--spring-snappy);
   }
 
-  @keyframes commandHudEnter {
+  @keyframes commandHudEnterBottom {
     from {
       opacity: 0;
-      transform: scale(0.97) translateY(-8px);
+      transform: scale(0.97) translateY(18px);
     }
     to {
       opacity: 1;
