@@ -461,27 +461,34 @@
 
 <style>
   .day-inspector-drawer {
-    width: 22.5rem;
-    height: 100%;
+    position: fixed;
+    top: 3.8rem;
+    right: 1.25rem;
+    bottom: 1.25rem;
+    width: min(410px, calc(100vw - 2.5rem));
+    height: auto;
+    max-height: calc(100vh - 5.05rem);
     display: flex;
     flex-direction: column;
     background: var(--popover-bg);
-    backdrop-filter: blur(32px) saturate(200%);
-    -webkit-backdrop-filter: blur(32px) saturate(200%);
-    border-left: 0.5px solid var(--hairline-border-strong);
-    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
-    flex-shrink: 0;
-    animation: drawerSlideIn 240ms var(--ease-drawer);
+    backdrop-filter: blur(36px) saturate(200%);
+    -webkit-backdrop-filter: blur(36px) saturate(200%);
+    border: 0.5px solid var(--hairline-border-strong);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 16px 44px -6px rgba(0, 0, 0, 0.36), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+    z-index: 125;
+    overflow: hidden;
+    animation: floatingDrawerEnter 240ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  @keyframes drawerSlideIn {
+  @keyframes floatingDrawerEnter {
     from {
       opacity: 0;
-      transform: translateX(20px);
+      transform: translateX(24px) scale(0.97);
     }
     to {
       opacity: 1;
-      transform: translateX(0);
+      transform: translateX(0) scale(1);
     }
   }
 

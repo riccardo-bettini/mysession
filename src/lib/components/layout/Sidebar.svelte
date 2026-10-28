@@ -295,6 +295,50 @@
     </div>
   {/if}
 
+  <!-- Sezione Scorciatoie da Tastiera per la Navigazione -->
+  {#if !isCompact}
+    <div class="sidebar-shortcuts-card">
+      <div class="shortcuts-header">
+        <span class="shortcuts-title">SCORCIATOIE DA TASTIERA</span>
+      </div>
+      <div class="shortcuts-grid">
+        <div class="shortcut-item">
+          <kbd class="shortcut-kbd">T</kbd>
+          <span class="shortcut-label">Salta ad Oggi</span>
+        </div>
+        <div class="shortcut-item">
+          <div class="kbd-combo">
+            <kbd class="shortcut-kbd">←</kbd>
+            <kbd class="shortcut-kbd">→</kbd>
+          </div>
+          <span class="shortcut-label">Naviga Periodo</span>
+        </div>
+        <div class="shortcut-item">
+          <div class="kbd-combo">
+            <kbd class="shortcut-kbd">Spazio</kbd>
+            <span class="kbd-sep">/</span>
+            <kbd class="shortcut-kbd">Ctrl+K</kbd>
+          </div>
+          <span class="shortcut-label">Command Bar & AI</span>
+        </div>
+        <div class="shortcut-item">
+          <kbd class="shortcut-kbd">Esc</kbd>
+          <span class="shortcut-label">Chiudi Pannelli</span>
+        </div>
+      </div>
+    </div>
+  {:else}
+    <div
+      class="compact-shortcuts-btn"
+      title="Scorciatoie Tastiera:&#10;• T: Salta ad Oggi&#10;• ← / →: Naviga Periodo&#10;• Spazio / Ctrl+K: Command Bar&#10;• Esc: Chiudi"
+    >
+      <svg viewBox="0 0 16 16" fill="none" class="shortcut-icon">
+        <rect x="2" y="3.5" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.25" />
+        <path d="M4.5 6.5H5.5M7.5 6.5H8.5M10.5 6.5H11.5M4.5 9H11.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+      </svg>
+    </div>
+  {/if}
+
   <!-- Footer Autore e Versione in basso alla barra laterale sinistra -->
   <div class="sidebar-footer-meta">
     {#if !isCompact}
@@ -781,10 +825,100 @@
     cursor: pointer;
   }
 
+  /* Sezione Scorciatoie da Tastiera per la Navigazione */
+  .sidebar-shortcuts-card {
+    margin-top: auto;
+    padding: 0.55rem 0.65rem;
+    border-radius: var(--radius-md);
+    background: rgba(128, 128, 128, 0.05);
+    border: 0.5px solid var(--hairline-border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    flex-shrink: 0;
+  }
+
+  .shortcuts-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .shortcuts-title {
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+  }
+
+  .shortcuts-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.28rem;
+  }
+
+  .shortcut-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+  }
+
+  .shortcut-label {
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .kbd-combo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+  }
+
+  .kbd-sep {
+    font-size: 0.62rem;
+    color: var(--text-tertiary);
+  }
+
+  .shortcut-kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.1rem 0.34rem;
+    font-size: 0.62rem;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: var(--text-primary);
+    background: var(--surface-pill, rgba(128, 128, 128, 0.12));
+    border: 0.5px solid var(--hairline-border-strong);
+    border-radius: var(--radius-xs);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  }
+
+  .compact-shortcuts-btn {
+    width: 2.2rem;
+    height: 2.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    background: rgba(128, 128, 128, 0.06);
+    border: 0.5px solid var(--hairline-border);
+    margin-top: auto;
+    cursor: help;
+  }
+
+  .shortcut-icon {
+    width: 1.1rem;
+    height: 1.1rem;
+  }
+
   /* Footer Autore & Versione in basso */
   .sidebar-footer-meta {
-    margin-top: auto;
-    padding-top: 0.55rem;
+    margin-top: 0;
+    padding-top: 0.45rem;
     border-top: 0.5px solid var(--hairline-border);
     display: flex;
     flex-direction: column;

@@ -6,7 +6,7 @@
     Virtualizer,
     type VirtualItem
   } from "@tanstack/virtual-core";
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { themeStore } from "../../stores/theme.svelte";
   import type { Course, Exam } from "../../types/domain";
   import {
@@ -131,17 +131,20 @@
     if (idx >= 0) {
       const targetOffset = getEstimatedOffsetForIndex(idx);
       scrollContainerEl.scrollTo({ top: targetOffset, behavior: "smooth" });
-      (virtualizerInstance as any).scrollOffset = targetOffset;
       clearVirtualizerScrollLock();
-      syncVirtualizerState();
     }
   }
 
+  let lastHandledScrollKey = 0;
+
   $effect(() => {
-    const _req = scrollRequestKey;
+    const req = scrollRequestKey;
     const target = scrollTargetIso;
-    if (_req && target && virtualizerInstance) {
-      scrollToIsoDate(target);
+    if (req > 0 && req !== lastHandledScrollKey && target) {
+      lastHandledScrollKey = req;
+      untrack(() => {
+        scrollToIsoDate(target);
+      });
     }
   });
 
@@ -152,35 +155,36 @@
     const lockChanged = currentLock !== prevLockToSession;
     prevLockToSession = currentLock;
 
-    if (virtualizerInstance && scrollContainerEl) {
-      virtualizerInstance.setOptions({
-        count,
-        getScrollElement: () => scrollContainerEl,
-        estimateSize: (index) => estimateMonthHeight(index),
-        getItemKey: (index) => monthsList[index]?.key ?? index,
-        overscan: 4,
-        useAnimationFrameWithResizeObserver: true,
-        observeElementRect,
-        observeElementOffset,
-        scrollToFn: elementScroll,
-        onChange: () => {
-          syncVirtualizerState();
+    untrack(() => {
+      if (virtualizerInstance && scrollContainerEl) {
+        virtualizerInstance.setOptions({
+          count,
+          getScrollElement: () => scrollContainerEl,
+          estimateSize: (index) => estimateMonthHeight(index),
+          getItemKey: (index) => monthsList[index]?.key ?? index,
+          overscan: 4,
+          useAnimationFrameWithResizeObserver: true,
+          observeElementRect,
+          observeElementOffset,
+          scrollToFn: elementScroll,
+          onChange: () => {
+            syncVirtualizerState();
+          }
+        });
+        virtualizerInstance._willUpdate();
+
+        if (lockChanged) {
+          // Mantiene la vista sul mese attualmente visibile all'utente, senza forzare blocchi temporali
+          let targetIdx = monthsList.findIndex((m) => m.key === currentVisibleMonthKey);
+          if (targetIdx < 0) targetIdx = 0;
+          const targetOffset = getEstimatedOffsetForIndex(targetIdx);
+          scrollContainerEl.scrollTop = targetOffset;
+          clearVirtualizerScrollLock();
         }
-      });
-      virtualizerInstance._willUpdate();
 
-      if (lockChanged) {
-        // Mantiene la vista sul mese attualmente visibile all'utente, senza forzare blocchi temporali
-        let targetIdx = monthsList.findIndex((m) => m.key === currentVisibleMonthKey);
-        if (targetIdx < 0) targetIdx = 0;
-        const targetOffset = getEstimatedOffsetForIndex(targetIdx);
-        scrollContainerEl.scrollTop = targetOffset;
-        (virtualizerInstance as any).scrollOffset = targetOffset;
-        clearVirtualizerScrollLock();
+        syncVirtualizerState();
       }
-
-      syncVirtualizerState();
-    }
+    });
   });
 
   onMount(() => {

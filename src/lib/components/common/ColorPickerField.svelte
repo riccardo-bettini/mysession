@@ -117,8 +117,8 @@
     display: flex;
     flex-direction: column;
     gap: 0.55rem;
-    padding: 0.65rem 0.75rem;
-    border-radius: var(--radius-sm);
+    padding: 0.85rem 0.95rem;
+    border-radius: var(--radius-md);
     background: var(--surface-card);
     border: 0.5px solid var(--hairline-border);
   }
@@ -168,13 +168,14 @@
 
   .palette-swatches {
     display: grid;
-    grid-template-columns: repeat(12, 1fr);
+    grid-template-columns: repeat(12, minmax(0, 1fr));
     gap: 0.32rem;
   }
 
   .swatch-btn {
     aspect-ratio: 1;
     width: 100%;
+    min-width: 0;
     border-radius: 999px;
     border: 1.5px solid rgba(255, 255, 255, 0.18);
     display: inline-flex;
