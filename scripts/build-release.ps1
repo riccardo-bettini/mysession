@@ -144,8 +144,12 @@ if (Test-Path $exeBin) {
 # Copia di WebView2Loader.dll direttamente in release/ per consentire l'esecuzione standalone immediata
 if (Test-Path $dllBin) {
     $dllDest = Join-Path $releaseOutDir 'WebView2Loader.dll'
-    Copy-Item -Path $dllBin -Destination $dllDest -Force
-    Write-Host '  -> Inclusa libreria WebView2Loader.dll in release/ per esecuzione standalone diretta.' -ForegroundColor Green
+    try {
+        Copy-Item -Path $dllBin -Destination $dllDest -Force -ErrorAction Stop
+        Write-Host '  -> Inclusa libreria WebView2Loader.dll in release/ per esecuzione standalone diretta.' -ForegroundColor Green
+    } catch {
+        Write-Host '  -> WebView2Loader.dll già presente e attualmente in uso, mantenuta versione esistente.' -ForegroundColor Yellow
+    }
 }
 
 # Creazione del pacchetto portatile Standalone Portable (.zip) con binario + DLL
