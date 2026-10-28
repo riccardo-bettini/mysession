@@ -1,4 +1,4 @@
-export const APP_VERSION = "1.0.16";
-export const APP_SEMVER = "1.0.14";
+export const APP_VERSION = "1.0.18";
+export const APP_SEMVER = "1.0.18";
 export const APP_AUTHOR = "Riccardo Bettini";
 export const APP_IDENTIFIER = "com.mysession.app";

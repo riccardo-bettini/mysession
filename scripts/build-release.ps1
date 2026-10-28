@@ -14,24 +14,43 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptDir
 Set-Location $ProjectRoot
 
+# Estrazione dinamica della versione da package.json
+$pkgJson = Get-Content (Join-Path $ProjectRoot 'package.json') | ConvertFrom-Json
+$appVersion = $pkgJson.version
+
 Write-Host '==================================================================' -ForegroundColor Cyan
-Write-Host ' MySession v1.0.11 — Pipeline di Build Release Stand-Alone' -ForegroundColor Cyan
+Write-Host (' MySession v' + $appVersion + ' — Pipeline di Build Release Stand-Alone') -ForegroundColor Cyan
 Write-Host ' Autore: Riccardo Bettini · Stack: Tauri v2 + Svelte 5 + Rust' -ForegroundColor Cyan
 Write-Host '==================================================================' -ForegroundColor Cyan
 
-# 1. Configurazione Toolchain Windows MinGW / LLVM & Rust
-$mingwRoot = 'C:\Users\Riccardo\AppData\Local\Microsoft\WinGet\Packages\MartinStorsjo.LLVM-MinGW.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\llvm-mingw-20261020-ucrt-x86_64'
-if (Test-Path $mingwRoot) {
-    $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
-    $mingwBin = Join-Path $mingwRoot 'bin'
-    $mingwTargetBin = Join-Path $mingwRoot 'x86_64-w64-mingw32\bin'
-    $depsDir = Join-Path $ProjectRoot 'src-tauri\target\debug\deps'
-    $env:PATH = 'C:\Program Files\nodejs;' + $cargoBin + ';' + $mingwBin + ';' + $mingwTargetBin + ';' + $depsDir + ';' + $env:PATH
-    Write-Host '[OK] Toolchain LLVM-MinGW UCRT x86_64 configurata nel PATH.' -ForegroundColor Green
-} else {
-    $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
-    $env:PATH = 'C:\Program Files\nodejs;' + $cargoBin + ';' + $env:PATH
+# 1. Configurazione dinamica Toolchain Windows MinGW / LLVM & Rust (Zero Hardcoding)
+$candidatePaths = @(
+    (Join-Path $env:ProgramFiles 'nodejs'),
+    (Join-Path $env:USERPROFILE '.cargo\bin'),
+    (Join-Path $ProjectRoot 'src-tauri\target\debug\deps')
+)
+
+$wingetPkgs = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
+if (Test-Path $wingetPkgs) {
+    $mingwPkg = Get-ChildItem $wingetPkgs -Directory -Filter 'MartinStorsjo.LLVM-MinGW*' -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($mingwPkg) {
+        $mingwRoot = Get-ChildItem $mingwPkg.FullName -Directory -Filter 'llvm-mingw-*' -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending | Select-Object -First 1
+        if ($mingwRoot) {
+            $candidatePaths += (Join-Path $mingwRoot.FullName 'bin')
+            $candidatePaths += (Join-Path $mingwRoot.FullName 'x86_64-w64-mingw32\bin')
+        }
+    }
 }
+
+foreach ($p in $candidatePaths) {
+    if ((Test-Path $p) -and ($env:PATH -notlike "*$p*")) {
+        $env:PATH = "$p;$env:PATH"
+    }
+}
+
+Write-Host '[OK] Toolchain configurata dinamicamente nel PATH di sessione.' -ForegroundColor Green
 
 # 2. Controllo statico TypeScript & Svelte 5
 Write-Host ''
@@ -71,6 +90,10 @@ if (-not $SkipTests) {
 # 5. Generazione bundle di rilascio tramite Tauri CLI (NSIS .exe / MSI)
 Write-Host ''
 Write-Host '[4/5] Compilazione Release del binario nativo ed packaging installer...' -ForegroundColor Yellow
+$bundleDir = Join-Path $ProjectRoot 'src-tauri\target\release\bundle'
+if (Test-Path $bundleDir) {
+    Remove-Item -Path $bundleDir -Recurse -Force -ErrorAction SilentlyContinue
+}
 if ($Target -eq 'nsis') {
     npm run tauri build -- --bundles nsis
 } elseif ($Target -eq 'msi') {
@@ -84,26 +107,84 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# 6. Ispezione degli artefatti generati
+# 6. Sincronizzazione ed esportazione nella cartella release/
 Write-Host ''
-Write-Host '[5/5] Verifica artefatti di rilascio...' -ForegroundColor Yellow
+Write-Host '[5/5] Sincronizzazione artefatti nella cartella di rilascio root...' -ForegroundColor Yellow
+$releaseOutDir = Join-Path $ProjectRoot 'release'
+if (-not (Test-Path $releaseOutDir)) {
+    New-Item -ItemType Directory -Path $releaseOutDir -Force | Out-Null
+}
+
+# Pulizia di installer e file di release di versioni precedenti
+Get-ChildItem -Path $releaseOutDir -File | Where-Object { $_.Name -notlike "*$appVersion*" -and $_.Name -ne 'WebView2Loader.dll' } | Remove-Item -Force -ErrorAction SilentlyContinue
+
 $bundleDir = Join-Path $ProjectRoot 'src-tauri\target\release\bundle'
 if (Test-Path $bundleDir) {
-    Get-ChildItem -Path $bundleDir -Recurse -File | Where-Object { $_.Extension -match 'exe|msi|zip' } | ForEach-Object {
+    Get-ChildItem -Path $bundleDir -Recurse -File | Where-Object { $_.Extension -match 'exe|msi' } | ForEach-Object {
+        Copy-Item -Path $_.FullName -Destination (Join-Path $releaseOutDir $_.Name) -Force
         $sizeMb = [math]::Round($_.Length / 1MB, 2)
-        $msg = '  -> Creato: ' + $_.Name + ' (' + $sizeMb + ' MB) in ' + $_.DirectoryName
-        Write-Host $msg -ForegroundColor Green
-    }
-} else {
-    $exeBin = Join-Path $ProjectRoot 'src-tauri\target\release\mysession.exe'
-    if (Test-Path $exeBin) {
-        $sizeMb = [math]::Round((Get-Item $exeBin).Length / 1MB, 2)
-        $msg = '  -> Creato binario eseguibile: mysession.exe (' + $sizeMb + ' MB)'
+        $msg = '  -> Esportato installer: ' + $_.Name + ' (' + $sizeMb + ' MB)'
         Write-Host $msg -ForegroundColor Green
     }
 }
 
+# Copia dell'eseguibile standalone (.exe)
+$exeBin = Join-Path $ProjectRoot 'src-tauri\target\release\mysession.exe'
+$dllBin = Join-Path $ProjectRoot 'src-tauri\target\release\WebView2Loader.dll'
+
+if (Test-Path $exeBin) {
+    $standaloneName = 'MySession_' + $appVersion + '_Standalone.exe'
+    $standaloneDest = Join-Path $releaseOutDir $standaloneName
+    Copy-Item -Path $exeBin -Destination $standaloneDest -Force
+    $sizeMb = [math]::Round((Get-Item $standaloneDest).Length / 1MB, 2)
+    $msg = '  -> Esportato eseguibile standalone: ' + $standaloneName + ' (' + $sizeMb + ' MB)'
+    Write-Host $msg -ForegroundColor Green
+}
+
+# Copia di WebView2Loader.dll direttamente in release/ per consentire l'esecuzione standalone immediata
+if (Test-Path $dllBin) {
+    $dllDest = Join-Path $releaseOutDir 'WebView2Loader.dll'
+    Copy-Item -Path $dllBin -Destination $dllDest -Force
+    Write-Host '  -> Inclusa libreria WebView2Loader.dll in release/ per esecuzione standalone diretta.' -ForegroundColor Green
+}
+
+# Creazione del pacchetto portatile Standalone Portable (.zip) con binario + DLL
+if ((Test-Path $exeBin) -and (Test-Path $dllBin)) {
+    $zipTempDir = Join-Path $ProjectRoot 'src-tauri\target\portable_tmp'
+    if (Test-Path $zipTempDir) {
+        Remove-Item -Path $zipTempDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    New-Item -ItemType Directory -Path $zipTempDir -Force | Out-Null
+    
+    Copy-Item -Path $exeBin -Destination (Join-Path $zipTempDir 'MySession.exe') -Force
+    Copy-Item -Path $dllBin -Destination (Join-Path $zipTempDir 'WebView2Loader.dll') -Force
+    
+    $portableZipName = 'MySession_' + $appVersion + '_Portable_x64.zip'
+    $portableZipPath = Join-Path $releaseOutDir $portableZipName
+    if (Test-Path $portableZipPath) {
+        Remove-Item -Path $portableZipPath -Force -ErrorAction SilentlyContinue
+    }
+    
+    Compress-Archive -Path (Join-Path $zipTempDir '*') -DestinationPath $portableZipPath -CompressionLevel Optimal
+    Remove-Item -Path $zipTempDir -Recurse -Force -ErrorAction SilentlyContinue
+    
+    $zipSizeMb = [math]::Round((Get-Item $portableZipPath).Length / 1MB, 2)
+    Write-Host ('  -> Generato pacchetto portabile: ' + $portableZipName + ' (' + $zipSizeMb + ' MB)') -ForegroundColor Green
+}
+
+# Generazione checksum SHA256 aggiornato
+$checksumName = 'SHA256SUMS-' + $appVersion + '.txt'
+$checksumFile = Join-Path $releaseOutDir $checksumName
+$hashEntries = @()
+Get-ChildItem -Path $releaseOutDir -File | Where-Object { ($_.Name -like "*$appVersion*" -and $_.Extension -ne '.txt') -or $_.Name -eq 'WebView2Loader.dll' } | ForEach-Object {
+    $h = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash
+    $hashEntries += ($h + '  ' + $_.Name)
+}
+$hashEntries | Set-Content -Path $checksumFile -Encoding UTF8
+$csMsg = '  -> Checksum SHA256 generato: ' + $checksumName
+Write-Host $csMsg -ForegroundColor Cyan
+
 Write-Host ''
 Write-Host '==================================================================' -ForegroundColor Cyan
-Write-Host ' Compilazione MySession v1.0.11 Release completata con successo! ' -ForegroundColor Cyan
+Write-Host (' Compilazione MySession v' + $appVersion + ' Release completata con successo!') -ForegroundColor Cyan
 Write-Host '==================================================================' -ForegroundColor Cyan

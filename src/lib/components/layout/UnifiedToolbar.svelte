@@ -28,14 +28,12 @@
     sessions = [],
     activeSession = null,
     conflictCount = 0,
-    isVoiceListening = false,
     onSelectSession,
     onNewSession,
     onEditSession,
     onOpenConflicts,
     onNavigateToday,
     onNavigateStep,
-    onOpenCommandPalette,
     onOpenSettings
   }: Props = $props();
 
