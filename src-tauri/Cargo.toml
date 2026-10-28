@@ -1,6 +1,6 @@
 [package]
 name = "mysession"
-version = "1.0.12"
+version = "1.0.13"
 description = "MySession — Gestione Sessioni Accademiche & Calendario Infinito"
 authors = ["Riccardo Bettini"]
 edition = "2021"
