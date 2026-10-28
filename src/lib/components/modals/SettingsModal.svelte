@@ -13,17 +13,24 @@
   } from "../../types/domain";
   import ColorPickerField from "../common/ColorPickerField.svelte";
 
+  export type SettingsTab =
+    | "appearance"
+    | "colors"
+    | "calendar"
+    | "workload"
+    | "ai"
+    | "profile"
+    | "backup";
+
   interface Props {
-    initialTab?: "appearance" | "calendar" | "ai" | "profile" | "backup";
+    initialTab?: SettingsTab;
     onClose: () => void;
     onToast?: (msg: string) => void;
   }
 
   let { initialTab = "appearance", onClose, onToast }: Props = $props();
 
-  let activeTab = $state<"appearance" | "calendar" | "ai" | "profile" | "backup">(
-    "appearance"
-  );
+  let activeTab = $state<SettingsTab>("appearance");
 
   $effect(() => {
     activeTab = initialTab;
@@ -43,9 +50,12 @@
   let aiModel = $state<string>(themeStore.settings.aiModel);
   let aiEndpointUrl = $state<string>(themeStore.settings.aiEndpointUrl);
   let studyHoursPerCfu = $state<number>(themeStore.settings.studyHoursPerCfu || 25);
+  let startDayOfWeek = $state<number>(themeStore.settings.startDayOfWeek ?? 1);
+  let weeklyHolidayDay = $state<number>(themeStore.settings.weeklyHolidayDay ?? 0);
 
   let accentColor = $state<string>(themeStore.settings.accentColor || "#0284C7");
   let holidayColor = $state<string>(themeStore.settings.holidayColor || "#DC2626");
+  let sundayColor = $state<string>(themeStore.settings.sundayColor || "#EA580C");
   let catStudioColor = $state<string>(themeStore.settings.catStudioColor || "#0284C7");
   let catScadenzaColor = $state<string>(themeStore.settings.catScadenzaColor || "#EA580C");
   let catLezioneColor = $state<string>(themeStore.settings.catLezioneColor || "#7C3AED");
@@ -77,9 +87,12 @@
     isSaving = true;
     try {
       await themeStore.updateSettings({
+        startDayOfWeek,
+        weeklyHolidayDay,
         studyHoursPerCfu: Math.max(10, Math.min(50, Math.round(studyHoursPerCfu))),
         accentColor,
         holidayColor,
+        sundayColor,
         catStudioColor,
         catScadenzaColor,
         catLezioneColor,
@@ -129,7 +142,6 @@
           return;
         }
       } catch {
-        // Fallback download diretto nel caso in cui il file dialog nativo non sia invocabile
         const blob = new Blob([json], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -192,9 +204,10 @@
     aria-label="Impostazioni MySession"
     tabindex="-1"
   >
+    <!-- Header del Pannello Impostazioni -->
     <header class="sheet-header">
       <div>
-        <span class="sheet-kicker">PREFERENZE DI SISTEMA & AI</span>
+        <span class="sheet-kicker">PREFERENZE DI SISTEMA & ARCHITETTURA</span>
         <h2 class="sheet-title">Impostazioni MySession</h2>
       </div>
       <button type="button" class="close-btn pressable" onclick={onClose} aria-label="Chiudi">
@@ -202,61 +215,101 @@
       </button>
     </header>
 
+    <!-- Layout Impostazioni: Barra Laterale Sinistra + Area Contenuti -->
     <div class="settings-layout">
-      <!-- Barra Laterale Tab -->
-      <nav class="settings-nav">
-        <button
-          type="button"
-          class="nav-item pressable"
-          class:active={activeTab === "appearance"}
-          onclick={() => (activeTab = "appearance")}
-        >
-          <span>🎨</span>
-          <span>Aspetto & Materiali DWM</span>
-        </button>
-        <button
-          type="button"
-          class="nav-item pressable"
-          class:active={activeTab === "calendar"}
-          onclick={() => (activeTab = "calendar")}
-        >
-          <span>📅</span>
-          <span>Calendario & Carico CFU</span>
-        </button>
-        <button
-          type="button"
-          class="nav-item pressable"
-          class:active={activeTab === "ai"}
-          onclick={() => (activeTab = "ai")}
-        >
-          <span>✨</span>
-          <span>Assistente AI & Voce</span>
-        </button>
-        <button
-          type="button"
-          class="nav-item pressable"
-          class:active={activeTab === "profile"}
-          onclick={() => (activeTab = "profile")}
-        >
-          <span>🎓</span>
-          <span>Profilo Accademico</span>
-        </button>
-        <button
-          type="button"
-          class="nav-item pressable"
-          class:active={activeTab === "backup"}
-          onclick={() => (activeTab = "backup")}
-        >
-          <span>💾</span>
-          <span>Portabilità & Backup JSON</span>
-        </button>
+      <!-- Barra Laterale Sinistra con Categorie Dedicate & Footer Autore/Versione -->
+      <nav class="settings-nav" aria-label="Navigazione sezioni impostazioni">
+        <div class="nav-items-scroll">
+          <div class="nav-group-header">INTERFACCIA</div>
+          <button
+            type="button"
+            class="nav-item pressable"
+            class:active={activeTab === "appearance"}
+            onclick={() => (activeTab = "appearance")}
+          >
+            <span class="nav-icon">🎨</span>
+            <span>Aspetto & Finestra</span>
+          </button>
+          <button
+            type="button"
+            class="nav-item pressable"
+            class:active={activeTab === "colors"}
+            onclick={() => (activeTab = "colors")}
+          >
+            <span class="nav-icon">🌈</span>
+            <span>Palette & Colori</span>
+          </button>
+
+          <div class="nav-group-header">PIANIFICAZIONE</div>
+          <button
+            type="button"
+            class="nav-item pressable"
+            class:active={activeTab === "calendar"}
+            onclick={() => (activeTab = "calendar")}
+          >
+            <span class="nav-icon">📅</span>
+            <span>Calendario & Viste</span>
+          </button>
+          <button
+            type="button"
+            class="nav-item pressable"
+            class:active={activeTab === "workload"}
+            onclick={() => (activeTab = "workload")}
+          >
+            <span class="nav-icon">⚡</span>
+            <span>Algoritmo CFU & Carico</span>
+          </button>
+
+          <div class="nav-group-header">INTELLIGENZA & DATI</div>
+          <button
+            type="button"
+            class="nav-item pressable"
+            class:active={activeTab === "ai"}
+            onclick={() => (activeTab = "ai")}
+          >
+            <span class="nav-icon">✨</span>
+            <span>Assistente AI & NLP</span>
+          </button>
+          <button
+            type="button"
+            class="nav-item pressable"
+            class:active={activeTab === "profile"}
+            onclick={() => (activeTab = "profile")}
+          >
+            <span class="nav-icon">🎓</span>
+            <span>Profilo Accademico</span>
+          </button>
+          <button
+            type="button"
+            class="nav-item pressable"
+            class:active={activeTab === "backup"}
+            onclick={() => (activeTab = "backup")}
+          >
+            <span class="nav-icon">💾</span>
+            <span>Dati & Backup JSON</span>
+          </button>
+        </div>
+
+        <!-- Sezione Dedicata in Basso alla Barra Laterale Sinistra (Autore & Versione) -->
+        <div class="settings-nav-footer">
+          <div class="nav-brand-row">
+            <span class="nav-brand-title">MySession</span>
+            <span class="nav-version-badge">v{APP_VERSION}</span>
+          </div>
+          <div class="nav-author-row">
+            <span class="nav-author-label">Autore:</span>
+            <span class="nav-author-name">{APP_AUTHOR}</span>
+          </div>
+        </div>
       </nav>
 
-      <!-- Contenuto Tab -->
+      <!-- Contenuto della Sezione Attiva -->
       <div class="settings-content">
+        <!-- 1. ASPETTO & FINESTRA -->
         {#if activeTab === "appearance"}
           <div class="panel-group">
-            <h3 class="group-title">Tema & Materiale Nativo Windows 11 (DWM)</h3>
+            <h3 class="group-title">Tema di Sistema (Sincronizzazione Windows 11)</h3>
+            <p class="field-hint">Adatta automaticamente la palette al tema Chiaro/Scuro di Windows oppure forza una modalità fissa.</p>
             <div class="segmented-row">
               {#each [
                 { id: "auto", label: "Automatico (OS)" },
@@ -273,13 +326,17 @@
                 </button>
               {/each}
             </div>
+          </div>
 
+          <div class="panel-group">
+            <h3 class="group-title">Materiale DWM Nativo Windows 11 (Vibrancy & Mica)</h3>
+            <p class="field-hint">Iniezione di sistema del materiale di sfondo DWM tramite Win32 DwmSetWindowAttribute.</p>
             <div class="segmented-row">
               {#each [
                 { id: "mica", label: "Mica (Nativo Win11)" },
                 { id: "acrylic", label: "Acrylic (Vetro)" },
                 { id: "tabbed", label: "Mica Alt (Tabbed)" },
-                { id: "solid", label: "Solido" }
+                { id: "solid", label: "Solido Opaco" }
               ] as mat (mat.id)}
                 <button
                   type="button"
@@ -294,7 +351,7 @@
           </div>
 
           <div class="panel-group">
-            <h3 class="group-title">Stile Controlli Finestra & Scaling Interfaccia</h3>
+            <h3 class="group-title">Stile Controlli Finestra Desktop</h3>
             <div class="segmented-row">
               <button
                 type="button"
@@ -313,10 +370,13 @@
                 Windows 11 Nativo (Destra)
               </button>
             </div>
+          </div>
 
+          <div class="panel-group">
+            <h3 class="group-title">Scala Interfaccia & Zoom Dinamico</h3>
             <div class="zoom-control-box">
               <div class="zoom-header">
-                <span>Scala Fluida Interfaccia (80% – 150%)</span>
+                <span>Ridimensionamento fluido dell'interfaccia utente (80% – 150%)</span>
                 <strong>{themeStore.settings.uiScale}%</strong>
               </div>
               <input
@@ -343,11 +403,14 @@
             </div>
           </div>
 
+        <!-- 2. PALETTE & COLORI -->
+        {:else if activeTab === "colors"}
           <div class="panel-group">
-            <h3 class="group-title">Palette Colori Standard Unificata (WCAG AA/AAA)</h3>
+            <h3 class="group-title">Colori di Sistema & Contrasto Elevato (WCAG AA/AAA)</h3>
+            <p class="field-hint">Personalizza i colori guida. I testi e i contrasti vengono calcolati dinamicamente per garantire leggibilità ottimale.</p>
             <div class="colors-grid">
               <ColorPickerField
-                label="Colore d'Accento"
+                label="Colore d'Accento Principale"
                 value={accentColor}
                 onChange={(hex) => (accentColor = hex)}
               />
@@ -356,6 +419,18 @@
                 value={holidayColor}
                 onChange={(hex) => (holidayColor = hex)}
               />
+              <ColorPickerField
+                label="Domenica / Giorno di Riposo"
+                value={sundayColor}
+                onChange={(hex) => (sundayColor = hex)}
+              />
+            </div>
+          </div>
+
+          <div class="panel-group">
+            <h3 class="group-title">Colori Categorie Eventi & Appunti</h3>
+            <p class="field-hint">Tinte attribuite automaticamente alle card e agli indicatori di eventi generici e task giornalieri.</p>
+            <div class="colors-grid">
               <ColorPickerField
                 label="Categoria Studio"
                 value={catStudioColor}
@@ -366,11 +441,23 @@
                 value={catScadenzaColor}
                 onChange={(hex) => (catScadenzaColor = hex)}
               />
+              <ColorPickerField
+                label="Categoria Lezione"
+                value={catLezioneColor}
+                onChange={(hex) => (catLezioneColor = hex)}
+              />
+              <ColorPickerField
+                label="Categoria Personale"
+                value={catPersonaleColor}
+                onChange={(hex) => (catPersonaleColor = hex)}
+              />
             </div>
           </div>
+
+        <!-- 3. CALENDARIO & VISTE -->
         {:else if activeTab === "calendar"}
           <div class="panel-group">
-            <h3 class="group-title">Vista Calendario Predefinita</h3>
+            <h3 class="group-title">Vista Calendario Predefinita all'Avvio</h3>
             <div class="segmented-row">
               {#each [
                 { id: "continuous", label: "Continua Infinita" },
@@ -391,9 +478,43 @@
           </div>
 
           <div class="panel-group">
-            <h3 class="group-title">Motore Deterministico di Carico Studio (Workload Engine)</h3>
+            <h3 class="group-title">Configurazione Settimanale & Riposo</h3>
+            <div class="form-grid-2">
+              <label class="field">
+                <span>Primo giorno della settimana</span>
+                <select bind:value={startDayOfWeek}>
+                  <option value={1}>Lunedì (Standard Europeo ISO 8601)</option>
+                  <option value={0}>Domenica (Standard Anglosassone)</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Giorno di riposo settimanale evidenziato</span>
+                <select bind:value={weeklyHolidayDay}>
+                  <option value={0}>Domenica</option>
+                  <option value={6}>Sabato</option>
+                  <option value={-1}>Nessuno (Mostra tutti i giorni uguali)</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div class="panel-group">
+            <h3 class="group-title">Scorciatoie da Tastiera per la Navigazione</h3>
+            <div class="info-card">
+              <p>• <strong>T</strong>: Salta istantaneamente alla data di oggi nel calendario.</p>
+              <p>• <strong>Spazio</strong> oppure <strong>Ctrl+K</strong>: Apri la Command Palette / Assistente AI.</p>
+              <p>• <strong>Ctrl + / -</strong>: Ingrandisci o riduci lo zoom dell'interfaccia.</p>
+              <p>• <strong>Esc</strong>: Chiudi qualsiasi modale o cassetto laterale aperto.</p>
+            </div>
+          </div>
+
+        <!-- 4. ALGORITMO CFU & CARICO -->
+        {:else if activeTab === "workload"}
+          <div class="panel-group">
+            <h3 class="group-title">Parametro di Calcolo del Carico di Studio</h3>
             <label class="field">
-              <span>Ore di studio stimate per singolo CFU (default: 25 ore/CFU)</span>
+              <span>Ore di studio stimate per singolo Credito Formativo Universitario (CFU)</span>
               <input
                 type="number"
                 min="10"
@@ -402,18 +523,31 @@
               />
             </label>
             <p class="field-hint">
-              Il backend Rust utilizza questo parametro insieme ai pesi di difficoltà dei corsi e
-              alle Unità Didattiche rimanenti per calcolare il carico giornaliero consigliato e il
-              buffer minimo di giorni nel Conflict Engine.
+              Il valore accademico standard in Italia è pari a <strong>25 ore per CFU</strong> (comprese le lezioni frontali e lo studio individuale).
             </p>
           </div>
+
+          <div class="panel-group">
+            <h3 class="group-title">Architettura del Workload Engine & Conflict Engine in Rust</h3>
+            <div class="info-card">
+              <strong>Motore di Calcolo Deterministico Integrato:</strong>
+              <p>
+                Il core nativo in Rust combina le ore per CFU con il fattore di difficoltà di ogni materia,
+                le unità didattiche ancora da completare e la distanza temporale dagli appelli per determinare:
+              </p>
+              <p>• <strong>Ore di studio giornaliere consigliate</strong> per ciascuna data.</p>
+              <p>• <strong>Buffer di sicurezza dinamico ($B$)</strong> tra appelli vicini, rilevando conflitti critici o avvisi di sovrapposizione.</p>
+              <p>• <strong>Festività automatiche</strong> con calcolo perpetuo della Pasqua (algoritmo di Butcher) per preservare i giorni di riposo.</p>
+            </div>
+          </div>
+
+        <!-- 5. ASSISTENTE AI & NLP -->
         {:else if activeTab === "ai"}
           <div class="panel-group">
             <h3 class="group-title">Architettura Disaccoppiata Assistente AI</h3>
             <p class="field-hint">
-              Nessuna chiave API è precaricata nel codice sorgente. Puoi usare il motore locale
-              deterministico a latenza zero (offline) oppure collegare la tua chiave API personale o
-              un modello locale (Ollama / LM Studio).
+              Nessuna credenziale è cablata nel codice. Puoi sfruttare il motore locale a latenza zero
+              oppure collegare chiavi personali o modelli locali senza inviare dati a terzi.
             </p>
 
             <div class="segmented-row">
@@ -440,7 +574,7 @@
                 <input
                   type="password"
                   bind:value={aiApiKey}
-                  placeholder="Inserisci la tua API Key (salvata localmente in %APPDATA%)..."
+                  placeholder="Inserisci la tua API Key (memorizzata localmente in SQLite)..."
                 />
               </label>
 
@@ -471,18 +605,20 @@
               </label>
             {:else}
               <div class="info-card">
-                <strong>Motore NLP & Tool Calling Deterministico Attivo</strong>
+                <strong>Motore NLP Deterministico Offline a Latenza Zero</strong>
                 <p>
-                  Esegue istantaneamente su Rust l'analisi grammaticale dei comandi in italiano,
-                  inserendo corsi, appelli e To-Do, interrogando statistiche CFU/criticità e
-                  modificando tema, materiali DWM e zoom senza necessità di connessione internet.
+                  Esegue in modo nativo su Rust l'analisi dei comandi in italiano, consentendo l'aggiunta rapida
+                  di appelli, materie, task e to-do, interrogazioni sullo stato dei CFU e cambi istantanei
+                  di tema o materiali senza richiedere connessione internet o token esterni.
                 </p>
               </div>
             {/if}
           </div>
+
+        <!-- 6. PROFILO ACCADEMICO -->
         {:else if activeTab === "profile"}
           <div class="panel-group">
-            <h3 class="group-title">Profilo Studente & Ateneo</h3>
+            <h3 class="group-title">Dati Personali Studente & Percorso di Studi</h3>
             <div class="form-grid-2">
               <label class="field">
                 <span>Nome e Cognome</span>
@@ -518,16 +654,18 @@
               />
             </label>
           </div>
+
+        <!-- 7. DATI & BACKUP JSON -->
         {:else if activeTab === "backup"}
           <div class="panel-group">
-            <h3 class="group-title">Isolamento Dati Multi-Utente & Portabilità</h3>
+            <h3 class="group-title">Isolamento Locale & Portabilità Dati Multi-Utente</h3>
             <div class="info-card">
               <div>
                 <strong>Database SQLite Locale (Modalità WAL):</strong>
                 <code class="db-path-code">{sessionStore.dbPath || "%APPDATA%\\com.mysession.app\\mysession.db"}</code>
               </div>
               <div>
-                <strong>Versione Software:</strong> MySession v{APP_VERSION} — Autore: {APP_AUTHOR}
+                <strong>Versione Software Ufficiale:</strong> MySession v{APP_VERSION} — Autore: {APP_AUTHOR}
               </div>
             </div>
 
@@ -535,15 +673,14 @@
               <button type="button" class="action-card-btn" onclick={handleExportBackup}>
                 <span class="action-title">⬇ Esporta Backup Completo (.json)</span>
                 <span class="action-desc">
-                  Salva tutte le sessioni, i corsi, gli appelli, le note Markdown, i To-Do e le
-                  preferenze in un singolo file portabile.
+                  Salva sessioni, corsi, appelli, note Markdown, to-do giornalieri e preferenze in un unico archivio.
                 </span>
               </button>
 
               <button type="button" class="action-card-btn" onclick={handleImportBackupNative}>
                 <span class="action-title">⬆ Importa Backup da File (.json)</span>
                 <span class="action-desc">
-                  Ripristina un workspace completo su questo o su un altro PC Windows 11.
+                  Ripristina un workspace completo senza perdita di dati su qualsiasi PC.
                 </span>
               </button>
               <input
@@ -563,6 +700,7 @@
       </div>
     </div>
 
+    <!-- Footer Azioni della Scheda -->
     <footer class="sheet-footer">
       <button type="button" class="secondary-btn" onclick={onClose}>Chiudi</button>
       <button
@@ -593,8 +731,8 @@
 
   .settings-sheet {
     width: 100%;
-    max-width: 780px;
-    height: min(620px, 88vh);
+    max-width: 820px;
+    height: min(650px, 90vh);
     background: var(--popover-bg);
     backdrop-filter: blur(28px) saturate(195%);
     -webkit-backdrop-filter: blur(28px) saturate(195%);
@@ -610,15 +748,16 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1rem 1.25rem;
+    padding: 0.9rem 1.35rem;
     border-bottom: 0.5px solid var(--hairline-border);
+    flex-shrink: 0;
   }
 
   .sheet-kicker {
-    font-size: 0.64rem;
+    font-size: 0.62rem;
     font-weight: 700;
     letter-spacing: 0.06em;
-    color: var(--accent-primary);
+    color: var(--accent, #007AFF);
   }
 
   .sheet-title {
@@ -654,34 +793,63 @@
   .settings-layout {
     flex: 1;
     display: grid;
-    grid-template-columns: 215px 1fr;
+    grid-template-columns: 235px 1fr;
     min-height: 0;
     overflow: hidden;
   }
 
+  /* Barra Laterale Sinistra */
   .settings-nav {
-    padding: 0.85rem 0.65rem;
-    border-right: 0.5px solid var(--hairline-border);
     display: flex;
     flex-direction: column;
-    gap: 0.28rem;
+    justify-content: space-between;
+    padding: 0.75rem 0.65rem 0.65rem;
+    border-right: 0.5px solid var(--hairline-border);
     background: rgba(128, 128, 128, 0.04);
+    overflow: hidden;
+  }
+
+  .nav-items-scroll {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    overflow-y: auto;
+    padding-right: 0.2rem;
+  }
+
+  .nav-group-header {
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+    padding: 0.55rem 0.65rem 0.2rem;
+  }
+
+  .nav-group-header:first-of-type {
+    padding-top: 0.1rem;
   }
 
   .nav-item {
     display: flex;
     align-items: center;
     gap: 0.55rem;
-    padding: 0.52rem 0.7rem;
-    border-radius: var(--radius-md);
+    padding: 0.46rem 0.65rem;
+    border-radius: var(--radius-sm);
     border: none;
     background: transparent;
     color: var(--text-secondary);
-    font-size: 0.76rem;
+    font-size: 0.75rem;
     font-weight: 600;
     text-align: left;
     cursor: pointer;
     transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), background 120ms ease, color 120ms ease;
+  }
+
+  .nav-icon {
+    font-size: 0.88rem;
+    width: 1.15rem;
+    display: inline-flex;
+    justify-content: center;
   }
 
   .nav-item:active {
@@ -690,20 +858,74 @@
 
   .nav-item:hover {
     color: var(--text-primary);
-    background: rgba(128, 128, 128, 0.09);
+    background: rgba(128, 128, 128, 0.08);
   }
 
   .nav-item.active {
-    background: color-mix(in srgb, var(--accent-primary) 16%, transparent);
-    color: var(--accent-primary);
+    background: color-mix(in srgb, var(--accent, #007AFF) 15%, transparent);
+    color: var(--accent, #007AFF);
   }
 
+  /* Sezione Dedicata in Basso alla Barra Laterale Sinistra */
+  .settings-nav-footer {
+    margin-top: 0.5rem;
+    padding: 0.6rem 0.65rem 0.2rem;
+    border-top: 0.5px solid var(--hairline-border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.22rem;
+    background: rgba(128, 128, 128, 0.02);
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+  }
+
+  .nav-brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .nav-brand-title {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+  }
+
+  .nav-version-badge {
+    font-size: 0.64rem;
+    font-weight: 600;
+    padding: 0.08rem 0.38rem;
+    border-radius: var(--radius-xs);
+    background: var(--surface-pill);
+    border: 0.5px solid var(--hairline-border);
+    color: var(--text-secondary);
+  }
+
+  .nav-author-row {
+    display: flex;
+    align-items: center;
+    gap: 0.32rem;
+    font-size: 0.66rem;
+    color: var(--text-tertiary);
+  }
+
+  .nav-author-label {
+    font-weight: 500;
+  }
+
+  .nav-author-name {
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  /* Area Contenuto Destra */
   .settings-content {
-    padding: 1.1rem 1.35rem;
+    padding: 1.15rem 1.4rem;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 1.15rem;
+    gap: 1.2rem;
   }
 
   .panel-group {
@@ -714,14 +936,14 @@
 
   .group-title {
     margin: 0;
-    font-size: 0.82rem;
+    font-size: 0.83rem;
     font-weight: 700;
     color: var(--text-primary);
   }
 
   .segmented-row {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
     gap: 0.35rem;
     padding: 0.25rem;
     border-radius: var(--radius-md);
@@ -739,6 +961,7 @@
     font-weight: 600;
     cursor: pointer;
     transition: all 140ms cubic-bezier(0.16, 1, 0.3, 1);
+    text-align: center;
   }
 
   .seg-option:active {
@@ -785,14 +1008,14 @@
   }
 
   .preset-chip.active {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
+    background: var(--accent, #007AFF);
+    border-color: var(--accent, #007AFF);
     color: #fff;
   }
 
   .colors-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 0.75rem;
   }
 
@@ -811,7 +1034,8 @@
     color: var(--text-secondary);
   }
 
-  .field input {
+  .field input,
+  .field select {
     padding: 0.48rem 0.68rem;
     border-radius: var(--radius-md);
     border: 0.5px solid var(--hairline-border);
@@ -822,9 +1046,10 @@
     transition: border-color 140ms ease, box-shadow 140ms ease;
   }
 
-  .field input:focus-visible {
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2.5px var(--accent-soft);
+  .field input:focus-visible,
+  .field select:focus-visible {
+    border-color: var(--accent, #007AFF);
+    box-shadow: 0 0 0 2.5px rgba(0, 122, 255, 0.25);
   }
 
   .field-hint {
@@ -883,7 +1108,7 @@
 
   .action-card-btn:hover {
     background: rgba(128, 128, 128, 0.14);
-    border-color: var(--accent-primary);
+    border-color: var(--accent, #007AFF);
   }
 
   .action-title {
@@ -914,6 +1139,7 @@
     gap: 0.55rem;
     padding: 0.85rem 1.25rem;
     border-top: 0.5px solid var(--hairline-border);
+    flex-shrink: 0;
   }
 
   .secondary-btn {
@@ -931,7 +1157,7 @@
     padding: 0.45rem 1.05rem;
     border-radius: var(--radius-md);
     border: none;
-    background: var(--accent-primary);
+    background: var(--accent, #007AFF);
     color: #fff;
     font-size: 0.78rem;
     font-weight: 600;

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { APP_AUTHOR, APP_VERSION } from "../../constants/version";
   import { themeStore } from "../../stores/theme.svelte";
   import type { Course, SessionSnapshot } from "../../types/domain";
   import { formatExamRoundLabel, formatItalianDateShort } from "../../utils/calendar";
@@ -293,6 +294,22 @@
       </button>
     </div>
   {/if}
+
+  <!-- Footer Autore e Versione in basso alla barra laterale sinistra -->
+  <div class="sidebar-footer-meta">
+    {#if !isCompact}
+      <div class="footer-app-row">
+        <span class="footer-brand">MySession</span>
+        <span class="footer-version-tag">v{APP_VERSION}</span>
+      </div>
+      <div class="footer-author-row">
+        <span class="footer-author-label">Autore:</span>
+        <span class="footer-author-name">{APP_AUTHOR}</span>
+      </div>
+    {:else}
+      <span class="footer-compact-badge" title="MySession v{APP_VERSION} · {APP_AUTHOR}">v{APP_VERSION}</span>
+    {/if}
+  </div>
 </aside>
 
 <style>
@@ -762,5 +779,64 @@
     color: var(--text-primary);
     font-size: 1rem;
     cursor: pointer;
+  }
+
+  /* Footer Autore & Versione in basso */
+  .sidebar-footer-meta {
+    margin-top: auto;
+    padding-top: 0.55rem;
+    border-top: 0.5px solid var(--hairline-border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.18rem;
+    flex-shrink: 0;
+  }
+
+  .footer-app-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .footer-brand {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+  }
+
+  .footer-version-tag {
+    font-size: 0.64rem;
+    font-weight: 600;
+    padding: 0.08rem 0.35rem;
+    border-radius: var(--radius-xs);
+    background: var(--surface-pill);
+    border: 0.5px solid var(--hairline-border);
+    color: var(--text-secondary);
+  }
+
+  .footer-author-row {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+  }
+
+  .footer-author-label {
+    font-weight: 500;
+  }
+
+  .footer-author-name {
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .footer-compact-badge {
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    text-align: center;
+    padding: 0.15rem 0.25rem;
   }
 </style>

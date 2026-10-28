@@ -67,7 +67,7 @@
   let conflictsModalOpen = $state<boolean>(false);
   let settingsModalState = $state<{
     open: boolean;
-    tab: "appearance" | "calendar" | "ai" | "profile" | "backup";
+    tab: "appearance" | "colors" | "calendar" | "workload" | "ai" | "profile" | "backup";
   }>({
     open: false,
     tab: "appearance"
