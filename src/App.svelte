@@ -231,6 +231,7 @@
       }
     } else {
       showToast("Scorrimento infinito sbloccato: puoi navigare liberamente in qualsiasi data");
+      handleJumpToDate(selectedDate || sessionStore.todayIso, false);
     }
   }
 
@@ -373,6 +374,9 @@
             {scrollTargetIso}
             onSelectDay={handleSelectDay}
             onSelectExam={handleSelectExam}
+            onVisibleMonthChange={(y, m) => {
+              currentMonthYear = { year: y, month: m };
+            }}
           />
         {:else if themeStore.settings.defaultView === "month"}
           <SingleMonthView

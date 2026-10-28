@@ -65,9 +65,31 @@
     if (!lockToSession || !sessionEndDate || weekCells.length === 0) return true;
     return weekCells[weekCells.length - 1].isoDate < sessionEndDate;
   });
+
+  let wheelTimeout: ReturnType<typeof setTimeout> | null = null;
+  function handleWheel(e: WheelEvent) {
+    if (Math.abs(e.deltaY) < 18) return;
+    if (wheelTimeout) return;
+
+    const direction: -1 | 1 = e.deltaY > 0 ? 1 : -1;
+    if (direction === -1 && !canStepPrev) return;
+    if (direction === 1 && !canStepNext) return;
+
+    onStepWeek?.(direction);
+    wheelTimeout = setTimeout(() => {
+      wheelTimeout = null;
+    }, 260);
+  }
 </script>
 
-<div class="week-view-shell" aria-label="Vista Settimanale {weekRangeLabel}">
+<!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
+<div
+  class="week-view-shell"
+  role="region"
+  tabindex="0"
+  aria-label="Vista Settimanale {weekRangeLabel}"
+  onwheel={handleWheel}
+>
   <header class="week-top-bar">
     <h2 class="week-heading">Settimana · {weekRangeLabel}</h2>
     <div class="week-actions">

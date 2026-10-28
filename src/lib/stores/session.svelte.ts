@@ -25,9 +25,9 @@ class SessionWorkspaceStore {
   appVersion = $state<string>(APP_VERSION);
   dbPath = $state<string>("");
   isSessionLocked = $state<boolean>(
-    typeof localStorage !== "undefined" && localStorage.getItem("mysession_lock_to_session") !== null
-      ? localStorage.getItem("mysession_lock_to_session") === "true"
-      : true
+    typeof localStorage !== "undefined" && localStorage.getItem("mysession_lock_to_session_v2") !== null
+      ? localStorage.getItem("mysession_lock_to_session_v2") === "true"
+      : false
   );
   profile = $state<UserProfile>({
     id: 1,
@@ -59,6 +59,7 @@ class SessionWorkspaceStore {
   toggleSessionLock(force?: boolean): boolean {
     this.isSessionLocked = force !== undefined ? force : !this.isSessionLocked;
     if (typeof localStorage !== "undefined") {
+      localStorage.setItem("mysession_lock_to_session_v2", String(this.isSessionLocked));
       localStorage.setItem("mysession_lock_to_session", String(this.isSessionLocked));
     }
     return this.isSessionLocked;

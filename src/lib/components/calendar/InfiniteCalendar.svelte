@@ -66,12 +66,21 @@
   });
 
   let virtualizerInstance: Virtualizer<HTMLDivElement, HTMLElement> | null = null;
+  let prevLockToSession = false;
 
   function estimateMonthHeight(index: number): number {
     const item = monthsList[index];
     const rows = item ? item.rowCount : 5;
     const scale = (themeStore.settings.uiScale || 100) / 100;
     return Math.round((88 + rows * 106) * scale);
+  }
+
+  function getEstimatedOffsetForIndex(targetIdx: number): number {
+    let offset = 0;
+    for (let i = 0; i < targetIdx && i < monthsList.length; i++) {
+      offset += estimateMonthHeight(i);
+    }
+    return offset;
   }
 
   function syncVirtualizerState() {
@@ -89,7 +98,7 @@
   }
 
   export function scrollToIsoDate(isoDate: string) {
-    if (!virtualizerInstance || monthsList.length === 0) return;
+    if (!scrollContainerEl || !virtualizerInstance || monthsList.length === 0) return;
     const { year, month } = parseIsoDate(isoDate);
     const key = `${year}-${String(month).padStart(2, "0")}`;
     let idx = monthsList.findIndex((m) => m.key === key);
@@ -99,6 +108,8 @@
       }
     }
     if (idx >= 0) {
+      const targetOffset = getEstimatedOffsetForIndex(idx);
+      scrollContainerEl.scrollTop = targetOffset;
       virtualizerInstance.scrollToIndex(idx, { align: "start" });
       syncVirtualizerState();
     }
@@ -115,12 +126,16 @@
   // Re-sincronizza il Virtualizer quando monthsList o lockToSession cambiano
   $effect(() => {
     const count = monthsList.length;
+    const currentLock = lockToSession;
+    const lockChanged = currentLock !== prevLockToSession;
+    prevLockToSession = currentLock;
+
     if (virtualizerInstance && scrollContainerEl) {
       virtualizerInstance.setOptions({
         count,
         getScrollElement: () => scrollContainerEl,
         estimateSize: (index) => estimateMonthHeight(index),
-        overscan: 2,
+        overscan: 3,
         observeElementRect,
         observeElementOffset,
         scrollToFn: elementScroll,
@@ -129,6 +144,19 @@
         }
       });
       virtualizerInstance._willUpdate();
+
+      if (lockChanged) {
+        // Quando si attiva o disattiva il blocco sessione, mantiene la vista sul mese selezionato
+        const anchorDate = selectedDate || todayIso;
+        const { year, month } = parseIsoDate(anchorDate);
+        const key = `${year}-${String(month).padStart(2, "0")}`;
+        let targetIdx = monthsList.findIndex((m) => m.key === key);
+        if (targetIdx < 0) targetIdx = 0;
+        const targetOffset = getEstimatedOffsetForIndex(targetIdx);
+        scrollContainerEl.scrollTop = targetOffset;
+        virtualizerInstance.scrollToOffset(targetOffset);
+      }
+
       syncVirtualizerState();
     }
   });
@@ -141,12 +169,17 @@
       0,
       monthsList.findIndex((m) => m.key === initialAnchorKey)
     );
+    const initialOffset = getEstimatedOffsetForIndex(initialIdx);
+
+    // Inizializza immediatamente il scrollTop nativo dell'elemento
+    scrollContainerEl.scrollTop = initialOffset;
 
     virtualizerInstance = new Virtualizer<HTMLDivElement, HTMLElement>({
       count: monthsList.length,
       getScrollElement: () => scrollContainerEl,
       estimateSize: (index) => estimateMonthHeight(index),
-      overscan: 2,
+      initialOffset,
+      overscan: 3,
       observeElementRect,
       observeElementOffset,
       scrollToFn: elementScroll,
@@ -155,17 +188,21 @@
       }
     });
 
-    virtualizerInstance._didMount();
+    const cleanup = virtualizerInstance._didMount();
     virtualizerInstance._willUpdate();
     syncVirtualizerState();
 
-    queueMicrotask(() => {
+    // Riallinea dopo il primo ciclo di layout per garantire precisione subpixel
+    requestAnimationFrame(() => {
+      if (scrollContainerEl && Math.abs(scrollContainerEl.scrollTop - initialOffset) > 150) {
+        scrollContainerEl.scrollTop = initialOffset;
+      }
       virtualizerInstance?.scrollToIndex(initialIdx, { align: "start" });
       syncVirtualizerState();
     });
 
     return () => {
-      virtualizerInstance?._didMount()();
+      cleanup();
       virtualizerInstance = null;
     };
   });
@@ -221,7 +258,7 @@
     height: 100%;
     overflow-y: auto;
     overflow-x: hidden;
-    contain: strict;
+    contain: content;
   }
 
   .virtual-scroll-runway {

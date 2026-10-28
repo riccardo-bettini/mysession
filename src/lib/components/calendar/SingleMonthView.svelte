@@ -63,9 +63,46 @@
     const e = parseIsoDate(sessionEndDate);
     return year < e.year || (year === e.year && month < e.month);
   });
+
+  let wheelTimeout: ReturnType<typeof setTimeout> | null = null;
+  function handleWheel(e: WheelEvent) {
+    if (Math.abs(e.deltaY) < 18) return;
+    if (wheelTimeout) return;
+
+    const direction: -1 | 1 = e.deltaY > 0 ? 1 : -1;
+    if (direction === -1 && !canStepPrev) return;
+    if (direction === 1 && !canStepNext) return;
+
+    onStepMonth?.(direction);
+    wheelTimeout = setTimeout(() => {
+      wheelTimeout = null;
+    }, 260);
+  }
+
+  function handleKeyDown(e: KeyboardEvent) {
+    if (e.key === "PageUp" || (e.altKey && e.key === "ArrowLeft")) {
+      if (canStepPrev) {
+        e.preventDefault();
+        onStepMonth?.(-1);
+      }
+    } else if (e.key === "PageDown" || (e.altKey && e.key === "ArrowRight")) {
+      if (canStepNext) {
+        e.preventDefault();
+        onStepMonth?.(1);
+      }
+    }
+  }
 </script>
 
-<div class="single-month-view" aria-label="Vista Mensile {monthTitle}">
+<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+<div
+  class="single-month-view"
+  role="region"
+  tabindex="0"
+  aria-label="Vista Mensile {monthTitle}"
+  onwheel={handleWheel}
+  onkeydown={handleKeyDown}
+>
   <header class="single-month-bar">
     <div class="bar-left">
       <h2 class="month-heading">{monthTitle}</h2>
