@@ -435,7 +435,7 @@
       {/if}
     </div>
 
-    <!-- Pulsante Impostazioni Complete -->
+    <!-- Pulsante Impostazioni Complete (Icona Ingranaggio / Gear) -->
     <button
       type="button"
       class="toolbar-icon-only-btn pressable"
@@ -443,14 +443,9 @@
       aria-label="Apri impostazioni"
       onclick={() => onOpenSettings?.()}
     >
-      <svg viewBox="0 0 16 16" fill="none">
-        <circle cx="8" cy="8" r="2.1" stroke="currentColor" stroke-width="1.35" />
-        <path
-          d="M8 1.75V3.1M8 12.9V14.25M1.75 8H3.1M12.9 8H14.25M3.58 3.58L4.54 4.54M11.46 11.46L12.42 12.42M12.42 3.58L11.46 4.54M4.54 11.46L3.58 12.42"
-          stroke="currentColor"
-          stroke-width="1.35"
-          stroke-linecap="round"
-        />
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+        <circle cx="12" cy="12" r="3" />
       </svg>
     </button>
 
