@@ -111,6 +111,8 @@
     flex-direction: column;
     background: transparent;
     padding: 0 1rem 1.35rem;
+    transform: translateZ(0);
+    contain: layout style;
   }
 
   .month-block-header {

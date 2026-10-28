@@ -66,7 +66,8 @@
   });
 
   let virtualizerInstance: Virtualizer<HTMLDivElement, HTMLElement> | null = null;
-  let prevLockToSession = false;
+  let prevLockToSession = $state<boolean>(false);
+  let currentVisibleMonthKey = $state<string>("");
 
   function estimateMonthHeight(index: number): number {
     const item = monthsList[index];
@@ -83,6 +84,25 @@
     return offset;
   }
 
+  function clearVirtualizerScrollLock() {
+    if (!virtualizerInstance) return;
+    const vAny = virtualizerInstance as any;
+    if (vAny.scrollState) {
+      vAny.scrollState = null;
+    }
+    if (vAny.rafId != null && vAny.targetWindow) {
+      vAny.targetWindow.cancelAnimationFrame(vAny.rafId);
+      vAny.rafId = null;
+    }
+    if (vAny._clampedAdjustment) {
+      vAny._clampedAdjustment = null;
+    }
+    if (vAny.pendingScrollAnchor) {
+      vAny.pendingScrollAnchor = null;
+    }
+    vAny._holdOffset = 0;
+  }
+
   function syncVirtualizerState() {
     if (!virtualizerInstance) return;
     virtualItems = virtualizerInstance.getVirtualItems();
@@ -91,7 +111,8 @@
     if (virtualItems.length > 0) {
       const topItem = virtualItems[Math.min(1, virtualItems.length - 1)];
       const m = monthsList[topItem.index];
-      if (m) {
+      if (m && m.key !== currentVisibleMonthKey) {
+        currentVisibleMonthKey = m.key;
         onVisibleMonthChange?.(m.year, m.month, m.title);
       }
     }
@@ -109,8 +130,9 @@
     }
     if (idx >= 0) {
       const targetOffset = getEstimatedOffsetForIndex(idx);
-      scrollContainerEl.scrollTop = targetOffset;
-      virtualizerInstance.scrollToIndex(idx, { align: "start" });
+      scrollContainerEl.scrollTo({ top: targetOffset, behavior: "smooth" });
+      (virtualizerInstance as any).scrollOffset = targetOffset;
+      clearVirtualizerScrollLock();
       syncVirtualizerState();
     }
   }
@@ -135,7 +157,9 @@
         count,
         getScrollElement: () => scrollContainerEl,
         estimateSize: (index) => estimateMonthHeight(index),
-        overscan: 3,
+        getItemKey: (index) => monthsList[index]?.key ?? index,
+        overscan: 4,
+        useAnimationFrameWithResizeObserver: true,
         observeElementRect,
         observeElementOffset,
         scrollToFn: elementScroll,
@@ -146,15 +170,13 @@
       virtualizerInstance._willUpdate();
 
       if (lockChanged) {
-        // Quando si attiva o disattiva il blocco sessione, mantiene la vista sul mese selezionato
-        const anchorDate = selectedDate || todayIso;
-        const { year, month } = parseIsoDate(anchorDate);
-        const key = `${year}-${String(month).padStart(2, "0")}`;
-        let targetIdx = monthsList.findIndex((m) => m.key === key);
+        // Mantiene la vista sul mese attualmente visibile all'utente, senza forzare blocchi temporali
+        let targetIdx = monthsList.findIndex((m) => m.key === currentVisibleMonthKey);
         if (targetIdx < 0) targetIdx = 0;
         const targetOffset = getEstimatedOffsetForIndex(targetIdx);
         scrollContainerEl.scrollTop = targetOffset;
-        virtualizerInstance.scrollToOffset(targetOffset);
+        (virtualizerInstance as any).scrollOffset = targetOffset;
+        clearVirtualizerScrollLock();
       }
 
       syncVirtualizerState();
@@ -164,7 +186,9 @@
   onMount(() => {
     if (!scrollContainerEl) return;
 
+    prevLockToSession = lockToSession;
     const initialAnchorKey = `${baseAnchor.year}-${String(baseAnchor.month).padStart(2, "0")}`;
+    currentVisibleMonthKey = initialAnchorKey;
     const initialIdx = Math.max(
       0,
       monthsList.findIndex((m) => m.key === initialAnchorKey)
@@ -178,8 +202,10 @@
       count: monthsList.length,
       getScrollElement: () => scrollContainerEl,
       estimateSize: (index) => estimateMonthHeight(index),
+      getItemKey: (index) => monthsList[index]?.key ?? index,
       initialOffset,
-      overscan: 3,
+      overscan: 4,
+      useAnimationFrameWithResizeObserver: true,
       observeElementRect,
       observeElementOffset,
       scrollToFn: elementScroll,
@@ -192,12 +218,12 @@
     virtualizerInstance._willUpdate();
     syncVirtualizerState();
 
-    // Riallinea dopo il primo ciclo di layout per garantire precisione subpixel
+    // Riallinea dopo il primo ciclo di layout mantenendo lo scorrimento del tutto libero
     requestAnimationFrame(() => {
       if (scrollContainerEl && Math.abs(scrollContainerEl.scrollTop - initialOffset) > 150) {
         scrollContainerEl.scrollTop = initialOffset;
       }
-      virtualizerInstance?.scrollToIndex(initialIdx, { align: "start" });
+      clearVirtualizerScrollLock();
       syncVirtualizerState();
     });
 
@@ -256,14 +282,18 @@
     flex: 1;
     width: 100%;
     height: 100%;
-    overflow-y: auto;
+    overflow-y: scroll;
     overflow-x: hidden;
     contain: content;
+    scroll-behavior: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .virtual-scroll-runway {
     position: relative;
     width: 100%;
+    contain: layout style;
   }
 
   .virtual-month-slot {
@@ -272,5 +302,7 @@
     left: 0;
     width: 100%;
     will-change: transform;
+    transform: translateZ(0);
+    backface-visibility: hidden;
   }
 </style>

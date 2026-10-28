@@ -135,10 +135,14 @@ $dllBin = Join-Path $ProjectRoot 'src-tauri\target\release\WebView2Loader.dll'
 if (Test-Path $exeBin) {
     $standaloneName = 'MySession_' + $appVersion + '_Standalone.exe'
     $standaloneDest = Join-Path $releaseOutDir $standaloneName
-    Copy-Item -Path $exeBin -Destination $standaloneDest -Force
-    $sizeMb = [math]::Round((Get-Item $standaloneDest).Length / 1MB, 2)
-    $msg = '  -> Esportato eseguibile standalone: ' + $standaloneName + ' (' + $sizeMb + ' MB)'
-    Write-Host $msg -ForegroundColor Green
+    try {
+        Copy-Item -Path $exeBin -Destination $standaloneDest -Force -ErrorAction Stop
+        $sizeMb = [math]::Round((Get-Item $standaloneDest).Length / 1MB, 2)
+        $msg = '  -> Esportato eseguibile standalone: ' + $standaloneName + ' (' + $sizeMb + ' MB)'
+        Write-Host $msg -ForegroundColor Green
+    } catch {
+        Write-Host "  -> Avviso: Impossibile sovrascrivere $standaloneName (file in uso). Mantenuto file esistente." -ForegroundColor Yellow
+    }
 }
 
 # Copia di WebView2Loader.dll direttamente in release/ per consentire l'esecuzione standalone immediata
