@@ -58,6 +58,20 @@ export interface AcademicSession {
   notes: string;
   createdAt: string;
   planId?: string | null;
+  isSystem?: boolean;
+}
+
+export interface WeeklyLesson {
+  id: string;
+  sessionId: string;
+  courseId: string | null;
+  courseName: string;
+  dayOfWeek: number; // 1 = Lunedi .. 7 = Domenica
+  startTime: string; // HH:MM
+  endTime: string;   // HH:MM
+  classroom: string;
+  professor: string;
+  colorHex: string;
 }
 
 export interface Course {
@@ -237,6 +251,7 @@ export interface SessionSnapshot {
   genericEvents: GenericEvent[];
   todos: TodoItem[];
   dailyNotes: DailyNote[];
+  weeklyLessons?: WeeklyLesson[];
   conflicts: ConflictItem[];
   telemetry: TelemetrySummary;
 }
@@ -353,6 +368,19 @@ export interface UpsertTodoInput {
   planTaskId?: string | null;
   plannedHours?: number | null;
   kind?: string | null;
+}
+
+export interface UpsertWeeklyLessonInput {
+  id?: string | null;
+  sessionId: string;
+  courseId?: string | null;
+  courseName: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  classroom?: string | null;
+  professor?: string | null;
+  colorHex?: string | null;
 }
 
 // ============================================================================

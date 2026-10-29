@@ -5,7 +5,7 @@ use crate::models::{
     AcademicSession, AppSettings, BootstrapPayload, Course, CreateItinerePairInput, DailyNote,
     Exam, FullWorkspaceBackup, GenericEvent, SessionSnapshot, StudyUnit, StudyUnitDraft, TodoItem,
     UpsertCourseInput, UpsertExamInput, UpsertGenericEventInput, UpsertProfileInput,
-    UpsertSessionInput, UpsertTodoInput, UserProfile,
+    UpsertSessionInput, UpsertTodoInput, UpsertWeeklyLessonInput, UserProfile, WeeklyLesson,
 };
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -27,6 +27,8 @@ pub enum DbError {
     LockPoisoned,
     #[error("Risorsa non trovata: {0}")]
     NotFound(String),
+    #[error("Errore di validazione: {0}")]
+    Validation(String),
 }
 
 pub type DbResult<T> = std::result::Result<T, DbError>;
@@ -239,9 +241,9 @@ impl DatabaseManager {
     pub fn list_sessions(conn: &Connection) -> DbResult<Vec<AcademicSession>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, name, subtitle, session_type, academic_year, start_date, end_date, notes, created_at, plan_id
+            SELECT id, name, subtitle, session_type, academic_year, start_date, end_date, notes, created_at, plan_id, is_system
             FROM academic_sessions
-            ORDER BY start_date ASC, created_at ASC
+            ORDER BY is_system DESC, start_date ASC, created_at ASC
             "#,
         )?;
         let rows = stmt.query_map([], |row| {
@@ -256,6 +258,7 @@ impl DatabaseManager {
                 notes: row.get(7)?,
                 created_at: row.get(8)?,
                 plan_id: row.get(9)?,
+                is_system: row.get::<_, i64>(10).unwrap_or(0) != 0,
             })
         })?;
         let mut out = Vec::new();
@@ -268,7 +271,7 @@ impl DatabaseManager {
     pub fn get_session(conn: &Connection, session_id: &str) -> DbResult<AcademicSession> {
         conn.query_row(
             r#"
-            SELECT id, name, subtitle, session_type, academic_year, start_date, end_date, notes, created_at, plan_id
+            SELECT id, name, subtitle, session_type, academic_year, start_date, end_date, notes, created_at, plan_id, is_system
             FROM academic_sessions
             WHERE id = ?1
             "#,
@@ -285,6 +288,7 @@ impl DatabaseManager {
                     notes: row.get(7)?,
                     created_at: row.get(8)?,
                     plan_id: row.get(9)?,
+                    is_system: row.get::<_, i64>(10).unwrap_or(0) != 0,
                 })
             },
         )
@@ -296,6 +300,12 @@ impl DatabaseManager {
         conn: &Connection,
         input: &UpsertSessionInput,
     ) -> DbResult<AcademicSession> {
+        if let Some(ref sid) = input.id {
+            if sid == "session_generale" {
+                return Err(DbError::Validation("La sessione 'Generale' è protetta e non può essere modificata.".to_string()));
+            }
+        }
+
         let id = input
             .id
             .clone()
@@ -307,8 +317,8 @@ impl DatabaseManager {
         conn.execute(
             r#"
             INSERT INTO academic_sessions (
-                id, name, subtitle, session_type, academic_year, start_date, end_date, notes, created_at, plan_id
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                id, name, subtitle, session_type, academic_year, start_date, end_date, notes, created_at, plan_id, is_system
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 subtitle = excluded.subtitle,
@@ -318,6 +328,7 @@ impl DatabaseManager {
                 end_date = excluded.end_date,
                 notes = excluded.notes,
                 plan_id = COALESCE(excluded.plan_id, academic_sessions.plan_id)
+            WHERE academic_sessions.is_system = 0
             "#,
             params![
                 &id,
@@ -352,16 +363,24 @@ impl DatabaseManager {
     }
 
     pub fn delete_session(conn: &Connection, session_id: &str) -> DbResult<()> {
+        if session_id == "session_generale" {
+            return Err(DbError::Validation("La sessione 'Generale' è protetta e non può essere eliminata.".to_string()));
+        }
+        let session = Self::get_session(conn, session_id)?;
+        if session.is_system {
+            return Err(DbError::Validation("Una sessione di sistema non può essere eliminata.".to_string()));
+        }
+
         conn.execute(
             "DELETE FROM academic_sessions WHERE id = ?1",
             params![session_id],
         )?;
 
         let remaining = Self::list_sessions(conn)?;
-        let next_active = remaining.first().map(|s| s.id.clone());
+        let new_active = remaining.first().map(|s| s.id.clone());
         conn.execute(
             "UPDATE app_settings SET active_session_id = ?1 WHERE id = 1",
-            params![next_active],
+            params![new_active],
         )?;
         Ok(())
     }
@@ -1016,6 +1035,188 @@ impl DatabaseManager {
     }
 
     // ========================================================================
+    // Weekly Lessons (Orario Settimanale delle Lezioni)
+    // ========================================================================
+
+    pub fn list_weekly_lessons(conn: &Connection, session_id: &str) -> DbResult<Vec<WeeklyLesson>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, session_id, course_id, course_name, day_of_week, start_time, end_time, classroom, professor, color_hex
+            FROM weekly_lessons
+            WHERE session_id = ?1
+            ORDER BY day_of_week ASC, start_time ASC
+            "#,
+        )?;
+        let rows = stmt.query_map(params![session_id], |row| {
+            Ok(WeeklyLesson {
+                id: row.get(0)?,
+                session_id: row.get(1)?,
+                course_id: row.get(2)?,
+                course_name: row.get(3)?,
+                day_of_week: row.get(4)?,
+                start_time: row.get(5)?,
+                end_time: row.get(6)?,
+                classroom: row.get(7)?,
+                professor: row.get(8)?,
+                color_hex: row.get(9)?,
+            })
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    pub fn upsert_weekly_lesson(
+        conn: &Connection,
+        input: &UpsertWeeklyLessonInput,
+    ) -> DbResult<WeeklyLesson> {
+        let id = input
+            .id
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| format!("les_{}", Uuid::new_v4().simple()));
+        let now_iso = Utc::now().to_rfc3339();
+        let classroom = input.classroom.clone().unwrap_or_default();
+        let professor = input.professor.clone().unwrap_or_default();
+        let color_hex = input.color_hex.clone().unwrap_or_else(|| "#AF52DE".to_string());
+
+        conn.execute(
+            r#"
+            INSERT INTO weekly_lessons (
+                id, session_id, course_id, course_name, day_of_week, start_time, end_time, classroom, professor, color_hex, created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            ON CONFLICT(id) DO UPDATE SET
+                course_id = excluded.course_id,
+                course_name = excluded.course_name,
+                day_of_week = excluded.day_of_week,
+                start_time = excluded.start_time,
+                end_time = excluded.end_time,
+                classroom = excluded.classroom,
+                professor = excluded.professor,
+                color_hex = excluded.color_hex
+            "#,
+            params![
+                &id,
+                input.session_id.trim(),
+                input.course_id.as_deref().map(str::trim),
+                input.course_name.trim(),
+                input.day_of_week,
+                input.start_time.trim(),
+                input.end_time.trim(),
+                classroom.trim(),
+                professor.trim(),
+                color_hex.trim(),
+                &now_iso
+            ],
+        )?;
+
+        conn.query_row(
+            r#"
+            SELECT id, session_id, course_id, course_name, day_of_week, start_time, end_time, classroom, professor, color_hex
+            FROM weekly_lessons
+            WHERE id = ?1
+            "#,
+            params![&id],
+            |row| {
+                Ok(WeeklyLesson {
+                    id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    course_id: row.get(2)?,
+                    course_name: row.get(3)?,
+                    day_of_week: row.get(4)?,
+                    start_time: row.get(5)?,
+                    end_time: row.get(6)?,
+                    classroom: row.get(7)?,
+                    professor: row.get(8)?,
+                    color_hex: row.get(9)?,
+                })
+            },
+        )
+        .map_err(Into::into)
+    }
+
+    pub fn delete_weekly_lesson(conn: &Connection, lesson_id: &str) -> DbResult<()> {
+        conn.execute(
+            "DELETE FROM weekly_lessons WHERE id = ?1",
+            params![lesson_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn project_weekly_lessons_to_calendar(
+        conn: &mut Connection,
+        session_id: &str,
+        start_date: &str,
+        end_date: &str,
+    ) -> DbResult<usize> {
+        let lessons = Self::list_weekly_lessons(conn, session_id)?;
+        if lessons.is_empty() {
+            return Ok(0);
+        }
+
+        let start = chrono::NaiveDate::parse_from_str(start_date, "%Y-%m-%d")
+            .map_err(|e| DbError::Validation(format!("Data inizio non valida: {}", e)))?;
+        let end = chrono::NaiveDate::parse_from_str(end_date, "%Y-%m-%d")
+            .map_err(|e| DbError::Validation(format!("Data fine non valida: {}", e)))?;
+
+        if start > end {
+            return Err(DbError::Validation("La data di inizio non puo superare la data di fine.".to_string()));
+        }
+
+        let tx = conn.transaction()?;
+        let mut count = 0;
+        let mut curr = start;
+
+        while curr <= end {
+            let iso_date = curr.format("%Y-%m-%d").to_string();
+            use chrono::Datelike;
+            let dow = curr.weekday().number_from_monday() as i32;
+
+            for l in &lessons {
+                if l.day_of_week == dow {
+                    let ev_id = format!("ev_les_{}_{}", l.id, iso_date.replace('-', ""));
+                    let time_slot = format!("{}-{}", l.start_time, l.end_time);
+                    let mut details = String::new();
+                    if !l.classroom.is_empty() {
+                        details.push_str(&format!("Aula: {}", l.classroom));
+                    }
+                    if !l.professor.is_empty() {
+                        if !details.is_empty() { details.push_str(" · "); }
+                        details.push_str(&format!("Docente: {}", l.professor));
+                    }
+
+                    tx.execute(
+                        r#"
+                        INSERT OR IGNORE INTO generic_events (
+                            id, session_id, course_id, date, time_slot, title, category, details
+                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'lezione', ?7)
+                        "#,
+                        params![
+                            &ev_id,
+                            session_id,
+                            l.course_id.as_deref(),
+                            &iso_date,
+                            &time_slot,
+                            &l.course_name,
+                            &details
+                        ],
+                    )?;
+                    count += 1;
+                }
+            }
+            match curr.succ_opt() {
+                Some(next) => curr = next,
+                None => break,
+            }
+        }
+
+        tx.commit()?;
+        Ok(count)
+    }
+
+    // ========================================================================
     // Snapshot & Bootstrap Builder
     // ========================================================================
 
@@ -1031,6 +1232,7 @@ impl DatabaseManager {
         let generic_events = Self::list_generic_events(conn, session_id)?;
         let todos = Self::list_todos(conn, session_id)?;
         let daily_notes = Self::list_daily_notes(conn, session_id)?;
+        let weekly_lessons = Self::list_weekly_lessons(conn, session_id)?;
 
         let conflicts = detect_session_conflicts(&courses, &study_units, &exams);
         let telemetry = compute_session_telemetry(
@@ -1052,6 +1254,7 @@ impl DatabaseManager {
             generic_events,
             todos,
             daily_notes,
+            weekly_lessons,
             conflicts,
             telemetry,
         })
@@ -1112,6 +1315,7 @@ impl DatabaseManager {
         let mut generic_events = Vec::new();
         let mut todos = Vec::new();
         let mut daily_notes = Vec::new();
+        let mut weekly_lessons = Vec::new();
 
         for s in &sessions {
             courses.extend(Self::list_courses(conn, &s.id)?);
@@ -1120,6 +1324,7 @@ impl DatabaseManager {
             generic_events.extend(Self::list_generic_events(conn, &s.id)?);
             todos.extend(Self::list_todos(conn, &s.id)?);
             daily_notes.extend(Self::list_daily_notes(conn, &s.id)?);
+            weekly_lessons.extend(Self::list_weekly_lessons(conn, &s.id)?);
         }
 
         Ok(FullWorkspaceBackup {
@@ -1135,6 +1340,7 @@ impl DatabaseManager {
             generic_events,
             todos,
             daily_notes,
+            weekly_lessons,
         })
     }
 
@@ -1174,8 +1380,18 @@ impl DatabaseManager {
             tx.execute(
                 r#"
                 INSERT INTO academic_sessions (
-                    id, name, subtitle, session_type, academic_year, start_date, end_date, notes, created_at
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                    id, name, subtitle, session_type, academic_year, start_date, end_date, notes, created_at, plan_id, is_system
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    subtitle = excluded.subtitle,
+                    session_type = excluded.session_type,
+                    academic_year = excluded.academic_year,
+                    start_date = excluded.start_date,
+                    end_date = excluded.end_date,
+                    notes = excluded.notes,
+                    plan_id = excluded.plan_id,
+                    is_system = excluded.is_system
                 "#,
                 params![
                     s.id,
@@ -1186,10 +1402,25 @@ impl DatabaseManager {
                     s.start_date,
                     s.end_date,
                     s.notes,
-                    s.created_at
+                    s.created_at,
+                    s.plan_id,
+                    if s.is_system { 1 } else { 0 }
                 ],
             )?;
         }
+
+        tx.execute(
+            r#"
+            INSERT OR IGNORE INTO academic_sessions (
+                id, name, subtitle, session_type, academic_year,
+                start_date, end_date, notes, is_system, created_at
+            ) VALUES (
+                'session_generale', 'Generale', 'Spazio libero continuo', 'generale', '',
+                '2020-01-01', '2040-12-31', 'Sessione permanente di default', 1, datetime('now')
+            )
+            "#,
+            [],
+        )?;
 
         for c in &backup.courses {
             tx.execute(
@@ -1313,6 +1544,38 @@ impl DatabaseManager {
                 VALUES (?1, ?2, ?3, ?4)
                 "#,
                 params![n.session_id, n.date, n.content_markdown, n.updated_at],
+            )?;
+        }
+
+        for l in &backup.weekly_lessons {
+            tx.execute(
+                r#"
+                INSERT INTO weekly_lessons (
+                    id, session_id, course_id, course_name, day_of_week, start_time, end_time, classroom, professor, color_hex, created_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                ON CONFLICT(id) DO UPDATE SET
+                    course_id = excluded.course_id,
+                    course_name = excluded.course_name,
+                    day_of_week = excluded.day_of_week,
+                    start_time = excluded.start_time,
+                    end_time = excluded.end_time,
+                    classroom = excluded.classroom,
+                    professor = excluded.professor,
+                    color_hex = excluded.color_hex
+                "#,
+                params![
+                    l.id,
+                    l.session_id,
+                    l.course_id,
+                    l.course_name,
+                    l.day_of_week,
+                    l.start_time,
+                    l.end_time,
+                    l.classroom,
+                    l.professor,
+                    l.color_hex,
+                    now_iso
+                ],
             )?;
         }
 

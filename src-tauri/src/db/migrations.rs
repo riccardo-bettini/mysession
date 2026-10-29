@@ -1,7 +1,7 @@
 use chrono::Utc;
 use rusqlite::{params, Connection, Result};
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 2;
+pub const CURRENT_SCHEMA_VERSION: i32 = 3;
 
 const MIGRATION_V1_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -185,6 +185,40 @@ CREATE TABLE IF NOT EXISTS plan_state (
 CREATE INDEX IF NOT EXISTS idx_plan_state_session ON plan_state(session_id);
 "#;
 
+const MIGRATION_V3_SQL: &str = r#"
+ALTER TABLE academic_sessions ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS weekly_lessons (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    course_id TEXT,
+    course_name TEXT NOT NULL,
+    day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 1 AND 7),
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    classroom TEXT NOT NULL DEFAULT '',
+    professor TEXT NOT NULL DEFAULT '',
+    color_hex TEXT NOT NULL DEFAULT '#AF52DE',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES academic_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_weekly_lessons_session ON weekly_lessons(session_id);
+
+INSERT OR IGNORE INTO academic_sessions (
+    id, name, subtitle, session_type, academic_year,
+    start_date, end_date, notes, is_system, created_at
+) VALUES (
+    'session_generale', 'Generale', 'Spazio libero continuo', 'generale', '',
+    '2020-01-01', '2040-12-31', 'Sessione permanente di default', 1, datetime('now')
+);
+
+UPDATE app_settings
+SET active_session_id = 'session_generale'
+WHERE active_session_id IS NULL OR active_session_id = '';
+"#;
+
 pub fn configure_connection_pragmas(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
@@ -238,6 +272,16 @@ pub fn run_migrations(conn: &mut Connection) -> Result<()> {
         tx.execute(
             "INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
             params![2, &now_iso],
+        )?;
+        tx.commit()?;
+    }
+
+    if current_version < 3 {
+        let tx = conn.transaction()?;
+        tx.execute_batch(MIGRATION_V3_SQL)?;
+        tx.execute(
+            "INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
+            params![3, &now_iso],
         )?;
         tx.commit()?;
     }

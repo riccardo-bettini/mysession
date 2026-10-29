@@ -506,17 +506,44 @@ pub fn set_course_visibility(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::StudyUnitDraft;
+    use crate::models::{StudyUnitDraft, UpsertWeeklyLessonInput};
 
     #[test]
     fn test_sqlite_migrations_and_full_crud_flow() {
         let db = DatabaseManager::init_in_memory().expect("In-memory SQLite init failed");
 
-        // 1. Verify initial empty multi-user onboarding state (zero hardcoded courses!)
+        // 1. Verify initial state: default system session "Generale" exists and is empty
         let initial = db.build_bootstrap_payload(APP_VERSION).unwrap();
         assert!(!initial.profile.onboarding_completed);
-        assert!(initial.sessions.is_empty());
-        assert!(initial.active_snapshot.is_none());
+        assert_eq!(initial.sessions.len(), 1);
+        assert_eq!(initial.sessions[0].id, "session_generale");
+        assert!(initial.sessions[0].is_system);
+        assert!(initial.active_snapshot.is_some());
+        assert!(initial.active_snapshot.as_ref().unwrap().courses.is_empty());
+
+        // Verify protection on session "Generale"
+        db.with_conn(|conn| {
+            let res = DatabaseManager::delete_session(conn, "session_generale");
+            assert!(res.is_err(), "La sessione 'Generale' non deve poter essere eliminata");
+
+            let res_update = DatabaseManager::upsert_session(
+                conn,
+                &UpsertSessionInput {
+                    id: Some("session_generale".to_string()),
+                    name: "Tentativo Modifica".to_string(),
+                    subtitle: "".to_string(),
+                    session_type: "custom".to_string(),
+                    academic_year: "".to_string(),
+                    start_date: "2026-01-01".to_string(),
+                    end_date: "2026-12-31".to_string(),
+                    notes: None,
+                    plan_id: None,
+                },
+            );
+            assert!(res_update.is_err(), "La sessione 'Generale' non deve poter essere modificata");
+            Ok(())
+        })
+        .unwrap();
 
         // 2. Complete user profile
         db.with_conn(|conn| {
@@ -602,6 +629,43 @@ mod tests {
             })
             .unwrap();
 
+        // 4.1 Test Weekly Lessons (Orario Settimanale)
+        db.with_conn(|conn| {
+            let lesson = DatabaseManager::upsert_weekly_lesson(
+                conn,
+                &UpsertWeeklyLessonInput {
+                    id: None,
+                    session_id: session.id.clone(),
+                    course_id: Some(course.id.clone()),
+                    course_name: "Meccanica Applicata".to_string(),
+                    day_of_week: 1, // Lunedi
+                    start_time: "09:00".to_string(),
+                    end_time: "11:00".to_string(),
+                    classroom: Some("Aula 4".to_string()),
+                    professor: Some("Prof. Rossi".to_string()),
+                    color_hex: Some("#0284C7".to_string()),
+                },
+            )?;
+            assert_eq!(lesson.course_name, "Meccanica Applicata");
+
+            let lessons = DatabaseManager::list_weekly_lessons(conn, &session.id)?;
+            assert_eq!(lessons.len(), 1);
+            Ok(())
+        })
+        .unwrap();
+
+        db.with_conn(|conn| {
+            let proj_count = DatabaseManager::project_weekly_lessons_to_calendar(
+                conn,
+                &session.id,
+                "2027-01-01",
+                "2027-01-31",
+            )?;
+            assert!(proj_count > 0, "Dovrebbero essere generate lezioni nel calendario per gennaio");
+            Ok(())
+        })
+        .unwrap();
+
         // 5. Create in-itinere pair
         let pair = db
             .with_conn(|conn| {
@@ -644,6 +708,6 @@ mod tests {
             .unwrap();
 
         let after_import = db.build_bootstrap_payload(APP_VERSION).unwrap();
-        assert_eq!(after_import.sessions.len(), 1);
+        assert_eq!(after_import.sessions.len(), 2);
     }
 }

@@ -108,6 +108,23 @@ pub struct AcademicSession {
     pub notes: String,
     pub created_at: String,
     pub plan_id: Option<String>,
+    #[serde(default)]
+    pub is_system: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WeeklyLesson {
+    pub id: String,
+    pub session_id: String,
+    pub course_id: Option<String>,
+    pub course_name: String,
+    pub day_of_week: i32, // 1 = Lunedi .. 7 = Domenica
+    pub start_time: String, // HH:MM
+    pub end_time: String,   // HH:MM
+    pub classroom: String,
+    pub professor: String,
+    pub color_hex: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -316,6 +333,7 @@ pub struct SessionSnapshot {
     pub generic_events: Vec<GenericEvent>,
     pub todos: Vec<TodoItem>,
     pub daily_notes: Vec<DailyNote>,
+    pub weekly_lessons: Vec<WeeklyLesson>,
     pub conflicts: Vec<ConflictItem>,
     pub telemetry: TelemetrySummary,
 }
@@ -346,6 +364,8 @@ pub struct FullWorkspaceBackup {
     pub generic_events: Vec<GenericEvent>,
     pub todos: Vec<TodoItem>,
     pub daily_notes: Vec<DailyNote>,
+    #[serde(default)]
+    pub weekly_lessons: Vec<WeeklyLesson>,
 }
 
 // ============================================================================
@@ -467,4 +487,19 @@ pub struct UpsertTodoInput {
     pub plan_task_id: Option<String>,
     pub planned_hours: Option<f64>,
     pub kind: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpsertWeeklyLessonInput {
+    pub id: Option<String>,
+    pub session_id: String,
+    pub course_id: Option<String>,
+    pub course_name: String,
+    pub day_of_week: i32,
+    pub start_time: String,
+    pub end_time: String,
+    pub classroom: Option<String>,
+    pub professor: Option<String>,
+    pub color_hex: Option<String>,
 }
