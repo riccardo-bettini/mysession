@@ -18,7 +18,10 @@ import type {
   MaxButtonBounds,
   AiAssistantResponse,
   PendingPlanNotification,
-  PlanDiffSummary
+  PlanDiffSummary,
+  WeeklyLesson,
+  UpsertWeeklyLessonInput,
+  ExtractedLessonItem
 } from "../types/domain";
 
 export const ipc = {
@@ -125,5 +128,20 @@ export const ipc = {
     }),
 
   setCourseVisibility: (sessionId: string, courseId: string, isVisible: boolean) =>
-    invoke<SessionSnapshot>("set_course_visibility", { sessionId, courseId, isVisible })
+    invoke<SessionSnapshot>("set_course_visibility", { sessionId, courseId, isVisible }),
+
+  getWeeklyLessons: (sessionId: string) =>
+    invoke<WeeklyLesson[]>("get_weekly_lessons", { sessionId }),
+
+  upsertWeeklyLesson: (input: UpsertWeeklyLessonInput) =>
+    invoke<WeeklyLesson>("upsert_weekly_lesson", { input }),
+
+  deleteWeeklyLesson: (lessonId: string) =>
+    invoke<boolean>("delete_weekly_lesson", { lessonId }),
+
+  projectLessonsToCalendar: (sessionId: string, startDate: string, endDate: string) =>
+    invoke<number>("project_lessons_to_calendar", { sessionId, startDate, endDate }),
+
+  parseTimetableImage: (sessionId: string, imageBase64: string, mimeType: string) =>
+    invoke<ExtractedLessonItem[]>("parse_timetable_image", { sessionId, imageBase64, mimeType })
 };

@@ -978,6 +978,159 @@ fn extract_iso_or_italian_date(text_lower: &str, reference_today: &str) -> Optio
     None
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractedLessonItem {
+    pub day_of_week: i32, // 1..7 (1=Lun, 7=Dom)
+    pub start_time: String, // HH:MM
+    pub end_time: String,   // HH:MM
+    pub course_name: String,
+    pub classroom: String,
+    pub professor: String,
+}
+
+pub fn parse_timetable_image_with_ai(
+    conn: &Connection,
+    _session_id: &str,
+    image_base64: &str,
+    mime_type: &str,
+) -> Result<Vec<ExtractedLessonItem>, String> {
+    let settings = DatabaseManager::get_settings(conn).map_err(|e| e.to_string())?;
+    let provider = settings.ai_provider.trim().to_lowercase();
+
+    if settings.ai_api_key.trim().is_empty() {
+        return Err("Per analizzare la foto dell'orario con l'IA, configura la chiave API (Gemini o OpenAI) nelle Impostazioni dell'app.".to_string());
+    }
+
+    let clean_mime = if mime_type.is_empty() { "image/png" } else { mime_type };
+    let clean_base64 = if let Some(idx) = image_base64.find(";base64,") {
+        &image_base64[idx + 8..]
+    } else {
+        image_base64
+    };
+
+    match provider.as_str() {
+        "gemini" => {
+            let model = if settings.ai_model.trim().is_empty() {
+                "gemini-2.5-flash"
+            } else {
+                settings.ai_model.trim()
+            };
+            let url = format!(
+                "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+                model,
+                settings.ai_api_key.trim()
+            );
+
+            let prompt_text = "Analizza questa immagine contenente un orario delle lezioni scolastico/universitario. \
+                Estrai ogni singola lezione presente nella griglia o nella tabella. \
+                Rispondi ESCLUSIVAMENTE con un JSON contenente una lista di oggetti con i seguenti campi esatti: \
+                dayOfWeek: numero intero da 1 a 7 (1=Lunedì, 2=Martedì, 3=Mercoledì, 4=Giovedì, 5=Venerdì, 6=Sabato, 7=Domenica), \
+                startTime: orario di inizio in formato 'HH:MM' (es. '09:00'), \
+                endTime: orario di fine in formato 'HH:MM' (es. '11:00'), \
+                courseName: nome della materia o insegnamento, \
+                classroom: aula se presente (o stringa vuota), \
+                professor: docente se presente (o stringa vuota).";
+
+            let body = serde_json::json!({
+                "contents": [{
+                    "parts": [
+                        { "text": prompt_text },
+                        {
+                            "inlineData": {
+                                "mimeType": clean_mime,
+                                "data": clean_base64
+                            }
+                        }
+                    ]
+                }],
+                "generationConfig": { "responseMimeType": "application/json" }
+            });
+
+            let resp: serde_json::Value = ureq::post(&url)
+                .send_json(body)
+                .map_err(|e| format!("Errore chiamata Gemini Vision: {}", e))?
+                .into_json()
+                .map_err(|e| format!("Errore parsing risposta Gemini: {}", e))?;
+
+            let text = resp["candidates"][0]["content"]["parts"][0]["text"]
+                .as_str()
+                .ok_or_else(|| "Risposta Gemini vuota o non valida".to_string())?;
+
+            if let Ok(list) = serde_json::from_str::<Vec<ExtractedLessonItem>>(text) {
+                return Ok(list);
+            }
+            #[derive(Deserialize)]
+            struct Wrapper {
+                lessons: Option<Vec<ExtractedLessonItem>>,
+                timetable: Option<Vec<ExtractedLessonItem>>,
+            }
+            if let Ok(wrapper) = serde_json::from_str::<Wrapper>(text) {
+                if let Some(list) = wrapper.lessons.or(wrapper.timetable) {
+                    return Ok(list);
+                }
+            }
+            Err(format!("Formato risposta AI non riconosciuto: {}", text))
+        }
+        "openai" => {
+            let model = if settings.ai_model.trim().is_empty() {
+                "gpt-4o"
+            } else {
+                settings.ai_model.trim()
+            };
+            let prompt_text = "Analizza questa immagine contenente un orario delle lezioni scolastico/universitario. \
+                Estrai ogni singola lezione presente nella griglia o nella tabella. \
+                Rispondi con un oggetto JSON avente la chiave 'lessons', contenente una lista di oggetti con i seguenti campi esatti: \
+                dayOfWeek (intero 1..7 dove 1=Lunedì, 7=Domenica), startTime ('HH:MM'), endTime ('HH:MM'), courseName (stringa), classroom (stringa), professor (stringa).";
+
+            let data_url = format!("data:{};base64,{}", clean_mime, clean_base64);
+
+            let body = serde_json::json!({
+                "model": model,
+                "response_format": { "type": "json_object" },
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            { "type": "text", "text": prompt_text },
+                            {
+                                "type": "image_url",
+                                "image_url": { "url": data_url }
+                            }
+                        ]
+                    }
+                ]
+            });
+
+            let resp: serde_json::Value = ureq::post("https://api.openai.com/v1/chat/completions")
+                .set("Authorization", &format!("Bearer {}", settings.ai_api_key.trim()))
+                .send_json(body)
+                .map_err(|e| format!("Errore chiamata OpenAI Vision: {}", e))?
+                .into_json()
+                .map_err(|e| format!("Errore parsing risposta OpenAI: {}", e))?;
+
+            let text = resp["choices"][0]["message"]["content"]
+                .as_str()
+                .ok_or_else(|| "Risposta OpenAI vuota o non valida".to_string())?;
+
+            #[derive(Deserialize)]
+            struct Wrapper {
+                lessons: Option<Vec<ExtractedLessonItem>>,
+            }
+            if let Ok(wrapper) = serde_json::from_str::<Wrapper>(text) {
+                if let Some(list) = wrapper.lessons {
+                    return Ok(list);
+                }
+            }
+            if let Ok(list) = serde_json::from_str::<Vec<ExtractedLessonItem>>(text) {
+                return Ok(list);
+            }
+            Err(format!("Formato risposta AI non riconosciuto: {}", text))
+        }
+        _ => Err("L'analisi delle immagini richiede un provider AI cloud configurato (Google Gemini o OpenAI). Vai nelle Impostazioni per impostare la tua API Key.".to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,10 +1,13 @@
-use crate::ai::{process_natural_command, AiAssistantResponse};
+use crate::ai::{
+    parse_timetable_image_with_ai, process_natural_command, AiAssistantResponse, ExtractedLessonItem,
+};
 use crate::db::DatabaseManager;
 use crate::engine::holidays::list_holidays_for_years;
 use crate::models::{
     AppSettings, BootstrapPayload, CreateItinerePairInput, FullWorkspaceBackup, HolidayInfo,
     SessionSnapshot, UpsertCourseInput, UpsertExamInput, UpsertGenericEventInput,
-    UpsertProfileInput, UpsertSessionInput, UpsertTodoInput, UserProfile,
+    UpsertProfileInput, UpsertSessionInput, UpsertTodoInput, UpsertWeeklyLessonInput, UserProfile,
+    WeeklyLesson,
 };
 use crate::win32::{
     apply_window_backdrop_and_theme, get_system_theme_state, update_maximize_button_bounds,
@@ -499,6 +502,68 @@ pub fn set_course_visibility(
         DatabaseManager::set_course_visibility(conn, &course_id, is_visible)?;
         let settings = DatabaseManager::get_settings(conn)?;
         DatabaseManager::build_session_snapshot(conn, &session_id, &settings)
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_weekly_lessons(
+    db: State<'_, DatabaseManager>,
+    session_id: String,
+) -> Result<Vec<WeeklyLesson>, String> {
+    db.with_conn(|conn| DatabaseManager::list_weekly_lessons(conn, &session_id))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn upsert_weekly_lesson(
+    db: State<'_, DatabaseManager>,
+    input: UpsertWeeklyLessonInput,
+) -> Result<WeeklyLesson, String> {
+    db.with_conn(|conn| DatabaseManager::upsert_weekly_lesson(conn, &input))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_weekly_lesson(
+    db: State<'_, DatabaseManager>,
+    lesson_id: String,
+) -> Result<bool, String> {
+    db.with_conn(|conn| {
+        DatabaseManager::delete_weekly_lesson(conn, &lesson_id)?;
+        Ok(true)
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn project_lessons_to_calendar(
+    db: State<'_, DatabaseManager>,
+    session_id: String,
+    start_date: String,
+    end_date: String,
+) -> Result<usize, String> {
+    db.with_conn(|conn| {
+        DatabaseManager::project_weekly_lessons_to_calendar(
+            conn,
+            &session_id,
+            &start_date,
+            &end_date,
+        )
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn parse_timetable_image(
+    db: State<'_, DatabaseManager>,
+    session_id: String,
+    image_base64: String,
+    mime_type: String,
+) -> Result<Vec<ExtractedLessonItem>, String> {
+    db.with_conn(|conn| {
+        parse_timetable_image_with_ai(conn, &session_id, &image_base64, &mime_type)
+            .map_err(crate::db::DbError::Validation)
     })
     .map_err(|e| e.to_string())
 }

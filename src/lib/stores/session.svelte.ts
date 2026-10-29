@@ -15,7 +15,10 @@ import type {
   UpsertProfileInput,
   UpsertSessionInput,
   UpsertTodoInput,
-  UserProfile
+  UserProfile,
+  WeeklyLesson,
+  UpsertWeeklyLessonInput,
+  ExtractedLessonItem
 } from "../types/domain";
 import { APP_VERSION } from "../constants/version";
 import { getTodayIso } from "../utils/calendar";
@@ -55,6 +58,7 @@ class SessionWorkspaceStore {
   courses = $derived<Course[]>(this.activeSnapshot?.courses ?? []);
   exams = $derived<Exam[]>(this.activeSnapshot?.exams ?? []);
   genericEvents = $derived<GenericEvent[]>(this.activeSnapshot?.genericEvents ?? []);
+  weeklyLessons = $derived<WeeklyLesson[]>(this.activeSnapshot?.weeklyLessons ?? []);
 
   toggleSessionLock(force?: boolean): boolean {
     this.isSessionLocked = force !== undefined ? force : !this.isSessionLocked;
@@ -226,6 +230,34 @@ class SessionWorkspaceStore {
     const snap = await ipc.saveDailyNote(sessionId, date, contentMarkdown);
     this.activeSnapshot = snap;
     return snap;
+  }
+
+  async upsertWeeklyLesson(input: UpsertWeeklyLessonInput): Promise<WeeklyLesson> {
+    const lesson = await ipc.upsertWeeklyLesson(input);
+    await this.refreshActiveSnapshot();
+    return lesson;
+  }
+
+  async deleteWeeklyLesson(lessonId: string): Promise<boolean> {
+    const res = await ipc.deleteWeeklyLesson(lessonId);
+    await this.refreshActiveSnapshot();
+    return res;
+  }
+
+  async projectLessonsToCalendar(startDate?: string, endDate?: string): Promise<number> {
+    const sessionId = this.activeSession?.id;
+    if (!sessionId) throw new Error("Nessuna sessione attiva.");
+    const start = startDate || this.activeSession?.startDate || this.todayIso;
+    const end = endDate || this.activeSession?.endDate || this.todayIso;
+    const count = await ipc.projectLessonsToCalendar(sessionId, start, end);
+    await this.refreshActiveSnapshot();
+    return count;
+  }
+
+  async parseTimetableImage(imageBase64: string, mimeType: string): Promise<ExtractedLessonItem[]> {
+    const sessionId = this.activeSession?.id;
+    if (!sessionId) throw new Error("Nessuna sessione attiva.");
+    return ipc.parseTimetableImage(sessionId, imageBase64, mimeType);
   }
 
   async executeAiCommand(prompt: string): Promise<AiAssistantResponse> {

@@ -18,6 +18,7 @@
     onEditCourse?: (course: Course) => void;
     onOpenNewExam?: () => void;
     onOpenNewEvent?: () => void;
+    onOpenTimetable?: () => void;
   }
 
   let {
@@ -28,7 +29,8 @@
     onOpenNewCourse,
     onEditCourse,
     onOpenNewExam,
-    onOpenNewEvent
+    onOpenNewEvent,
+    onOpenTimetable
   }: Props = $props();
 
   let isCompact = $derived(themeStore.settings.sidebarState === "compact");
@@ -191,6 +193,9 @@
       </button>
       <button type="button" class="action-chip pressable" onclick={() => onOpenNewEvent?.()}>
         + Impegno
+      </button>
+      <button type="button" class="action-chip pressable" onclick={() => onOpenTimetable?.()}>
+        📅 Orario
       </button>
     </div>
 

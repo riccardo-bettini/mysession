@@ -18,6 +18,7 @@
   import SessionManagementModal from "./lib/components/modals/SessionManagementModal.svelte";
   import SettingsModal from "./lib/components/modals/SettingsModal.svelte";
   import PlanUpdateModal from "./lib/components/modals/PlanUpdateModal.svelte";
+  import TimetableModal from "./lib/components/modals/TimetableModal.svelte";
   import { sessionStore } from "./lib/stores/session.svelte";
   import { themeStore } from "./lib/stores/theme.svelte";
   import { planStore } from "./lib/stores/plan.svelte";
@@ -42,6 +43,7 @@
 
   // Stato modali operativi (Fase 5)
   let sessionManagementOpen = $state<boolean>(false);
+  let timetableModalOpen = $state<boolean>(false);
   let sessionModalState = $state<{ open: boolean; editing: AcademicSession | null }>({
     open: false,
     editing: null
@@ -328,6 +330,7 @@
     onNavigateStep={handleNavigateStep}
     onOpenCommandPalette={triggerCommandPalette}
     onOpenSettings={() => (settingsModalState = { open: true, tab: "appearance" })}
+    onOpenTimetable={() => (timetableModalOpen = true)}
   />
 
   <!-- Corpo Principale: Sidebar Telemetria + Calendario Infinito + Day Inspector Drawer -->
@@ -349,6 +352,7 @@
       }}
       onOpenNewEvent={() =>
         (eventModalState = { open: true, editing: null, defaultDate: selectedDate })}
+      onOpenTimetable={() => (timetableModalOpen = true)}
     />
 
     <main class="calendar-stage">
@@ -534,6 +538,13 @@
     <SettingsModal
       initialTab={settingsModalState.tab}
       onClose={() => (settingsModalState.open = false)}
+      onToast={showToast}
+    />
+  {/if}
+
+  {#if timetableModalOpen}
+    <TimetableModal
+      onClose={() => (timetableModalOpen = false)}
       onToast={showToast}
     />
   {/if}

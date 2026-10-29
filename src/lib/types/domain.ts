@@ -480,6 +480,15 @@ export interface CourseChangeItem {
   active: boolean;
 }
 
+export interface ExtractedLessonItem {
+  dayOfWeek: number; // 1=Lun .. 7=Dom
+  startTime: string; // HH:MM
+  endTime: string;   // HH:MM
+  courseName: string;
+  classroom: string;
+  professor: string;
+}
+
 export interface PlanDiffSummary {
   isInitialImport: boolean;
   planId: string;
