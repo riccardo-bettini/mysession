@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sessionStore } from "../../stores/session.svelte";
   import { themeStore } from "../../stores/theme.svelte";
   import type { Course, Exam } from "../../types/domain";
   import {
@@ -52,6 +53,41 @@
   let hasCriticalConflict = $derived(conflicts.some((c) => c.severity === "critical"));
   let hasNote = $derived(Boolean(dayData?.note));
   let workloadHours = $derived(dayData?.workloadHours ?? 0);
+
+  // Quota dinamica di visualizzazione diretta impegni e to-do nel calendario
+  let maxDisplayItems = $derived(compact ? 3 : 5);
+  let totalItemsCount = $derived(
+    visibleExams.length + visibleEvents.length + todos.length + (visibleUnits.length > 0 ? 1 : 0)
+  );
+
+  let displayedExams = $derived(visibleExams.slice(0, 3));
+  let remainingQuotaAfterExams = $derived(Math.max(0, maxDisplayItems - displayedExams.length));
+
+  let displayedEvents = $derived(visibleEvents.slice(0, remainingQuotaAfterExams));
+  let remainingQuotaAfterEvents = $derived(
+    Math.max(0, remainingQuotaAfterExams - displayedEvents.length)
+  );
+
+  let displayedTodos = $derived(todos.slice(0, remainingQuotaAfterEvents));
+  let overflowCount = $derived(
+    Math.max(
+      0,
+      totalItemsCount -
+        (displayedExams.length +
+          displayedEvents.length +
+          displayedTodos.length +
+          (visibleUnits.length > 0 ? 1 : 0))
+    )
+  );
+
+  async function handleToggleTodo(todoId: string, e: MouseEvent) {
+    e.stopPropagation();
+    try {
+      await sessionStore.toggleTodo(todoId);
+    } catch (err) {
+      console.error("Errore toggle todo da cella calendario:", err);
+    }
+  }
 
   function getCategoryColor(cat: string): string {
     switch (cat) {
@@ -140,9 +176,10 @@
     </div>
   </div>
 
-  <!-- Body: Pillole Esami, Eventi Generici e Unità Didattiche Pianificate -->
+  <!-- Body: Pillole Esami, Impegni Diretti, To-Do List e Unità Didattiche -->
   <div class="day-items-stack">
-    {#each visibleExams as exam (exam.id)}
+    <!-- 1. Esami / Appelli -->
+    {#each displayedExams as exam (exam.id)}
       {@const course = courseById.get(exam.courseId)}
       {@const palette = generateCourseColorTokens(course?.colorHex ?? "#007AFF", isDark)}
       <button
@@ -170,15 +207,40 @@
       </button>
     {/each}
 
-    {#each visibleEvents.slice(0, compact ? 1 : 2) as ev (ev.id)}
+    <!-- 2. Impegni Giornalieri / Lezioni -->
+    {#each displayedEvents as ev (ev.id)}
       {@const catColor = getCategoryColor(ev.category)}
-      <div class="generic-event-chip" title="{ev.title} ({ev.category})">
+      <div class="generic-event-chip" title="{ev.title} ({ev.category}){ev.timeSlot ? ` · ${ev.timeSlot}` : ''}">
         <span class="event-dot" style:background={catColor}></span>
+        {#if ev.timeSlot}
+          <span class="event-time">{ev.timeSlot}</span>
+        {/if}
         <span class="event-title">{ev.title}</span>
       </div>
     {/each}
 
-    {#if visibleUnits.length > 0}
+    <!-- 3. To-Do List Diretta nel Calendario -->
+    {#each displayedTodos as todo (todo.id)}
+      <button
+        type="button"
+        class="cell-todo-item"
+        class:done={todo.done}
+        onclick={(e) => handleToggleTodo(todo.id, e)}
+        title="{todo.done ? 'Completato' : 'Da completare'}: {todo.text}"
+      >
+        <span class="todo-check-circle" class:checked={todo.done}>
+          {#if todo.done}✓{/if}
+        </span>
+        {#if todo.courseId && courseById.get(todo.courseId)}
+          {@const c = courseById.get(todo.courseId)}
+          <span class="todo-course-tag">{c?.sigla}</span>
+        {/if}
+        <span class="todo-text">{todo.text}</span>
+      </button>
+    {/each}
+
+    <!-- 4. Unità Didattiche (se presenti e con spazio) -->
+    {#if visibleUnits.length > 0 && remainingQuotaAfterEvents > 0}
       <div class="units-chip-row">
         {#each visibleUnits.slice(0, 3) as u (u.id)}
           {@const c = courseById.get(u.courseId)}
@@ -193,6 +255,13 @@
         {#if visibleUnits.length > 3}
           <span class="unit-more">+{visibleUnits.length - 3}</span>
         {/if}
+      </div>
+    {/if}
+
+    <!-- 5. Indicatore Overflow (+N altri impegni/to-do) -->
+    {#if overflowCount > 0}
+      <div class="items-overflow-badge" title="Clicca per aprire tutti gli impegni del giorno">
+        +{overflowCount} altri
       </div>
     {/if}
   </div>
@@ -424,9 +493,12 @@
     display: flex;
     align-items: center;
     gap: 0.3rem;
-    padding: 0.12rem 0.28rem;
+    padding: 0.14rem 0.35rem;
     font-size: 0.63rem;
     color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.035);
+    border: 0.5px solid rgba(255, 255, 255, 0.06);
+    border-radius: 4px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -439,9 +511,95 @@
     flex-shrink: 0;
   }
 
+  .event-time {
+    font-size: 0.58rem;
+    font-weight: 700;
+    opacity: 0.85;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
   .event-title {
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* To-Do Item Direttamente nella Cella */
+  .cell-todo-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.12rem 0.35rem;
+    font-size: 0.63rem;
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.03);
+    border: 0.5px solid rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: background 0.12s ease;
+  }
+  .cell-todo-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .cell-todo-item.done {
+    opacity: 0.5;
+  }
+  .cell-todo-item.done .todo-text {
+    text-decoration: line-through;
+  }
+
+  .todo-check-circle {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1px solid var(--text-tertiary, #888888);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.5rem;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .todo-check-circle.checked {
+    background: #34c759;
+    border-color: #34c759;
+    color: #ffffff;
+  }
+
+  .todo-course-tag {
+    font-size: 0.54rem;
+    font-weight: 700;
+    opacity: 0.85;
+    padding: 0.04rem 0.22rem;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.09);
+    flex-shrink: 0;
+  }
+
+  .todo-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .items-overflow-badge {
+    font-size: 0.58rem;
+    font-weight: 700;
+    color: var(--accent-primary, #007aff);
+    padding: 0.06rem 0.3rem;
+    border-radius: 4px;
+    background: rgba(0, 122, 255, 0.1);
+    align-self: flex-start;
+    margin-top: 0.05rem;
+    cursor: pointer;
+  }
+  .items-overflow-badge:hover {
+    background: rgba(0, 122, 255, 0.18);
   }
 
   .units-chip-row {
