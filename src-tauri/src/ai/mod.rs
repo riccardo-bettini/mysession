@@ -264,6 +264,8 @@ fn apply_structured_llm_action(
                         target_hours_override: None,
                         notes: None,
                         units: None,
+                        plan_course_id: None,
+                        is_visible: Some(true),
                     },
                 )
                 .map_err(|e| e.to_string())?;
@@ -326,6 +328,9 @@ fn apply_structured_llm_action(
                             date: date.clone(),
                             text: text.clone(),
                             priority: Some(1),
+                            plan_task_id: None,
+                            planned_hours: None,
+                            kind: None,
                         },
                     )
                     .map_err(|e| e.to_string())?;
@@ -722,6 +727,8 @@ fn execute_deterministic_intent_engine(
                 target_hours_override: None,
                 notes: None,
                 units: None,
+                plan_course_id: None,
+                is_visible: Some(true),
             },
         )
         .map_err(|e| e.to_string())?;
@@ -826,6 +833,9 @@ fn execute_deterministic_intent_engine(
                 date: date.clone(),
                 text: final_text.to_string(),
                 priority: Some(1),
+                plan_task_id: None,
+                planned_hours: None,
+                kind: None,
             },
         )
         .map_err(|e| e.to_string())?;
@@ -988,6 +998,7 @@ mod tests {
                         start_date: "2027-06-01".to_string(),
                         end_date: "2027-07-31".to_string(),
                         notes: None,
+                        plan_id: None,
                     },
                 )
             })

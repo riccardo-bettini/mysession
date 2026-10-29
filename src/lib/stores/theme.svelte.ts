@@ -43,7 +43,8 @@ class ThemeAndWindowStore {
     aiEndpointUrl: "http://127.0.0.1:11434",
     aiModel: "gemini-2.5-flash",
     aiBarWidth: 760,
-    activeSessionId: null
+    activeSessionId: null,
+    planFolder: ""
   });
 
   systemIsDark = $state<boolean>(true);

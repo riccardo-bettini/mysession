@@ -411,6 +411,7 @@ mod tests {
                         start_date: "2027-01-01".to_string(),
                         end_date: "2027-02-28".to_string(),
                         notes: None,
+                        plan_id: None,
                     },
                 )
             })
@@ -442,6 +443,7 @@ mod tests {
                                 estimated_hours: Some(12.0),
                                 is_completed: Some(true),
                                 assigned_date: Some("2027-01-02".to_string()),
+                                plan_unit_id: None,
                             },
                             StudyUnitDraft {
                                 id: None,
@@ -451,8 +453,11 @@ mod tests {
                                 estimated_hours: Some(15.0),
                                 is_completed: Some(false),
                                 assigned_date: None,
+                                plan_unit_id: None,
                             },
                         ]),
+                        plan_course_id: None,
+                        is_visible: Some(true),
                     },
                 )
             })

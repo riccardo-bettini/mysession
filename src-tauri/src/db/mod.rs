@@ -134,7 +134,7 @@ impl DatabaseManager {
                    weekly_holiday_day, study_hours_per_cfu, accent_color, holiday_color,
                    sunday_color, cat_studio_color, cat_scadenza_color, cat_lezione_color,
                    cat_personale_color, ai_provider, ai_api_key, ai_endpoint_url,
-                   ai_model, ai_bar_width, active_session_id
+                   ai_model, ai_bar_width, active_session_id, plan_folder
             FROM app_settings WHERE id = 1
             "#,
             [],
@@ -163,6 +163,7 @@ impl DatabaseManager {
                     ai_model: row.get(20)?,
                     ai_bar_width: row.get(21)?,
                     active_session_id: row.get(22)?,
+                    plan_folder: row.get::<_, Option<String>>(23)?.unwrap_or_default(),
                 })
             },
         )?;
@@ -197,7 +198,8 @@ impl DatabaseManager {
                 ai_endpoint_url = ?20,
                 ai_model = ?21,
                 ai_bar_width = ?22,
-                active_session_id = ?23
+                active_session_id = ?23,
+                plan_folder = ?24
             WHERE id = 1
             "#,
             params![
@@ -223,7 +225,8 @@ impl DatabaseManager {
                 s.ai_endpoint_url,
                 s.ai_model,
                 clamped_ai_w,
-                s.active_session_id
+                s.active_session_id,
+                s.plan_folder
             ],
         )?;
         Self::get_settings(conn)
@@ -236,7 +239,7 @@ impl DatabaseManager {
     pub fn list_sessions(conn: &Connection) -> DbResult<Vec<AcademicSession>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, name, subtitle, session_type, academic_year, start_date, end_date, notes, created_at
+            SELECT id, name, subtitle, session_type, academic_year, start_date, end_date, notes, created_at, plan_id
             FROM academic_sessions
             ORDER BY start_date ASC, created_at ASC
             "#,
@@ -252,6 +255,7 @@ impl DatabaseManager {
                 end_date: row.get(6)?,
                 notes: row.get(7)?,
                 created_at: row.get(8)?,
+                plan_id: row.get(9)?,
             })
         })?;
         let mut out = Vec::new();
@@ -264,7 +268,7 @@ impl DatabaseManager {
     pub fn get_session(conn: &Connection, session_id: &str) -> DbResult<AcademicSession> {
         conn.query_row(
             r#"
-            SELECT id, name, subtitle, session_type, academic_year, start_date, end_date, notes, created_at
+            SELECT id, name, subtitle, session_type, academic_year, start_date, end_date, notes, created_at, plan_id
             FROM academic_sessions
             WHERE id = ?1
             "#,
@@ -280,6 +284,7 @@ impl DatabaseManager {
                     end_date: row.get(6)?,
                     notes: row.get(7)?,
                     created_at: row.get(8)?,
+                    plan_id: row.get(9)?,
                 })
             },
         )
@@ -302,8 +307,8 @@ impl DatabaseManager {
         conn.execute(
             r#"
             INSERT INTO academic_sessions (
-                id, name, subtitle, session_type, academic_year, start_date, end_date, notes, created_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                id, name, subtitle, session_type, academic_year, start_date, end_date, notes, created_at, plan_id
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 subtitle = excluded.subtitle,
@@ -311,7 +316,8 @@ impl DatabaseManager {
                 academic_year = excluded.academic_year,
                 start_date = excluded.start_date,
                 end_date = excluded.end_date,
-                notes = excluded.notes
+                notes = excluded.notes,
+                plan_id = COALESCE(excluded.plan_id, academic_sessions.plan_id)
             "#,
             params![
                 &id,
@@ -322,7 +328,8 @@ impl DatabaseManager {
                 input.start_date.trim(),
                 input.end_date.trim(),
                 notes.trim(),
-                &now_iso
+                &now_iso,
+                input.plan_id.as_deref().map(str::trim)
             ],
         )?;
 
@@ -367,7 +374,8 @@ impl DatabaseManager {
         let mut stmt = conn.prepare(
             r#"
             SELECT id, session_id, sigla, name, code, cfu, professor, color_hex,
-                   difficulty_weight, target_hours_override, notes, sort_order
+                   difficulty_weight, target_hours_override, notes, sort_order,
+                   plan_course_id, is_visible
             FROM courses
             WHERE session_id = ?1
             ORDER BY sort_order ASC, sigla ASC
@@ -387,6 +395,8 @@ impl DatabaseManager {
                 target_hours_override: row.get(9)?,
                 notes: row.get(10)?,
                 sort_order: row.get(11)?,
+                plan_course_id: row.get(12)?,
+                is_visible: row.get::<_, Option<i32>>(13)?.unwrap_or(1) != 0,
             })
         })?;
         let mut out = Vec::new();
@@ -396,11 +406,23 @@ impl DatabaseManager {
         Ok(out)
     }
 
+    pub fn set_course_visibility(
+        conn: &Connection,
+        course_id: &str,
+        is_visible: bool,
+    ) -> DbResult<()> {
+        conn.execute(
+            "UPDATE courses SET is_visible = ?1 WHERE id = ?2",
+            params![if is_visible { 1 } else { 0 }, course_id],
+        )?;
+        Ok(())
+    }
+
     pub fn list_study_units(conn: &Connection, session_id: &str) -> DbResult<Vec<StudyUnit>> {
         let mut stmt = conn.prepare(
             r#"
             SELECT id, course_id, session_id, unit_number, title, description,
-                   estimated_hours, is_completed, assigned_date, completed_at
+                   estimated_hours, is_completed, assigned_date, completed_at, plan_unit_id
             FROM study_units
             WHERE session_id = ?1
             ORDER BY course_id ASC, unit_number ASC
@@ -418,6 +440,7 @@ impl DatabaseManager {
                 is_completed: row.get::<_, i32>(7)? != 0,
                 assigned_date: row.get(8)?,
                 completed_at: row.get(9)?,
+                plan_unit_id: row.get(10)?,
             })
         })?;
         let mut out = Vec::new();
@@ -435,14 +458,16 @@ impl DatabaseManager {
             .unwrap_or_else(|| format!("crs_{}", Uuid::new_v4().simple()));
         let weight = input.difficulty_weight.unwrap_or(1.0).clamp(0.5, 2.0);
         let notes = input.notes.clone().unwrap_or_default();
+        let is_visible = input.is_visible.unwrap_or(true);
 
         let tx = conn.transaction()?;
         tx.execute(
             r#"
             INSERT INTO courses (
                 id, session_id, sigla, name, code, cfu, professor,
-                color_hex, difficulty_weight, target_hours_override, notes, sort_order
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0)
+                color_hex, difficulty_weight, target_hours_override, notes, sort_order,
+                plan_course_id, is_visible
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, ?12, ?13)
             ON CONFLICT(id) DO UPDATE SET
                 sigla = excluded.sigla,
                 name = excluded.name,
@@ -452,7 +477,9 @@ impl DatabaseManager {
                 color_hex = excluded.color_hex,
                 difficulty_weight = excluded.difficulty_weight,
                 target_hours_override = excluded.target_hours_override,
-                notes = excluded.notes
+                notes = excluded.notes,
+                plan_course_id = COALESCE(excluded.plan_course_id, courses.plan_course_id),
+                is_visible = excluded.is_visible
             "#,
             params![
                 &course_id,
@@ -465,7 +492,9 @@ impl DatabaseManager {
                 input.color_hex.trim(),
                 weight,
                 input.target_hours_override,
-                notes.trim()
+                notes.trim(),
+                input.plan_course_id.as_deref().map(str::trim),
+                if is_visible { 1 } else { 0 }
             ],
         )?;
 
@@ -508,8 +537,8 @@ impl DatabaseManager {
                 r#"
                 INSERT INTO study_units (
                     id, course_id, session_id, unit_number, title, description,
-                    estimated_hours, is_completed, assigned_date, completed_at
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                    estimated_hours, is_completed, assigned_date, completed_at, plan_unit_id
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
                 "#,
                 params![
                     uid,
@@ -525,7 +554,8 @@ impl DatabaseManager {
                     u.estimated_hours.unwrap_or(4.0).max(0.5),
                     if is_comp { 1 } else { 0 },
                     u.assigned_date,
-                    comp_at
+                    comp_at,
+                    u.plan_unit_id.as_deref().map(str::trim)
                 ],
             )?;
         }
@@ -835,7 +865,8 @@ impl DatabaseManager {
     pub fn list_todos(conn: &Connection, session_id: &str) -> DbResult<Vec<TodoItem>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, session_id, course_id, date, text, done, priority, created_at
+            SELECT id, session_id, course_id, date, text, done, priority, created_at,
+                   plan_task_id, planned_hours, kind
             FROM todos
             WHERE session_id = ?1
             ORDER BY date ASC, priority DESC, created_at ASC
@@ -851,6 +882,9 @@ impl DatabaseManager {
                 done: row.get::<_, i32>(5)? != 0,
                 priority: row.get(6)?,
                 created_at: row.get(7)?,
+                plan_task_id: row.get(8)?,
+                planned_hours: row.get(9)?,
+                kind: row.get(10)?,
             })
         })?;
         let mut out = Vec::new();
@@ -870,13 +904,18 @@ impl DatabaseManager {
 
         conn.execute(
             r#"
-            INSERT INTO todos (id, session_id, course_id, date, text, done, priority, created_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)
+            INSERT INTO todos (
+                id, session_id, course_id, date, text, done, priority, created_at,
+                plan_task_id, planned_hours, kind
+            ) VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?8, ?9, ?10)
             ON CONFLICT(id) DO UPDATE SET
                 course_id = excluded.course_id,
                 date = excluded.date,
                 text = excluded.text,
-                priority = excluded.priority
+                priority = excluded.priority,
+                plan_task_id = COALESCE(excluded.plan_task_id, todos.plan_task_id),
+                planned_hours = COALESCE(excluded.planned_hours, todos.planned_hours),
+                kind = COALESCE(excluded.kind, todos.kind)
             "#,
             params![
                 &id,
@@ -885,7 +924,10 @@ impl DatabaseManager {
                 input.date.trim(),
                 input.text.trim(),
                 input.priority.unwrap_or(0),
-                now_iso
+                now_iso,
+                input.plan_task_id.as_deref().map(str::trim),
+                input.planned_hours,
+                input.kind.as_deref().map(str::trim)
             ],
         )?;
 

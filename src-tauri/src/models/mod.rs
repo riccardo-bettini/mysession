@@ -57,6 +57,11 @@ pub struct AppSettings {
     pub ai_model: String,              // Default "gemini-2.5-flash"
     pub ai_bar_width: i32,             // Default 760
     pub active_session_id: Option<String>,
+    pub plan_folder: String,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for AppSettings {
@@ -85,6 +90,7 @@ impl Default for AppSettings {
             ai_model: "gemini-2.5-flash".to_string(),
             ai_bar_width: 760,
             active_session_id: None,
+            plan_folder: String::new(),
         }
     }
 }
@@ -101,6 +107,7 @@ pub struct AcademicSession {
     pub end_date: String,     // YYYY-MM-DD
     pub notes: String,
     pub created_at: String,
+    pub plan_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,6 +125,9 @@ pub struct Course {
     pub target_hours_override: Option<f64>,
     pub notes: String,
     pub sort_order: i32,
+    pub plan_course_id: Option<String>,
+    #[serde(default = "default_true")]
+    pub is_visible: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -133,6 +143,7 @@ pub struct StudyUnit {
     pub is_completed: bool,
     pub assigned_date: Option<String>, // YYYY-MM-DD
     pub completed_at: Option<String>,
+    pub plan_unit_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -179,6 +190,21 @@ pub struct TodoItem {
     pub done: bool,
     pub priority: i32, // 0 = normal, 1 = high
     pub created_at: String,
+    pub plan_task_id: Option<String>,
+    pub planned_hours: Option<f64>,
+    pub kind: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanState {
+    pub plan_id: String,
+    pub session_id: String,
+    pub applied_revision: i64,
+    pub base_json: String,
+    pub pending_revision: Option<i64>,
+    pub source_path: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -348,6 +374,7 @@ pub struct UpsertSessionInput {
     pub start_date: String,
     pub end_date: String,
     pub notes: Option<String>,
+    pub plan_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -360,6 +387,7 @@ pub struct StudyUnitDraft {
     pub estimated_hours: Option<f64>,
     pub is_completed: Option<bool>,
     pub assigned_date: Option<String>,
+    pub plan_unit_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -377,6 +405,8 @@ pub struct UpsertCourseInput {
     pub target_hours_override: Option<f64>,
     pub notes: Option<String>,
     pub units: Option<Vec<StudyUnitDraft>>,
+    pub plan_course_id: Option<String>,
+    pub is_visible: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -434,4 +464,7 @@ pub struct UpsertTodoInput {
     pub date: String,
     pub text: String,
     pub priority: Option<i32>,
+    pub plan_task_id: Option<String>,
+    pub planned_hours: Option<f64>,
+    pub kind: Option<String>,
 }

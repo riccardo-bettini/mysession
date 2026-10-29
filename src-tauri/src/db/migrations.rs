@@ -1,7 +1,7 @@
 use chrono::Utc;
 use rusqlite::{params, Connection, Result};
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 1;
+pub const CURRENT_SCHEMA_VERSION: i32 = 2;
 
 const MIGRATION_V1_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -157,6 +157,34 @@ CREATE TABLE IF NOT EXISTS daily_notes (
 );
 "#;
 
+const MIGRATION_V2_SQL: &str = r#"
+ALTER TABLE academic_sessions ADD COLUMN plan_id TEXT;
+ALTER TABLE courses ADD COLUMN plan_course_id TEXT;
+ALTER TABLE courses ADD COLUMN is_visible INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE study_units ADD COLUMN plan_unit_id TEXT;
+ALTER TABLE todos ADD COLUMN plan_task_id TEXT;
+ALTER TABLE todos ADD COLUMN planned_hours REAL;
+ALTER TABLE todos ADD COLUMN kind TEXT;
+ALTER TABLE app_settings ADD COLUMN plan_folder TEXT NOT NULL DEFAULT '';
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_todos_plan_task ON todos(session_id, plan_task_id) WHERE plan_task_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_academic_sessions_plan_id ON academic_sessions(plan_id);
+CREATE INDEX IF NOT EXISTS idx_courses_plan_course ON courses(plan_course_id);
+CREATE INDEX IF NOT EXISTS idx_study_units_plan_unit ON study_units(plan_unit_id);
+
+CREATE TABLE IF NOT EXISTS plan_state (
+    plan_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    applied_revision INTEGER NOT NULL DEFAULT 0,
+    base_json TEXT NOT NULL,
+    pending_revision INTEGER,
+    source_path TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES academic_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_plan_state_session ON plan_state(session_id);
+"#;
+
 pub fn configure_connection_pragmas(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
@@ -200,6 +228,16 @@ pub fn run_migrations(conn: &mut Connection) -> Result<()> {
         tx.execute(
             "INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
             params![1, &now_iso],
+        )?;
+        tx.commit()?;
+    }
+
+    if current_version < 2 {
+        let tx = conn.transaction()?;
+        tx.execute_batch(MIGRATION_V2_SQL)?;
+        tx.execute(
+            "INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
+            params![2, &now_iso],
         )?;
         tx.commit()?;
     }

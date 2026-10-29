@@ -193,6 +193,8 @@ mod tests {
                 target_hours_override: None,
                 notes: String::new(),
                 sort_order: 0,
+                plan_course_id: None,
+                is_visible: true,
             },
             Course {
                 id: "mse".to_string(),
@@ -207,6 +209,8 @@ mod tests {
                 target_hours_override: None,
                 notes: String::new(),
                 sort_order: 1,
+                plan_course_id: None,
+                is_visible: true,
             },
             Course {
                 id: "dcm".to_string(),
@@ -221,6 +225,8 @@ mod tests {
                 target_hours_override: None,
                 notes: String::new(),
                 sort_order: 2,
+                plan_course_id: None,
+                is_visible: true,
             },
         ];
 

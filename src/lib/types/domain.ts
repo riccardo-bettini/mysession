@@ -44,6 +44,7 @@ export interface AppSettings {
   aiModel: string;
   aiBarWidth: number;
   activeSessionId: string | null;
+  planFolder: string;
 }
 
 export interface AcademicSession {
@@ -56,6 +57,7 @@ export interface AcademicSession {
   endDate: string;
   notes: string;
   createdAt: string;
+  planId?: string | null;
 }
 
 export interface Course {
@@ -71,6 +73,8 @@ export interface Course {
   targetHoursOverride: number | null;
   notes: string;
   sortOrder: number;
+  planCourseId?: string | null;
+  isVisible: boolean;
 }
 
 export interface StudyUnit {
@@ -84,6 +88,7 @@ export interface StudyUnit {
   isCompleted: boolean;
   assignedDate: string | null;
   completedAt: string | null;
+  planUnitId?: string | null;
 }
 
 export interface Exam {
@@ -124,6 +129,19 @@ export interface TodoItem {
   done: boolean;
   priority: number;
   createdAt: string;
+  planTaskId?: string | null;
+  plannedHours?: number | null;
+  kind?: string | null;
+}
+
+export interface PlanState {
+  planId: string;
+  sessionId: string;
+  appliedRevision: number;
+  baseJson: string;
+  pendingRevision: number | null;
+  sourcePath: string;
+  updatedAt: string;
 }
 
 export interface DailyNote {
@@ -254,6 +272,7 @@ export interface UpsertSessionInput {
   startDate: string;
   endDate: string;
   notes?: string | null;
+  planId?: string | null;
 }
 
 export interface StudyUnitDraft {
@@ -264,6 +283,7 @@ export interface StudyUnitDraft {
   estimatedHours?: number | null;
   isCompleted?: boolean | null;
   assignedDate?: string | null;
+  planUnitId?: string | null;
 }
 
 export interface UpsertCourseInput {
@@ -279,6 +299,8 @@ export interface UpsertCourseInput {
   targetHoursOverride?: number | null;
   notes?: string | null;
   units?: StudyUnitDraft[] | null;
+  planCourseId?: string | null;
+  isVisible?: boolean | null;
 }
 
 export interface UpsertExamInput {
@@ -328,6 +350,9 @@ export interface UpsertTodoInput {
   date: string;
   text: string;
   priority?: number | null;
+  planTaskId?: string | null;
+  plannedHours?: number | null;
+  kind?: string | null;
 }
 
 // ============================================================================
