@@ -1886,7 +1886,7 @@ dependencies = [
 
 [[package]]
 name = "mysession"
-version = "1.0.28"
+version = "1.0.29"
 dependencies = [
  "chrono",
  "raw-window-handle",

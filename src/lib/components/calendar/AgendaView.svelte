@@ -34,9 +34,14 @@
   let isDark = $derived(themeStore.effectiveTheme === "dark");
 
   let filteredExams = $derived.by(() => {
-    const list = selectedCourseId
-      ? exams.filter((e) => e.courseId === selectedCourseId)
-      : [...exams];
+    let list = exams.filter((e) => {
+      const c = courseById.get(e.courseId);
+      if (c && c.isVisible === false) return false;
+      return true;
+    });
+    if (selectedCourseId) {
+      list = list.filter((e) => e.courseId === selectedCourseId);
+    }
     return list.sort((a, b) => a.date.localeCompare(b.date));
   });
 
