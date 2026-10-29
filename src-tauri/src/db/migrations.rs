@@ -1,7 +1,7 @@
 use chrono::Utc;
 use rusqlite::{params, Connection, Result};
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 3;
+pub const CURRENT_SCHEMA_VERSION: i32 = 4;
 
 const MIGRATION_V1_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
     ai_provider TEXT NOT NULL DEFAULT 'local',
     ai_api_key TEXT NOT NULL DEFAULT '',
     ai_endpoint_url TEXT NOT NULL DEFAULT 'http://127.0.0.1:11434',
-    ai_model TEXT NOT NULL DEFAULT 'gemini-2.5-flash',
+    ai_model TEXT NOT NULL DEFAULT 'gemini-3.8-flash',
     ai_bar_width INTEGER NOT NULL DEFAULT 760,
     active_session_id TEXT
 );
@@ -219,6 +219,10 @@ SET active_session_id = 'session_generale'
 WHERE active_session_id IS NULL OR active_session_id = '';
 "#;
 
+const MIGRATION_V4_SQL: &str = r#"
+UPDATE app_settings SET ai_model = 'gemini-3.8-flash' WHERE ai_model = 'gemini-2.5-flash';
+"#;
+
 pub fn configure_connection_pragmas(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
@@ -282,6 +286,16 @@ pub fn run_migrations(conn: &mut Connection) -> Result<()> {
         tx.execute(
             "INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
             params![3, &now_iso],
+        )?;
+        tx.commit()?;
+    }
+
+    if current_version < 4 {
+        let tx = conn.transaction()?;
+        tx.execute_batch(MIGRATION_V4_SQL)?;
+        tx.execute(
+            "INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
+            params![4, &now_iso],
         )?;
         tx.commit()?;
     }

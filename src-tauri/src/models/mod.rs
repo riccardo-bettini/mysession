@@ -54,7 +54,7 @@ pub struct AppSettings {
     pub ai_provider: String,           // "local" | "gemini" | "openai" | "ollama"
     pub ai_api_key: String,            // Stored locally in SQLite (%APPDATA%), never hardcoded
     pub ai_endpoint_url: String,       // Default "http://127.0.0.1:11434"
-    pub ai_model: String,              // Default "gemini-2.5-flash"
+    pub ai_model: String,              // Default "gemini-3.8-flash"
     pub ai_bar_width: i32,             // Default 760
     pub active_session_id: Option<String>,
     pub plan_folder: String,
@@ -87,7 +87,7 @@ impl Default for AppSettings {
             ai_provider: "local".to_string(),
             ai_api_key: String::new(),
             ai_endpoint_url: "http://127.0.0.1:11434".to_string(),
-            ai_model: "gemini-2.5-flash".to_string(),
+            ai_model: "gemini-3.8-flash".to_string(),
             ai_bar_width: 760,
             active_session_id: None,
             plan_folder: String::new(),

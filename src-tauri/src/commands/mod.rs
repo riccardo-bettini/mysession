@@ -555,17 +555,21 @@ pub fn project_lessons_to_calendar(
 }
 
 #[tauri::command]
-pub fn parse_timetable_image(
+pub async fn parse_timetable_image(
     db: State<'_, DatabaseManager>,
     session_id: String,
     image_base64: String,
     mime_type: String,
 ) -> Result<Vec<ExtractedLessonItem>, String> {
-    db.with_conn(|conn| {
-        parse_timetable_image_with_ai(conn, &session_id, &image_base64, &mime_type)
-            .map_err(crate::db::DbError::Validation)
+    // Il lock sul DB viene rilasciato subito: la chiamata di rete non deve bloccare l'app.
+    let settings = db
+        .with_conn(|conn| DatabaseManager::get_settings(conn))
+        .map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        parse_timetable_image_with_ai(&settings, &session_id, &image_base64, &mime_type)
     })
-    .map_err(|e| e.to_string())
+    .await
+    .map_err(|e| format!("Errore interno analisi foto: {}", e))?
 }
 
 #[cfg(test)]

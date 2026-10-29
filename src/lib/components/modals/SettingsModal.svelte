@@ -667,7 +667,7 @@
                 <input
                   type="text"
                   bind:value={aiModel}
-                  placeholder={aiProvider === "gemini" ? "gemini-2.5-flash" : "gpt-4o-mini"}
+                  placeholder={aiProvider === "gemini" ? "gemini-3.8-flash" : "gpt-4o-mini"}
                 />
               </label>
             {:else if aiProvider === "ollama"}

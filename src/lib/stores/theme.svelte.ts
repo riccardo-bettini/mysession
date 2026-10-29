@@ -41,7 +41,7 @@ class ThemeAndWindowStore {
     aiProvider: "local",
     aiApiKey: "",
     aiEndpointUrl: "http://127.0.0.1:11434",
-    aiModel: "gemini-2.5-flash",
+    aiModel: "gemini-3.8-flash",
     aiBarWidth: 760,
     activeSessionId: null,
     planFolder: ""

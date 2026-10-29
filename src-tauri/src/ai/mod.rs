@@ -114,7 +114,7 @@ fn try_call_external_llm(
                 return Err("API Key Gemini non configurata".to_string());
             }
             let model = if settings.ai_model.trim().is_empty() {
-                "gemini-2.5-flash"
+                "gemini-3.8-flash"
             } else {
                 settings.ai_model.trim()
             };
@@ -989,14 +989,38 @@ pub struct ExtractedLessonItem {
     pub professor: String,
 }
 
+/// Limite massimo del payload base64 inviato al provider (≈ 15 MB).
+const MAX_IMAGE_BASE64_BYTES: usize = 20 * 1024 * 1024;
+
+fn vision_agent() -> ureq::Agent {
+    ureq::AgentBuilder::new()
+        .timeout_connect(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(90))
+        .build()
+}
+
+fn sanitize_http_error(prefix: &str, err: ureq::Error) -> String {
+    match err {
+        ureq::Error::Status(code, resp) => {
+            let detail = resp.into_string().unwrap_or_default();
+            let detail: String = detail.chars().take(300).collect();
+            format!("{}: status code {} {}", prefix, code, detail)
+        }
+        ureq::Error::Transport(t) => format!("{}: errore di rete ({})", prefix, t.kind()),
+    }
+}
+
+/// Non tiene alcun lock sul database: le impostazioni vanno lette dal chiamante.
 pub fn parse_timetable_image_with_ai(
-    conn: &Connection,
+    settings: &crate::models::AppSettings,
     _session_id: &str,
     image_base64: &str,
     mime_type: &str,
 ) -> Result<Vec<ExtractedLessonItem>, String> {
-    let settings = DatabaseManager::get_settings(conn).map_err(|e| e.to_string())?;
     let provider = settings.ai_provider.trim().to_lowercase();
+    if image_base64.len() > MAX_IMAGE_BASE64_BYTES {
+        return Err("Immagine troppo grande: usa una foto sotto i 15 MB.".to_string());
+    }
 
     if settings.ai_api_key.trim().is_empty() {
         return Err("Per analizzare la foto dell'orario con l'IA, configura la chiave API (Gemini o OpenAI) nelle Impostazioni dell'app.".to_string());
@@ -1012,14 +1036,13 @@ pub fn parse_timetable_image_with_ai(
     match provider.as_str() {
         "gemini" => {
             let model = if settings.ai_model.trim().is_empty() {
-                "gemini-2.5-flash"
+                "gemini-3.8-flash"
             } else {
                 settings.ai_model.trim()
             };
             let url = format!(
-                "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-                model,
-                settings.ai_api_key.trim()
+                "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+                model
             );
 
             let prompt_text = "Analizza questa immagine contenente un orario delle lezioni scolastico/universitario. \
@@ -1047,9 +1070,11 @@ pub fn parse_timetable_image_with_ai(
                 "generationConfig": { "responseMimeType": "application/json" }
             });
 
-            let resp: serde_json::Value = ureq::post(&url)
+            let resp: serde_json::Value = vision_agent()
+                .post(&url)
+                .set("x-goog-api-key", settings.ai_api_key.trim())
                 .send_json(body)
-                .map_err(|e| format!("Errore chiamata Gemini Vision: {}", e))?
+                .map_err(|e| sanitize_http_error("Errore chiamata Gemini Vision", e))?
                 .into_json()
                 .map_err(|e| format!("Errore parsing risposta Gemini: {}", e))?;
 
@@ -1102,10 +1127,11 @@ pub fn parse_timetable_image_with_ai(
                 ]
             });
 
-            let resp: serde_json::Value = ureq::post("https://api.openai.com/v1/chat/completions")
+            let resp: serde_json::Value = vision_agent()
+                .post("https://api.openai.com/v1/chat/completions")
                 .set("Authorization", &format!("Bearer {}", settings.ai_api_key.trim()))
                 .send_json(body)
-                .map_err(|e| format!("Errore chiamata OpenAI Vision: {}", e))?
+                .map_err(|e| sanitize_http_error("Errore chiamata OpenAI Vision", e))?
                 .into_json()
                 .map_err(|e| format!("Errore parsing risposta OpenAI: {}", e))?;
 

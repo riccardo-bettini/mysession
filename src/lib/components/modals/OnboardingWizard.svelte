@@ -37,7 +37,7 @@
   // Step 3: Assistente AI Opzionale
   let aiProvider = $state<AiProvider>("local");
   let aiApiKey = $state<string>("");
-  let aiModel = $state<string>("gemini-2.5-flash");
+  let aiModel = $state<string>("gemini-3.8-flash");
   let aiEndpointUrl = $state<string>("http://localhost:11434/api/generate");
 
   let isSubmitting = $state<boolean>(false);
