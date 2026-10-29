@@ -10,7 +10,7 @@ use db::DatabaseManager;
 use tauri::Manager;
 use win32::{apply_window_backdrop_and_theme, install_window_subclass};
 
-pub const APP_VERSION: &str = "1.0.34";
+pub const APP_VERSION: &str = "1.0.35";
 pub const APP_AUTHOR: &str = "Riccardo Bettini";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
