@@ -11,6 +11,7 @@ use crate::win32::{
     MaxButtonBounds, SystemThemeState,
 };
 use crate::{APP_AUTHOR, APP_VERSION};
+use rusqlite::OptionalExtension;
 use tauri::{State, WebviewWindow};
 
 #[tauri::command]
@@ -362,6 +363,144 @@ pub fn execute_ai_command(
     }
 
     Ok(response)
+}
+
+#[tauri::command]
+pub fn set_plan_folder(
+    db: State<'_, DatabaseManager>,
+    folder_path: String,
+) -> Result<AppSettings, String> {
+    db.with_conn(|conn| {
+        let mut settings = DatabaseManager::get_settings(conn)?;
+        settings.plan_folder = folder_path.trim().to_string();
+        DatabaseManager::save_settings(conn, &settings)
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn scan_pending_plans(
+    db: State<'_, DatabaseManager>,
+) -> Result<Vec<crate::plan::PendingPlanNotification>, String> {
+    db.with_conn(|conn| {
+        let settings = DatabaseManager::get_settings(conn)?;
+        if settings.plan_folder.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        Ok(crate::plan::scan_folder_for_pending_plans(conn, &settings.plan_folder))
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn preview_plan_update(
+    db: State<'_, DatabaseManager>,
+    file_path: String,
+) -> Result<crate::plan::PlanDiffSummary, String> {
+    let content = std::fs::read_to_string(&file_path)
+        .map_err(|e| format!("Impossibile leggere il file del piano ({}): {}", file_path, e))?;
+
+    let theirs: crate::plan::PlanPayload = serde_json::from_str(&content)
+        .map_err(|e| format!("JSON del piano non valido: {}", e))?;
+
+    crate::plan::validate_plan(&theirs)
+        .map_err(|errs| format!("Validazione fallita: {}", errs.join("; ")))?;
+
+    db.with_conn(|conn| {
+        let base_json: Option<String> = conn
+            .query_row(
+                "SELECT base_json FROM plan_state WHERE plan_id = ?1",
+                rusqlite::params![&theirs.plan_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        let base_plan: Option<crate::plan::PlanPayload> = base_json
+            .as_deref()
+            .and_then(|bj| serde_json::from_str(bj).ok());
+
+        let session_id: Option<String> = conn
+            .query_row(
+                "SELECT id FROM academic_sessions WHERE plan_id = ?1 LIMIT 1",
+                rusqlite::params![&theirs.plan_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        let mut db_tasks = Vec::new();
+        if let Some(sid) = session_id {
+            let mut stmt = conn.prepare(
+                "SELECT plan_task_id, date, text, done, planned_hours FROM todos WHERE session_id = ?1 AND plan_task_id IS NOT NULL",
+            )?;
+            let rows = stmt.query_map([&sid], |r| {
+                Ok(crate::plan::DbTaskState {
+                    plan_task_id: r.get(0)?,
+                    date: r.get(1)?,
+                    text: r.get(2)?,
+                    done: r.get::<_, i32>(3)? != 0,
+                    planned_hours: r.get(4)?,
+                })
+            })?;
+            for r in rows {
+                db_tasks.push(r?);
+            }
+        }
+
+        Ok(crate::plan::compute_plan_diff(base_plan.as_ref(), &theirs, &db_tasks))
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn apply_plan_update(
+    db: State<'_, DatabaseManager>,
+    file_path: String,
+    conflict_resolutions: std::collections::HashMap<String, String>,
+    target_session_id: Option<String>,
+) -> Result<SessionSnapshot, String> {
+    let content = std::fs::read_to_string(&file_path)
+        .map_err(|e| format!("Impossibile leggere il file del piano: {}", e))?;
+
+    let theirs: crate::plan::PlanPayload = serde_json::from_str(&content)
+        .map_err(|e| format!("JSON del piano non valido: {}", e))?;
+
+    crate::plan::validate_plan(&theirs)
+        .map_err(|errs| format!("Validazione fallita: {}", errs.join("; ")))?;
+
+    let session_id = db
+        .with_conn(|conn| {
+            let res = crate::plan::apply_study_plan(
+                conn,
+                &theirs,
+                &content,
+                &file_path,
+                &conflict_resolutions,
+                target_session_id.as_deref(),
+            )?;
+            Ok(res.session_id)
+        })
+        .map_err(|e| e.to_string())?;
+
+    db.with_conn(|conn| {
+        let settings = DatabaseManager::get_settings(conn)?;
+        DatabaseManager::build_session_snapshot(conn, &session_id, &settings)
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_course_visibility(
+    db: State<'_, DatabaseManager>,
+    session_id: String,
+    course_id: String,
+    is_visible: bool,
+) -> Result<SessionSnapshot, String> {
+    db.with_conn(|conn| {
+        DatabaseManager::set_course_visibility(conn, &course_id, is_visible)?;
+        let settings = DatabaseManager::get_settings(conn)?;
+        DatabaseManager::build_session_snapshot(conn, &session_id, &settings)
+    })
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

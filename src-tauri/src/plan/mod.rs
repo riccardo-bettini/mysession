@@ -2,11 +2,13 @@ pub mod apply;
 pub mod diff;
 pub mod model;
 pub mod validate;
+pub mod watcher;
 
 pub use apply::{apply_study_plan, ApplyResult};
 pub use diff::{compute_plan_diff, DbTaskState, PlanDiffSummary, TaskConflictItem, TaskMoveItem, TaskChangeItem};
 pub use model::{PlanPayload, SUPPORTED_SCHEMA_VERSION};
 pub use validate::{validate_plan, ValidationError};
+pub use watcher::{scan_folder_for_pending_plans, start_plan_watcher, PendingPlanNotification, PlanWatcherHandle};
 
 #[cfg(test)]
 mod tests {

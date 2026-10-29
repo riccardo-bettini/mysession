@@ -10,7 +10,7 @@ use db::DatabaseManager;
 use tauri::Manager;
 use win32::{apply_window_backdrop_and_theme, install_window_subclass};
 
-pub const APP_VERSION: &str = "1.0.26";
+pub const APP_VERSION: &str = "1.0.27";
 pub const APP_AUTHOR: &str = "Riccardo Bettini";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -31,6 +31,8 @@ pub fn run() {
                 .with_conn(|conn| DatabaseManager::get_settings(conn))
                 .unwrap_or_default();
 
+            let _watcher = plan::start_plan_watcher(app.handle().clone(), db_manager.db_path.clone());
+            app.manage(_watcher);
             app.manage(db_manager);
 
             if let Some(main_window) = app.get_webview_window("main") {
@@ -74,6 +76,11 @@ pub fn run() {
             commands::export_backup_json,
             commands::import_backup_json,
             commands::execute_ai_command,
+            commands::set_plan_folder,
+            commands::scan_pending_plans,
+            commands::preview_plan_update,
+            commands::apply_plan_update,
+            commands::set_course_visibility,
         ])
         .run(tauri::generate_context!())
         .expect("Errore critico durante l'avvio di MySession (Tauri v2)");

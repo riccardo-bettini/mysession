@@ -16,7 +16,9 @@ import type {
   ThemeChoice,
   SystemThemeState,
   MaxButtonBounds,
-  AiAssistantResponse
+  AiAssistantResponse,
+  PendingPlanNotification,
+  PlanDiffSummary
 } from "../types/domain";
 
 export const ipc = {
@@ -100,5 +102,28 @@ export const ipc = {
     invoke<BootstrapPayload>("import_backup_json", { jsonPayload }),
 
   executeAiCommand: (sessionId: string, prompt: string) =>
-    invoke<AiAssistantResponse>("execute_ai_command", { sessionId, prompt })
+    invoke<AiAssistantResponse>("execute_ai_command", { sessionId, prompt }),
+
+  setPlanFolder: (folderPath: string) =>
+    invoke<AppSettings>("set_plan_folder", { folderPath }),
+
+  scanPendingPlans: () =>
+    invoke<PendingPlanNotification[]>("scan_pending_plans"),
+
+  previewPlanUpdate: (filePath: string) =>
+    invoke<PlanDiffSummary>("preview_plan_update", { filePath }),
+
+  applyPlanUpdate: (
+    filePath: string,
+    conflictResolutions: Record<string, string> = {},
+    targetSessionId?: string | null
+  ) =>
+    invoke<SessionSnapshot>("apply_plan_update", {
+      filePath,
+      conflictResolutions,
+      targetSessionId
+    }),
+
+  setCourseVisibility: (sessionId: string, courseId: string, isVisible: boolean) =>
+    invoke<SessionSnapshot>("set_course_visibility", { sessionId, courseId, isVisible })
 };

@@ -390,3 +390,77 @@ export interface AiAssistantResponse {
   updatedSnapshot: SessionSnapshot | null;
   providerUsed: string;
 }
+
+// ============================================================================
+// Study Plan Import & Diff Engine (Fase 2 & 3)
+// ============================================================================
+
+export interface PendingPlanNotification {
+  planId: string;
+  planName: string;
+  revision: number;
+  filePath: string;
+  isNewSession: boolean;
+}
+
+export interface TaskChangeItem {
+  taskId: string;
+  courseId: string;
+  date: string;
+  text: string;
+  plannedHours: number;
+  kind: string;
+}
+
+export interface TaskMoveItem {
+  taskId: string;
+  courseId: string;
+  text: string;
+  oldDate: string;
+  newDate: string;
+  plannedHours: number;
+}
+
+export interface TaskConflictItem {
+  taskId: string;
+  courseId: string;
+  baseDate: string;
+  myDate: string;
+  theirDate: string;
+  baseText: string;
+  myText: string;
+  theirText: string;
+  isCompleted: boolean;
+}
+
+export interface ExamChangeItem {
+  examId: string;
+  courseId: string;
+  title: string;
+  oldDate: string | null;
+  newDate: string;
+  oldStatus: string | null;
+  newStatus: string;
+}
+
+export interface CourseChangeItem {
+  courseId: string;
+  sigla: string;
+  name: string;
+  isAdded: boolean;
+  isActiveChanged: boolean;
+  active: boolean;
+}
+
+export interface PlanDiffSummary {
+  isInitialImport: boolean;
+  planId: string;
+  oldRevision: number;
+  newRevision: number;
+  addedTasks: TaskChangeItem[];
+  removedTasks: TaskChangeItem[];
+  movedTasks: TaskMoveItem[];
+  conflicts: TaskConflictItem[];
+  examsChanged: ExamChangeItem[];
+  coursesChanged: CourseChangeItem[];
+}
