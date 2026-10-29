@@ -15,6 +15,7 @@
   import GenericEventModal from "./lib/components/modals/GenericEventModal.svelte";
   import OnboardingWizard from "./lib/components/modals/OnboardingWizard.svelte";
   import SessionModal from "./lib/components/modals/SessionModal.svelte";
+  import SessionManagementModal from "./lib/components/modals/SessionManagementModal.svelte";
   import SettingsModal from "./lib/components/modals/SettingsModal.svelte";
   import PlanUpdateModal from "./lib/components/modals/PlanUpdateModal.svelte";
   import { sessionStore } from "./lib/stores/session.svelte";
@@ -40,6 +41,7 @@
   let selectedCourseId = $state<string | null>(null);
 
   // Stato modali operativi (Fase 5)
+  let sessionManagementOpen = $state<boolean>(false);
   let sessionModalState = $state<{ open: boolean; editing: AcademicSession | null }>({
     open: false,
     editing: null
@@ -320,6 +322,7 @@
     onNewSession={() => (sessionModalState = { open: true, editing: null })}
     onEditSession={() =>
       (sessionModalState = { open: true, editing: sessionStore.activeSession })}
+    onManageSessions={() => (sessionManagementOpen = true)}
     onOpenConflicts={() => (conflictsModalOpen = true)}
     onNavigateToday={handleNavigateToday}
     onNavigateStep={handleNavigateStep}
@@ -457,6 +460,20 @@
   </div>
 
   <!-- Modali Operativi (Fase 5) -->
+  {#if sessionManagementOpen}
+    <SessionManagementModal
+      onClose={() => (sessionManagementOpen = false)}
+      onNewSession={() => {
+        sessionManagementOpen = false;
+        sessionModalState = { open: true, editing: null };
+      }}
+      onEditSession={(s) => {
+        sessionManagementOpen = false;
+        sessionModalState = { open: true, editing: s };
+      }}
+    />
+  {/if}
+
   {#if sessionModalState.open}
     <SessionModal
       initialSession={sessionModalState.editing}

@@ -24,6 +24,10 @@
   let notes = $state<string>("");
   let isSaving = $state<boolean>(false);
 
+  let isProtected = $derived(
+    Boolean(initialSession?.isSystem || initialSession?.id === "session_generale")
+  );
+
   $effect(() => {
     if (initialSession) {
       name = initialSession.name;
@@ -47,7 +51,7 @@
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (isProtected || !name.trim()) return;
     isSaving = true;
     try {
       const payload = await sessionStore.upsertSession({
@@ -70,7 +74,7 @@
   }
 
   async function handleDelete() {
-    if (!initialSession) return;
+    if (!initialSession || isProtected) return;
     isSaving = true;
     try {
       await sessionStore.deleteSession(initialSession.id);
@@ -87,7 +91,7 @@
   class="modal-scrim"
   role="dialog"
   aria-modal="true"
-  aria-label={initialSession ? "Modifica Sessione Accademica" : "Nuova Sessione Accademica"}
+  aria-label={initialSession ? "Dettagli Sessione Accademica" : "Nuova Sessione Accademica"}
   tabindex="-1"
   onclick={(e) => {
     if (e.target === e.currentTarget) onClose?.();
@@ -97,21 +101,31 @@
     <header class="sheet-header">
       <div>
         <span class="sheet-eyebrow">GESTIONE MULTI-SESSIONE</span>
-        <h2>{initialSession ? "Modifica Sessione Accademica" : "Nuova Sessione Accademica"}</h2>
+        <h2>{initialSession ? (isProtected ? "Sessione Generale (Protetta)" : "Modifica Sessione Accademica") : "Nuova Sessione Accademica"}</h2>
       </div>
       <button type="button" class="sheet-close-btn pressable" onclick={() => onClose?.()}>✕</button>
     </header>
 
     <div class="sheet-body">
+      {#if isProtected}
+        <div class="protected-session-banner">
+          <span class="prot-icon">🔒</span>
+          <div class="prot-content">
+            <strong>Sessione di Sistema Permanente</strong>
+            <p>La sessione "Generale" è lo spazio libero continuativo predefinito: è sempre vuota, non modificabile e protetta da eliminazione.</p>
+          </div>
+        </div>
+      {/if}
+
       <div class="field-row two-cols">
         <label class="form-field">
           <span>Nome Sessione *</span>
-          <input type="text" required bind:value={name} placeholder="es. Sessione Invernale" />
+          <input type="text" required disabled={isProtected} bind:value={name} placeholder="es. Sessione Invernale" />
         </label>
 
         <label class="form-field">
           <span>Tipologia</span>
-          <select bind:value={sessionType}>
+          <select disabled={isProtected} bind:value={sessionType}>
             <option value="invernale">Invernale (Gen–Feb)</option>
             <option value="estiva">Estiva (Giu–Lug)</option>
             <option value="autunnale">Autunnale (Set)</option>
@@ -123,35 +137,35 @@
       <div class="field-row two-cols">
         <label class="form-field">
           <span>Anno Accademico</span>
-          <input type="text" bind:value={academicYear} placeholder="es. 2026/2027" />
+          <input type="text" disabled={isProtected} bind:value={academicYear} placeholder="es. 2026/2027" />
         </label>
 
         <label class="form-field">
           <span>Sottotitolo / Corso di Studi</span>
-          <input type="text" bind:value={subtitle} placeholder="es. Ingegneria Meccanica" />
+          <input type="text" disabled={isProtected} bind:value={subtitle} placeholder="es. Ingegneria Meccanica" />
         </label>
       </div>
 
       <div class="field-row two-cols">
         <label class="form-field">
           <span>Data Inizio Sessione *</span>
-          <input type="date" required bind:value={startDate} />
+          <input type="date" required disabled={isProtected} bind:value={startDate} />
         </label>
 
         <label class="form-field">
           <span>Data Fine Sessione *</span>
-          <input type="date" required bind:value={endDate} />
+          <input type="date" required disabled={isProtected} bind:value={endDate} />
         </label>
       </div>
 
       <label class="form-field">
         <span>Note di Sessione</span>
-        <textarea rows="3" bind:value={notes} placeholder="Obiettivi CFU, vincoli o promemoria…"></textarea>
+        <textarea rows="3" disabled={isProtected} bind:value={notes} placeholder="Obiettivi CFU, vincoli o promemoria…"></textarea>
       </label>
     </div>
 
     <footer class="sheet-footer">
-      {#if initialSession && sessionStore.sessions.length > 1}
+      {#if !isProtected && initialSession && sessionStore.sessions.length > 1}
         <button type="button" class="btn-danger pressable" disabled={isSaving} onclick={handleDelete}>
           Elimina Sessione
         </button>
@@ -160,10 +174,14 @@
       {/if}
 
       <div class="footer-right">
-        <button type="button" class="btn-secondary pressable" onclick={() => onClose?.()}>Annulla</button>
-        <button type="submit" class="btn-primary pressable" disabled={isSaving}>
-          {isSaving ? "Salvataggio…" : initialSession ? "Salva Modifiche" : "Crea Sessione"}
-        </button>
+        {#if isProtected}
+          <button type="button" class="btn-primary pressable" onclick={() => onClose?.()}>Chiudi</button>
+        {:else}
+          <button type="button" class="btn-secondary pressable" onclick={() => onClose?.()}>Annulla</button>
+          <button type="submit" class="btn-primary pressable" disabled={isSaving}>
+            {isSaving ? "Salvataggio…" : initialSession ? "Salva Modifiche" : "Crea Sessione"}
+          </button>
+        {/if}
       </div>
     </footer>
   </form>
@@ -262,6 +280,36 @@
     gap: 0.85rem;
   }
 
+  .protected-session-banner {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding: 0.75rem 0.9rem;
+    border-radius: var(--radius-sm);
+    background: rgba(10, 132, 255, 0.08);
+    border: 0.5px solid rgba(10, 132, 255, 0.28);
+  }
+
+  .prot-icon {
+    font-size: 1.15rem;
+    line-height: 1;
+  }
+
+  .prot-content strong {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--accent-primary);
+    margin-bottom: 0.2rem;
+  }
+
+  .prot-content p {
+    margin: 0;
+    font-size: 0.72rem;
+    line-height: 1.38;
+    color: var(--text-secondary);
+  }
+
   .field-row.two-cols {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -293,9 +341,17 @@
     transition: border-color 140ms ease, box-shadow 140ms ease;
   }
 
-  .form-field input:focus-visible,
-  .form-field select:focus-visible,
-  .form-field textarea:focus-visible {
+  .form-field input:disabled,
+  .form-field select:disabled,
+  .form-field textarea:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+    background: var(--surface-pill);
+  }
+
+  .form-field input:focus-visible:not(:disabled),
+  .form-field select:focus-visible:not(:disabled),
+  .form-field textarea:focus-visible:not(:disabled) {
     outline: none;
     border-color: var(--accent-primary);
     box-shadow: 0 0 0 2.5px var(--accent-soft);

@@ -18,6 +18,7 @@
     onSelectSession?: (sessionId: string) => void;
     onNewSession?: () => void;
     onEditSession?: () => void;
+    onManageSessions?: () => void;
     onOpenConflicts?: () => void;
     onToggleSessionLock?: () => void;
     onNavigateToday?: () => void;
@@ -34,6 +35,7 @@
     onSelectSession,
     onNewSession,
     onEditSession,
+    onManageSessions,
     onOpenConflicts,
     onToggleSessionLock,
     onNavigateToday,
@@ -239,6 +241,16 @@
               <span>✎ Modifica Sessione Attiva…</span>
             </button>
           {/if}
+          <button
+            type="button"
+            class="popover-item action-item"
+            onclick={() => {
+              sessionMenuOpen = false;
+              onManageSessions?.();
+            }}
+          >
+            <span>⚙ Gestisci tutte le sessioni…</span>
+          </button>
           <button
             type="button"
             class="popover-item action-item"
