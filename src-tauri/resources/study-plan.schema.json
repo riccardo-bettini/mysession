@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mysession-study-plan-v1",
+  "title": "MySession Study Plan",
+  "type": "object",
+  "required": ["schemaVersion", "planId", "revision", "generatedAt", "session", "constraints", "courses", "exams", "units", "days"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "planId": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "session": {
+      "type": "object",
+      "required": ["name", "sessionType", "academicYear", "startDate", "endDate"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "subtitle": { "type": "string" },
+        "sessionType": { "enum": ["invernale", "estiva", "autunnale", "custom"] },
+        "academicYear": { "type": "string" },
+        "startDate": { "$ref": "#/$defs/date" },
+        "endDate": { "$ref": "#/$defs/date" },
+        "notes": { "type": "string" }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "required": ["maxHoursPerDay", "studyWeekdays", "reviewDaysBeforeExam", "timezone"],
+      "additionalProperties": false,
+      "properties": {
+        "maxHoursPerDay": { "type": "number", "exclusiveMinimum": 0, "maximum": 16 },
+        "studyWeekdays": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 1, "maximum": 7 },
+          "description": "ISO: 1=lunedì ... 7=domenica"
+        },
+        "offDates": { "type": "array", "items": { "$ref": "#/$defs/date" } },
+        "reviewDaysBeforeExam": { "type": "integer", "minimum": 0 },
+        "timezone": { "type": "string" }
+      }
+    },
+    "courses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "sigla", "name", "cfu", "colorHex", "active"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "sigla": { "type": "string" },
+          "name": { "type": "string" },
+          "code": { "type": "string" },
+          "cfu": { "type": "number", "minimum": 0 },
+          "professor": { "type": "string" },
+          "colorHex": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+          "difficultyWeight": { "type": "number", "minimum": 0 },
+          "targetHours": { "type": "number", "minimum": 0 },
+          "active": { "type": "boolean" },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "exams": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "courseId", "date", "round", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "courseId": { "type": "string" },
+          "date": { "$ref": "#/$defs/date" },
+          "timeSlot": { "type": "string" },
+          "durationMinutes": { "type": "integer", "minimum": 0 },
+          "round": { "type": "string" },
+          "examType": { "type": "string" },
+          "classroom": { "type": "string" },
+          "title": { "type": "string" },
+          "status": { "enum": ["planned", "withdrawn"] }
+        }
+      }
+    },
+    "units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "courseId", "unitNumber", "title", "estimatedHours"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "courseId": { "type": "string" },
+          "unitNumber": { "type": "integer", "minimum": 1 },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "estimatedHours": { "type": "number", "minimum": 0 },
+          "priority": { "type": "integer", "minimum": 1, "maximum": 3 },
+          "source": { "type": "string", "description": "Percorso relativo del materiale di origine" },
+          "aliases": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "days": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["date", "tasks"],
+        "additionalProperties": false,
+        "properties": {
+          "date": { "$ref": "#/$defs/date" },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "courseId", "text", "plannedHours", "kind"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string" },
+                "courseId": { "type": "string" },
+                "unitId": { "type": "string" },
+                "text": { "type": "string", "minLength": 1 },
+                "plannedHours": { "type": "number", "exclusiveMinimum": 0 },
+                "kind": { "enum": ["study", "exercise", "review", "past-exam"] },
+                "priority": { "type": "integer", "minimum": 1, "maximum": 3 },
+                "source": { "type": "string" },
+                "aliases": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+  }
+}
