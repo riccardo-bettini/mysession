@@ -6,7 +6,7 @@ Questo documento stabilisce le regole operative, architetturali e di design per 
 
 ## 1. Regola di Versionamento Incrementale (Obbligatoria)
 
-- **Numero di Versione di Partenza**: `1.0.00` (Attuale: `1.0.27`).
+- **Numero di Versione di Partenza**: `1.0.00` (Attuale: `1.0.28`).
 - **Incremento di +0.0.01 per ogni modifica**: Ad ogni iterazione, fase, correzione di bug, rifattorizzazione o aggiunta di funzionalità, la versione deve essere incrementata di **0.0.01** (es. `1.0.04` → `1.0.05` → `1.0.06`...).
 - **Sincronizzazione Multi-file**: Ogni incremento di versione deve essere sincronizzato contestualmente in:
   1. **[package.json](file:///C:/Users/Riccardo/Personal/Antigravity/app_programmazione_sessione/package.json)**: Nel campo `"version"`.

@@ -66,6 +66,22 @@
     allStudyUnits.filter((u) => u.assignedDate !== isoDate)
   );
 
+  let arrears = $derived.by(() => {
+    const snap = sessionStore.activeSnapshot;
+    if (!snap) return [];
+    return snap.todos
+      .filter((t) => {
+        if (t.done) return false;
+        if (!t.date || t.date >= isoDate) return false;
+        if (t.courseId) {
+          const c = courseById.get(t.courseId);
+          if (c && c.isVisible === false) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+  });
+
   let renderedMarkdownHtml = $derived.by(() => {
     const raw = (noteDraft || "").trim();
     if (!raw) return "<p class='empty-md'>Nessuna nota scritta per questa giornata.</p>";
@@ -340,6 +356,51 @@
         </div>
       {/if}
     </section>
+
+    <!-- 3.1 ARRETRATI DA RECUPERARE (Task precedenti non completati) -->
+    {#if arrears.length > 0}
+      <section class="drawer-section drawer-arrears-section">
+        <div class="section-head">
+          <div class="arrears-head-title">
+            <span class="arrears-badge">⚠ {arrears.length}</span>
+            <h3>Arretrati da recuperare</h3>
+          </div>
+        </div>
+        <p class="section-sub-hint">Attività pianificate nei giorni scorsi e non ancora completate.</p>
+
+        <div class="items-list">
+          {#each arrears as td (td.id)}
+            {@const c = td.courseId ? courseById.get(td.courseId) : null}
+            <div class="todo-item-row arrear-item-row">
+              <input
+                type="checkbox"
+                checked={td.done}
+                onchange={(e) =>
+                  sessionStore.toggleTodo(
+                    td.id,
+                    (e.currentTarget as HTMLInputElement).checked
+                  )}
+              />
+              {#if c}
+                <span class="todo-course-tag" style:background={c.colorHex}>{c.sigla}</span>
+              {/if}
+              <div class="arrear-content">
+                <span class="todo-text">{td.text}</span>
+                <span class="arrear-date-tag">📅 {td.date}</span>
+              </div>
+              <button
+                type="button"
+                class="todo-del-btn"
+                title="Rimuovi task"
+                onclick={() => sessionStore.deleteTodo(td.id)}
+              >
+                ✕
+              </button>
+            </div>
+          {/each}
+        </div>
+      </section>
+    {/if}
 
     <!-- 4. UNITÀ DIDATTICHE PIANIFICATE -->
     <section class="drawer-section">
@@ -827,6 +888,56 @@
     color: var(--text-tertiary);
     cursor: pointer;
     font-size: 0.74rem;
+  }
+
+  /* Arretrati */
+  .drawer-arrears-section {
+    background: rgba(255, 159, 10, 0.06);
+    border: 0.5px solid rgba(255, 159, 10, 0.28);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem;
+    margin-top: 0.5rem;
+  }
+
+  .arrears-head-title {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .arrears-badge {
+    background: #ff9f0a;
+    color: #000;
+    font-size: 0.65rem;
+    font-weight: 800;
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--radius-pill);
+    letter-spacing: var(--tracking-wide);
+  }
+
+  .section-sub-hint {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-top: -0.35rem;
+    margin-bottom: 0.45rem;
+  }
+
+  .arrear-item-row {
+    border-left: 2.5px solid #ff9f0a;
+  }
+
+  .arrear-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .arrear-date-tag {
+    font-size: 0.64rem;
+    color: #ff9f0a;
+    font-weight: 600;
   }
 
   /* Note Markdown */

@@ -1,5 +1,9 @@
 <script lang="ts">
   import { APP_AUTHOR, APP_VERSION } from "../../constants/version";
+  import { Eye, EyeOff, Sparkles } from "lucide-svelte";
+  import { ipc } from "../../api/ipc";
+  import { planStore } from "../../stores/plan.svelte";
+  import { sessionStore } from "../../stores/session.svelte";
   import { themeStore } from "../../stores/theme.svelte";
   import type { Course, SessionSnapshot } from "../../types/domain";
   import { formatExamRoundLabel, formatItalianDateShort } from "../../utils/calendar";
@@ -54,6 +58,18 @@
       onSelectCourseFilter?.(null);
     } else {
       onSelectCourseFilter?.(courseId);
+    }
+  }
+
+  async function toggleCourseVisibility(course: Course, e: MouseEvent) {
+    e.stopPropagation();
+    const sessionId = snapshot?.session.id;
+    if (!sessionId) return;
+    try {
+      const snap = await ipc.setCourseVisibility(sessionId, course.id, !course.isVisible);
+      sessionStore.activeSnapshot = snap;
+    } catch (err) {
+      console.error("Errore toggle visibilità corso:", err);
     }
   }
 </script>
@@ -178,6 +194,23 @@
       </button>
     </div>
 
+    <!-- BANNER PIANI IN ATTESA -->
+    {#if planStore.pendingPlans.length > 0}
+      <button
+        type="button"
+        class="plan-alert-pill pressable"
+        onclick={() => planStore.openPreview(planStore.pendingPlans[0])}
+      >
+        <div style="display: flex; align-items: center; gap: 0.4rem;">
+          <Sparkles size={13} />
+          <span style="font-weight: 600;">
+            {planStore.pendingPlans.length} {planStore.pendingPlans.length === 1 ? "Piano rilevato" : "Piani rilevati"}
+          </span>
+        </div>
+        <span style="font-size: 0.72rem; opacity: 0.85;">Esamina →</span>
+      </button>
+    {/if}
+
     <!-- 4. ELENCO CORSI & WORKLOAD ENGINE -->
     <div class="courses-section-header">
       <span>MATERIE IN SESSIONE ({courses.length})</span>
@@ -208,6 +241,7 @@
           <div
             class="course-row-card"
             class:selected={isSelected}
+            class:dimmed={!course.isVisible}
             style:--course-solid={palette.solid}
             style:--course-tint={palette.bgTint}
             style:--course-border={palette.borderTint}
@@ -245,6 +279,20 @@
                   <span>{metric.dailyHours.toFixed(1)} h/g</span>
                 {/if}
               </div>
+            </button>
+
+            <button
+              type="button"
+              class="course-edit-icon-btn pressable"
+              title={course.isVisible ? "Nascondi materia dal calendario" : "Mostra materia nel calendario"}
+              aria-label="Toggle visibilità {course.name}"
+              onclick={(e) => toggleCourseVisibility(course, e)}
+            >
+              {#if course.isVisible}
+                <Eye size={13} />
+              {:else}
+                <EyeOff size={13} style="opacity: 0.4;" />
+              {/if}
             </button>
 
             <button
@@ -676,6 +724,26 @@
     cursor: pointer;
   }
 
+  .plan-alert-pill {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    background: rgba(245, 158, 11, 0.12);
+    border: 0.5px solid rgba(245, 158, 11, 0.3);
+    color: #f59e0b;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .plan-alert-pill:hover {
+    background: rgba(245, 158, 11, 0.18);
+    border-color: rgba(245, 158, 11, 0.45);
+  }
+
   .course-row-card {
     position: relative;
     display: flex;
@@ -698,6 +766,11 @@
   .course-row-card.selected {
     background: var(--course-tint);
     border-color: var(--course-solid);
+  }
+
+  .course-row-card.dimmed {
+    opacity: 0.45;
+    filter: grayscale(45%);
   }
 
   .course-main-click {

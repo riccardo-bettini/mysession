@@ -4,6 +4,7 @@
   import { APP_AUTHOR, APP_VERSION } from "../../constants/version";
   import { sessionStore } from "../../stores/session.svelte";
   import { themeStore } from "../../stores/theme.svelte";
+  import { planStore } from "../../stores/plan.svelte";
   import type {
     AiProvider,
     BackdropMaterial,
@@ -18,6 +19,7 @@
     | "colors"
     | "calendar"
     | "workload"
+    | "plan"
     | "ai"
     | "profile"
     | "backup";
@@ -258,6 +260,15 @@
           >
             <span class="nav-icon">⚡</span>
             <span>Algoritmo CFU & Carico</span>
+          </button>
+          <button
+            type="button"
+            class="nav-item pressable"
+            class:active={activeTab === "plan"}
+            onclick={() => (activeTab = "plan")}
+          >
+            <span class="nav-icon">📁</span>
+            <span>Piani di Studio & Builder</span>
           </button>
 
           <div class="nav-group-header">INTELLIGENZA & DATI</div>
@@ -539,6 +550,79 @@
               <p>• <strong>Buffer di sicurezza dinamico ($B$)</strong> tra appelli vicini, rilevando conflitti critici o avvisi di sovrapposizione.</p>
               <p>• <strong>Festività automatiche</strong> con calcolo perpetuo della Pasqua (algoritmo di Butcher) per preservare i giorni di riposo.</p>
             </div>
+          </div>
+
+        <!-- 5. PIANI DI STUDIO & BUILDER -->
+        {:else if activeTab === "plan"}
+          <div class="panel-group">
+            <h3 class="group-title">Cartella Condivisa dei Piani di Studio (Progetto B)</h3>
+            <p class="field-hint">
+              Indica la directory in cui il Builder genera e aggiorna i file JSON dei piani di studio.
+              MySession monitora questa cartella in background ed estrae automaticamente modifiche, nuovi corsi e to-do.
+            </p>
+            <div style="display: flex; gap: 0.5rem; align-items: center; margin-top: 0.5rem;">
+              <input
+                type="text"
+                readonly
+                value={planStore.planFolder || "Nessuna cartella configurata"}
+                style="flex: 1; opacity: {planStore.planFolder ? 1 : 0.6};"
+              />
+              <button
+                type="button"
+                class="btn-action pressable"
+                onclick={() => planStore.browseFolder()}
+              >
+                Sfoglia...
+              </button>
+              <button
+                type="button"
+                class="btn-action pressable"
+                disabled={planStore.isScanning || !planStore.planFolder}
+                onclick={() => planStore.scan()}
+              >
+                {planStore.isScanning ? "Scansione..." : "Verifica Ora"}
+              </button>
+            </div>
+          </div>
+
+          <div class="panel-group">
+            <h3 class="group-title">Piani Rilevati & In Attesa</h3>
+            {#if planStore.pendingPlans.length === 0}
+              <div class="info-card">
+                <p>Nessun nuovo piano o aggiornamento in attesa nella cartella selezionata.</p>
+                <p style="font-size: 0.78rem; color: var(--text-tertiary); margin-top: 0.25rem;">
+                  Quando crei o modifichi un piano con la skill in Progetto B, apparirà qui e tramite notifica interattiva.
+                </p>
+              </div>
+            {:else}
+              <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                {#each planStore.pendingPlans as plan (plan.planId)}
+                  <div
+                    style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-radius: var(--radius-sm); background: rgba(128, 128, 128, 0.06); border: 0.5px solid var(--hairline-border);"
+                  >
+                    <div>
+                      <div style="font-weight: 600; font-size: 0.9rem; color: var(--text-primary);">
+                        {plan.planName} ({plan.planId})
+                      </div>
+                      <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.15rem;">
+                        Revisione {plan.revision} • {plan.isNewSession ? "Nuova sessione" : "Aggiornamento sessione"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      class="btn-action pressable"
+                      style="background: var(--accent, #007AFF); color: #fff; border: none; font-weight: 600;"
+                      onclick={() => {
+                        onClose();
+                        planStore.openPreview(plan);
+                      }}
+                    >
+                      Esamina & Applica
+                    </button>
+                  </div>
+                {/each}
+              </div>
+            {/if}
           </div>
 
         <!-- 5. ASSISTENTE AI & NLP -->

@@ -16,8 +16,10 @@
   import OnboardingWizard from "./lib/components/modals/OnboardingWizard.svelte";
   import SessionModal from "./lib/components/modals/SessionModal.svelte";
   import SettingsModal from "./lib/components/modals/SettingsModal.svelte";
+  import PlanUpdateModal from "./lib/components/modals/PlanUpdateModal.svelte";
   import { sessionStore } from "./lib/stores/session.svelte";
   import { themeStore } from "./lib/stores/theme.svelte";
+  import { planStore } from "./lib/stores/plan.svelte";
   import type {
     AcademicSession,
     Course,
@@ -67,7 +69,7 @@
   let conflictsModalOpen = $state<boolean>(false);
   let settingsModalState = $state<{
     open: boolean;
-    tab: "appearance" | "colors" | "calendar" | "workload" | "ai" | "profile" | "backup";
+    tab: "appearance" | "colors" | "calendar" | "workload" | "plan" | "ai" | "profile" | "backup";
   }>({
     open: false,
     tab: "appearance"
@@ -113,6 +115,7 @@
       }
       currentWeekAnchorIso = sessionStore.todayIso;
       selectedDate = sessionStore.todayIso;
+      await planStore.init();
     })();
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -517,6 +520,8 @@
       onToast={showToast}
     />
   {/if}
+
+  <PlanUpdateModal onToast={showToast} />
 
   {#if !sessionStore.isLoading && !sessionStore.profile.onboardingCompleted}
     <OnboardingWizard

@@ -363,21 +363,31 @@ export function indexSnapshotByDate(
   }
 
   for (const ex of snapshot.exams) {
-    ensureDay(ex.date).exams.push(ex);
+    const course = courseById.get(ex.courseId);
+    if (!course || course.isVisible !== false) {
+      ensureDay(ex.date).exams.push(ex);
+    }
   }
 
   for (const ev of snapshot.genericEvents) {
-    ensureDay(ev.date).genericEvents.push(ev);
+    if (!ev.courseId || courseById.get(ev.courseId)?.isVisible !== false) {
+      ensureDay(ev.date).genericEvents.push(ev);
+    }
   }
 
   for (const unit of snapshot.studyUnits) {
     if (unit.assignedDate) {
-      ensureDay(unit.assignedDate).studyUnits.push(unit);
+      const course = courseById.get(unit.courseId);
+      if (!course || course.isVisible !== false) {
+        ensureDay(unit.assignedDate).studyUnits.push(unit);
+      }
     }
   }
 
   for (const td of snapshot.todos) {
-    ensureDay(td.date).todos.push(td);
+    if (!td.courseId || courseById.get(td.courseId)?.isVisible !== false) {
+      ensureDay(td.date).todos.push(td);
+    }
   }
 
   for (const nt of snapshot.dailyNotes) {
