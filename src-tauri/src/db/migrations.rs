@@ -173,18 +173,39 @@ pub fn configure_connection_pragmas(conn: &Connection) -> Result<()> {
 pub fn run_migrations(conn: &mut Connection) -> Result<()> {
     configure_connection_pragmas(conn)?;
 
-    let tx = conn.transaction()?;
-    tx.execute_batch(MIGRATION_V1_SQL)?;
+    // Crea la tabella delle migrazioni se assente
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL
+        );
+        "#,
+        [],
+    )?;
+
+    let current_version: i32 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     let now_iso = Utc::now().to_rfc3339();
 
-    tx.execute(
-        "INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
-        params![CURRENT_SCHEMA_VERSION, &now_iso],
-    )?;
+    if current_version < 1 {
+        let tx = conn.transaction()?;
+        tx.execute_batch(MIGRATION_V1_SQL)?;
+        tx.execute(
+            "INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
+            params![1, &now_iso],
+        )?;
+        tx.commit()?;
+    }
 
-    // Ensure singleton row in user_profile (id = 1) with zero hardcoded user data
-    tx.execute(
+    // Assicura il singleton in user_profile (id = 1) e app_settings (id = 1)
+    conn.execute(
         r#"
         INSERT OR IGNORE INTO user_profile (
             id, student_name, university, faculty, degree_course,
@@ -194,12 +215,10 @@ pub fn run_migrations(conn: &mut Connection) -> Result<()> {
         params![&now_iso],
     )?;
 
-    // Ensure singleton row in app_settings (id = 1)
-    tx.execute(
+    conn.execute(
         "INSERT OR IGNORE INTO app_settings (id) VALUES (1)",
         [],
     )?;
 
-    tx.commit()?;
     Ok(())
 }
