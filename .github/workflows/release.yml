@@ -54,15 +54,9 @@ jobs:
           $version = $pkg.version
           New-Item -ItemType Directory -Path release_upload -Force | Out-Null
           
-          # Copia installer e pacchetti generati
-          Get-ChildItem -Path src-tauri\target\release\bundle -Recurse -File | Where-Object { $_.Extension -match 'exe|msi|zip|sig' } | ForEach-Object {
+          # Copia installer e pacchetti generati (esclusivamente NSIS setup, sig e latest.json)
+          Get-ChildItem -Path src-tauri\target\release\bundle -Recurse -File | Where-Object { $_.Extension -match 'exe|sig' } | ForEach-Object {
             Copy-Item $_.FullName -Destination release_upload\ -Force
-          }
-          
-          # Standalone exe
-          $standalone = "src-tauri\target\release\mysession.exe"
-          if (Test-Path $standalone) {
-            Copy-Item $standalone -Destination "release_upload\MySession_${version}_Standalone.exe" -Force
           }
           
           # Genera manifest latest.json
