@@ -6,7 +6,7 @@ Questo documento stabilisce le regole operative, architetturali e di design per 
 
 ## 1. Regola di Versionamento Incrementale (Obbligatoria)
 
-- **Numero di Versione di Partenza**: `1.0.00` (Attuale: `1.0.35`).
+- **Numero di Versione di Partenza**: `1.0.00` (Attuale: `1.0.37`).
 - **Incremento di +0.0.01 per ogni modifica**: Ad ogni iterazione, fase, correzione di bug, rifattorizzazione o aggiunta di funzionalità, la versione deve essere incrementata di **0.0.01** (es. `1.0.04` → `1.0.05` → `1.0.06`...).
 - **Sincronizzazione Multi-file**: Ogni incremento di versione deve essere sincronizzato contestualmente in:
   1. **[package.json](file:///C:/Users/Riccardo/Personal/Antigravity/app_programmazione_sessione/package.json)**: Nel campo `"version"`.
@@ -64,3 +64,21 @@ Questo documento stabilisce le regole operative, architetturali e di design per 
 
 - Rispondere in modo sintetico, chiaro e professionale in lingua italiana.
 - Includere sempre link cliccabili a tutti i file e simboli modificati con schema `file:///` (es. `[App.svelte](file:///C:/Users/Riccardo/Personal/Antigravity/app_programmazione_sessione/src/App.svelte)`).
+
+---
+
+## 7. Aggiornamento Automatico della Cartella Release (Obbligatorio)
+
+- **Generazione Pipeline di Release**:
+  Ad ogni iterazione, modifica o rilascio di versione, è **obbligatorio** aggiornare la cartella `release/` eseguendo lo script di packaging automatizzato:
+  ```powershell
+  Set-Location "C:\Users\Riccardo\Personal\Antigravity\app_programmazione_sessione"
+  npm run release
+  ```
+- **Artefatti Generati nella cartella `release/`**:
+  - Installer NSIS (`MySession_<version>_x64-setup.exe`)
+  - Installer MSI (`MySession_<version>_x64_en-US.msi`)
+  - Binario Standalone (`MySession_<version>_Standalone.exe`)
+  - Pacchetto Portatile compresso (`MySession_<version>_Portable_x64.zip`)
+  - Tabella Checksum SHA256 (`SHA256SUMS-<version>.txt`) e `WebView2Loader.dll`
+
