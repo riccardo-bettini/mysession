@@ -138,8 +138,8 @@ impl AiRuntimeManager {
             ));
         }
 
-        // 2. Risolvi l'eseguibile llama-server
-        let server_exe = find_llama_server_binary(app_data_dir)?;
+        // 2. Risolvi o approvvigiona l'eseguibile llama-server
+        let server_exe = ensure_llama_server_binary(app_data_dir)?;
 
         // 3. Riserva una porta TCP effimera libera
         let free_port = find_free_tcp_port()?;
@@ -340,6 +340,47 @@ fn find_llama_server_binary(app_data_dir: &Path) -> Result<PathBuf, String> {
     Err(
         "Binario 'llama-server.exe' non trovato. Assicurati che sia presente in %APPDATA%\\com.mysession.app\\bin o accanto all'app.".to_string(),
     )
+}
+
+/// Assicura che l'eseguibile del motore AI `llama-server.exe` sia disponibile sul sistema;
+/// se assente, lo scarica automaticamente dai rilasci ufficiali GitHub (versione Vulkan/CPU)
+pub fn ensure_llama_server_binary(app_data_dir: &Path) -> Result<PathBuf, String> {
+    if let Ok(bin) = find_llama_server_binary(app_data_dir) {
+        return Ok(bin);
+    }
+
+    let bin_dir = app_data_dir.join("bin");
+    let _ = std::fs::create_dir_all(&bin_dir);
+
+    let zip_url = "https://github.com/ggml-org/llama.cpp/releases/download/b12020/llama-b12020-bin-win-vulkan-x64.zip";
+    let temp_zip = bin_dir.join("llama-engine.zip");
+
+    let agent = crate::ai::downloader::get_http_agent();
+    let resp = agent
+        .get(zip_url)
+        .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) MySession/1.0")
+        .call()
+        .map_err(|e| format!("Impossibile scaricare il motore AI llama-server: {}", e))?;
+
+    let mut reader = resp.into_reader();
+    let mut file = std::fs::File::create(&temp_zip).map_err(|e| e.to_string())?;
+    std::io::copy(&mut reader, &mut file).map_err(|e| e.to_string())?;
+    drop(file);
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let mut cmd = Command::new("tar");
+        cmd.arg("-xf").arg(&temp_zip).arg("-C").arg(&bin_dir).creation_flags(CREATE_NO_WINDOW);
+        let status = cmd.status().map_err(|e| format!("Errore estrazione tar: {}", e))?;
+        let _ = std::fs::remove_file(&temp_zip);
+        if !status.success() {
+            return Err("Estrazione del motore AI non riuscita.".to_string());
+        }
+    }
+
+    find_llama_server_binary(app_data_dir)
 }
 
 #[cfg(windows)]

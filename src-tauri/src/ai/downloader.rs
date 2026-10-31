@@ -70,6 +70,9 @@ impl ModelDownloadManager {
                 return;
             }
 
+            // Assicura che l'eseguibile del motore AI (llama-server) sia pronto in %APPDATA%\bin
+            let _ = crate::ai::runtime::ensure_llama_server_binary(&app_data_dir);
+
             // 1. Scarica il file principale del modello GGUF
             let model_dest = models_dir.join(&item.file_name);
             if !model_dest.exists() {
@@ -137,6 +140,7 @@ fn download_single_file(
     let agent = get_http_agent();
     let resp = agent
         .get(url)
+        .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) MySession/1.0")
         .call()
         .map_err(|e| format!("Errore di rete durante il download di {}: {}", display_name, e))?;
 
@@ -245,5 +249,41 @@ mod tests {
         let agent = get_http_agent();
         let res = agent.get("https://huggingface.co").call();
         assert!(res.is_ok(), "Connessione TLS a HuggingFace fallita: {:?}", res.err());
+    }
+
+    #[test]
+    fn test_all_catalog_download_urls() {
+        let agent = get_http_agent();
+        let catalog = get_ai_model_catalog();
+
+        for item in catalog {
+            let res = agent
+                .get(&item.download_url)
+                .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) MySession/1.0")
+                .set("Range", "bytes=0-1024")
+                .call();
+            assert!(
+                res.is_ok(),
+                "Download fallito per modello {} ({}): {:?}",
+                item.name,
+                item.download_url,
+                res.err()
+            );
+
+            if !item.mmproj_download_url.is_empty() {
+                let res_mm = agent
+                    .get(&item.mmproj_download_url)
+                    .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) MySession/1.0")
+                    .set("Range", "bytes=0-1024")
+                    .call();
+                assert!(
+                    res_mm.is_ok(),
+                    "Download fallito per mmproj di {} ({}): {:?}",
+                    item.name,
+                    item.mmproj_download_url,
+                    res_mm.err()
+                );
+            }
+        }
     }
 }
