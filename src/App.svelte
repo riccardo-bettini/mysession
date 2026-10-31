@@ -214,6 +214,10 @@
   }
 
   function handleJumpToDate(isoDate: string, openInspector = true) {
+    if (openInspector && drawerOpen && selectedDate === isoDate) {
+      drawerOpen = false;
+      return;
+    }
     selectedDate = isoDate;
     if (openInspector) {
       drawerOpen = true;
@@ -288,11 +292,46 @@
   }
 
   function handleSelectDay(isoDate: string) {
+    if (drawerOpen && selectedDate === isoDate) {
+      drawerOpen = false;
+      return;
+    }
     selectedDate = isoDate;
     drawerOpen = true;
     const { year, month } = parseIsoDate(isoDate);
     currentMonthYear = { year, month };
     currentWeekAnchorIso = isoDate;
+  }
+
+  function handleWindowClick(e: MouseEvent) {
+    if (!drawerOpen) return;
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+
+    // 1. Clic dentro il cassetto laterale -> non chiudere
+    if (target.closest(".day-inspector-drawer")) return;
+
+    // 2. Clic dentro modali, dialoghi o popover -> non interferire
+    if (
+      target.closest(".modal-scrim") ||
+      target.closest(".popover-menu") ||
+      target.closest(".confirm-overlay")
+    ) {
+      return;
+    }
+
+    // 3. Clic su un giorno del calendario -> gestito da handleSelectDay
+    if (
+      target.closest("[data-calendar-day]") ||
+      target.closest(".calendar-day-cell") ||
+      target.closest(".week-day-column") ||
+      target.closest(".agenda-exam-row")
+    ) {
+      return;
+    }
+
+    // 4. Qualsiasi altro punto dello schermo -> chiudi il cassetto
+    drawerOpen = false;
   }
 
   function handleSelectExam(exam: Exam, _e: MouseEvent) {
@@ -310,6 +349,8 @@
     };
   }
 </script>
+
+<svelte:window onclick={handleWindowClick} />
 
 <div class="app-window-frame">
   <!-- Barra Superiore Unificata (Apple HIG + Windows 11 Snap Layouts) -->
@@ -356,12 +397,14 @@
     />
 
     <main class="calendar-stage">
-      <!-- Barra Orizzonte Temporale di Sessione -->
-      <HorizonRibbon
-        telemetry={sessionStore.activeSnapshot?.telemetry ?? null}
-        {selectedCourseId}
-        onSelectDate={(d) => handleJumpToDate(d, true)}
-      />
+      <!-- Barra Orizzonte Temporale di Sessione (nascosta nella sessione di sistema 'Generale') -->
+      {#if !sessionStore.isSystemSession}
+        <HorizonRibbon
+          telemetry={sessionStore.activeSnapshot?.telemetry ?? null}
+          {selectedCourseId}
+          onSelectDate={(d) => handleJumpToDate(d, true)}
+        />
+      {/if}
 
       <!-- Viewport Ortogonale delle 4 Viste Calendario -->
       <div class="calendar-view-container">

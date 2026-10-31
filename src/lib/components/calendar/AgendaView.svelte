@@ -138,6 +138,7 @@
           <div
             role="button"
             tabindex="0"
+            data-calendar-day={exam.date}
             class="agenda-exam-row"
             style:--row-accent={palette.solid}
             onclick={(e) => {

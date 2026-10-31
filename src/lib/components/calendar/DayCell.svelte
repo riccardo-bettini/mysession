@@ -117,6 +117,7 @@
   role="gridcell"
   tabindex="0"
   aria-selected={isSelected}
+  data-calendar-day={cell.isoDate}
   class="calendar-day-cell"
   class:outside-month={!cell.isCurrentMonth}
   class:is-today={cell.isToday}
@@ -210,9 +211,10 @@
     <!-- 2. Impegni Giornalieri / Lezioni -->
     {#each displayedEvents as ev (ev.id)}
       {@const catColor = getCategoryColor(ev.category)}
+      {@const isLesson = ev.category === "lezione"}
       <div class="generic-event-chip" title="{ev.title} ({ev.category}){ev.timeSlot ? ` · ${ev.timeSlot}` : ''}">
         <span class="event-dot" style:background={catColor}></span>
-        {#if ev.timeSlot}
+        {#if ev.timeSlot && (!isLesson || themeStore.showLessonTimes)}
           <span class="event-time">{ev.timeSlot}</span>
         {/if}
         <span class="event-title">{ev.title}</span>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { sessionStore } from "../../stores/session.svelte";
+  import { planStore } from "../../stores/plan.svelte";
   import type { AcademicSession } from "../../types/domain";
 
   interface Props {
@@ -65,6 +66,14 @@
         <h2>Gestione Sessioni</h2>
       </div>
       <div class="header-actions">
+        <button
+          type="button"
+          class="btn-open-folder pressable"
+          title="Apri la cartella dei file di sessione (.json) in Esplora File per gestirli o eliminarli"
+          onclick={() => planStore.openPlanFolder()}
+        >
+          📁 Cartella File
+        </button>
         <button
           type="button"
           class="btn-new-session pressable"
@@ -250,6 +259,19 @@
           <p>
             Tutti i corsi, gli appelli d'esame, le lezioni e le attività pianificate associate a questa sessione verranno rimossi permanentemente dal database locale.
           </p>
+          {#if sessionToDelete.planId}
+            <div class="confirm-plan-hint">
+              <span>Questa sessione è collegata al file di piano <code>{sessionToDelete.planId}.json</code>.</span>
+              <button
+                type="button"
+                class="btn-plan-open-inline pressable"
+                onclick={() => planStore.openPlanFolder()}
+                title="Apri cartella per eliminare o spostare il file JSON del piano"
+              >
+                📁 Apri cartella file sessioni
+              </button>
+            </div>
+          {/if}
           <div class="confirm-actions">
             <button
               type="button"
@@ -343,6 +365,63 @@
     display: flex;
     align-items: center;
     gap: 0.65rem;
+  }
+
+  .btn-open-folder {
+    height: 1.95rem;
+    padding: 0 0.75rem;
+    border-radius: var(--radius-sm);
+    border: 0.5px solid var(--hairline-border);
+    background: var(--surface-pill);
+    color: var(--text-primary);
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+
+  .btn-open-folder:hover {
+    background: var(--surface-hover);
+    border-color: var(--hairline-border-strong);
+  }
+
+  .confirm-plan-hint {
+    margin: 0.65rem 0 0.35rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--surface-pill);
+    border-radius: var(--radius-sm);
+    border: 0.5px solid var(--hairline-border);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .confirm-plan-hint code {
+    background: rgba(0, 0, 0, 0.12);
+    padding: 0.1rem 0.35rem;
+    border-radius: var(--radius-xs);
+    font-family: monospace;
+    font-size: 0.73rem;
+  }
+
+  .btn-plan-open-inline {
+    align-self: flex-start;
+    padding: 0.3rem 0.65rem;
+    border-radius: var(--radius-xs);
+    border: 0.5px solid var(--hairline-border);
+    background: var(--surface-base);
+    color: var(--accent-primary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
   }
 
   .btn-new-session {

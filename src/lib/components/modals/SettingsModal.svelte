@@ -511,6 +511,21 @@
           </div>
 
           <div class="panel-group">
+            <h3 class="group-title">Visualizzazione Lezioni nel Calendario</h3>
+            <p class="field-hint">
+              Controlla la visualizzazione rapida dell'orario delle lezioni nelle celle del calendario. Il cassetto di dettaglio della singola giornata continuerà a mostrare sempre l'orario completo.
+            </p>
+            <label class="toggle-row" style="margin-top: 0.65rem;">
+              <input
+                type="checkbox"
+                checked={themeStore.showLessonTimes}
+                onchange={() => themeStore.toggleShowLessonTimes()}
+              />
+              <span>Mostra orario delle lezioni nelle celle del calendario (vista rapida)</span>
+            </label>
+          </div>
+
+          <div class="panel-group">
             <h3 class="group-title">Scorciatoie da Tastiera per la Navigazione</h3>
             <div class="info-card">
               <p>• <strong>T</strong>: Salta istantaneamente alla data di oggi nel calendario.</p>
@@ -573,6 +588,15 @@
                 onclick={() => planStore.browseFolder()}
               >
                 Sfoglia...
+              </button>
+              <button
+                type="button"
+                class="btn-action pressable"
+                disabled={!planStore.planFolder}
+                title="Apri la cartella in Esplora Risorse di Windows"
+                onclick={() => planStore.openPlanFolder()}
+              >
+                📁 Apri Cartella
               </button>
               <button
                 type="button"
@@ -1111,6 +1135,24 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.85rem;
+  }
+
+  .toggle-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .toggle-row input[type="checkbox"] {
+    width: 1.15rem;
+    height: 1.15rem;
+    accent-color: var(--accent-primary, #007AFF);
+    cursor: pointer;
   }
 
   .field {

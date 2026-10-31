@@ -129,6 +129,7 @@
       <div
         role="gridcell"
         tabindex="0"
+        data-calendar-day={cell.isoDate}
         class="week-day-column"
         class:is-today={cell.isToday}
         class:is-selected={selectedDate === cell.isoDate}
@@ -195,10 +196,11 @@
 
           <!-- Eventi Generici -->
           {#each events as ev (ev.id)}
+            {@const isLesson = ev.category === "lezione"}
             <div class="week-generic-card">
               <div class="wg-top">
                 <span class="wg-cat">{ev.category}</span>
-                {#if ev.timeSlot}
+                {#if ev.timeSlot && (!isLesson || themeStore.showLessonTimes)}
                   <span class="wg-time">{ev.timeSlot}</span>
                 {/if}
               </div>

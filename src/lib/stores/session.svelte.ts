@@ -55,6 +55,13 @@ class SessionWorkspaceStore {
     this.activeSnapshot?.session ?? this.sessions[0] ?? null
   );
 
+  isSystemSession = $derived<boolean>(
+    Boolean(
+      this.activeSession?.isSystem ||
+      this.activeSession?.id === "session_generale"
+    )
+  );
+
   courses = $derived<Course[]>(this.activeSnapshot?.courses ?? []);
   exams = $derived<Exam[]>(this.activeSnapshot?.exams ?? []);
   genericEvents = $derived<GenericEvent[]>(this.activeSnapshot?.genericEvents ?? []);

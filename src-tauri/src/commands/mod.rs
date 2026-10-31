@@ -572,6 +572,36 @@ pub async fn parse_timetable_image(
     .map_err(|e| format!("Errore interno analisi foto: {}", e))?
 }
 
+#[tauri::command]
+pub fn open_folder_in_explorer(path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Nessun percorso di cartella specificato".to_string());
+    }
+    let p = std::path::Path::new(trimmed);
+    if !p.exists() {
+        return Err(format!("La cartella specificata non esiste: {}", trimmed));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(trimmed)
+            .spawn()
+            .map_err(|e| format!("Impossibile avviare Esplora File: {}", e))?;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(trimmed)
+            .spawn()
+            .map_err(|e| format!("Impossibile aprire il file manager: {}", e))?;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

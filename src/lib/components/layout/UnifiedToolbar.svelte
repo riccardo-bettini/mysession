@@ -507,6 +507,23 @@
       {/if}
     </div>
 
+    <!-- Toggle Visualizzazione Orario Lezioni nel Calendario -->
+    <button
+      type="button"
+      class="toolbar-icon-only-btn pressable"
+      class:active={themeStore.showLessonTimes}
+      title={themeStore.showLessonTimes
+        ? "Nascondi orario lezioni nel calendario (vista rapida)"
+        : "Mostra orario lezioni nel calendario (vista rapida)"}
+      aria-label="Toggle orario lezioni nel calendario"
+      onclick={() => themeStore.toggleShowLessonTimes()}
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <polyline points="12 6 12 12 16 14" />
+      </svg>
+    </button>
+
     <!-- Pulsante Orario Lezioni -->
     <button
       type="button"
@@ -1059,6 +1076,12 @@
     background: var(--surface-pill-hover);
     color: var(--text-primary);
     border-color: var(--hairline-border-strong);
+  }
+
+  .toolbar-icon-only-btn.active {
+    background: var(--surface-pill-hover);
+    color: var(--accent-primary, #007AFF);
+    border-color: var(--accent-primary, #007AFF);
   }
 
   .toolbar-utility-btn svg,

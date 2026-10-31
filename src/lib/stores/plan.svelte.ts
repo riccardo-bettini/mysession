@@ -74,6 +74,21 @@ class PlanWorkspaceStore {
     }
   }
 
+  async openPlanFolder(): Promise<void> {
+    try {
+      let targetPath = this.planFolder?.trim();
+      if (!targetPath) {
+        const selected = await this.browseFolder();
+        if (!selected) return;
+        targetPath = selected;
+      }
+      await ipc.openFolderInExplorer(targetPath);
+    } catch (e) {
+      this.lastError = e instanceof Error ? e.message : String(e);
+      console.error("Errore durante l'apertura della cartella dei piani:", e);
+    }
+  }
+
   async scan(): Promise<PendingPlanNotification[]> {
     this.isScanning = true;
     this.lastError = null;

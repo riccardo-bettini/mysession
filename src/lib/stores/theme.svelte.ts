@@ -50,6 +50,19 @@ class ThemeAndWindowStore {
   systemIsDark = $state<boolean>(true);
   isMaximized = $state<boolean>(false);
   isInitialized = $state<boolean>(false);
+  showLessonTimes = $state<boolean>(
+    typeof localStorage !== "undefined" && localStorage.getItem("mysession_show_lesson_times") !== null
+      ? localStorage.getItem("mysession_show_lesson_times") === "true"
+      : true
+  );
+
+  toggleShowLessonTimes(force?: boolean): boolean {
+    this.showLessonTimes = force !== undefined ? force : !this.showLessonTimes;
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("mysession_show_lesson_times", String(this.showLessonTimes));
+    }
+    return this.showLessonTimes;
+  }
 
   effectiveTheme = $derived<"dark" | "light">(
     this.settings.theme === "dark"
