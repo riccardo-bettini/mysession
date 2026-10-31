@@ -144,12 +144,12 @@ if (Test-Path $bundleDir) {
         $manifestJson = @"
 {
   "version": "$appVersion",
-  "notes": "MySession v$appVersion — Aggiornamento automatico nativo con supporto GitHub Releases",
+  "notes": "MySession v$appVersion - Aggiornamento automatico nativo con supporto GitHub Releases",
   "pub_date": "$isoNow",
   "platforms": {
     "windows-x86_64": {
       "signature": "$sigContent",
-      "url": "https://github.com/riccardobettini/mysession/releases/download/v$appVersion/$($setupExe.Name)"
+      "url": "https://github.com/riccardo-bettini/mysession/releases/download/v$appVersion/$($setupExe.Name)"
     }
   }
 }

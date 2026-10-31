@@ -78,7 +78,7 @@ jobs:
               platforms = @{
                 "windows-x86_64" = @{
                   signature = $sigContent
-                  url = "https://github.com/riccardobettini/mysession/releases/download/v${version}/$($setupExe.Name)"
+                  url = "https://github.com/riccardo-bettini/mysession/releases/download/v${version}/$($setupExe.Name)"
                 }
               }
             }

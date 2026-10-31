@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "MySession",
-  "version": "1.0.38",
+  "version": "1.0.39",
   "identifier": "com.mysession.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -69,7 +69,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU5NjJEOUVERjM3MEJEMkYKUldRdnZYRHo3ZGxpV1JLNFJVUGxZN0htMmVzSFQ1OVJHajhFRURhaVdzYkcvS3N6UGVyY1llTTcK",
       "endpoints": [
-        "https://github.com/riccardobettini/mysession/releases/latest/download/latest.json"
+        "https://github.com/riccardo-bettini/mysession/releases/latest/download/latest.json"
       ]
     }
   }

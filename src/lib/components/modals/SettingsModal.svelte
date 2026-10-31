@@ -841,7 +841,7 @@
                     <span class="badge-status-new">Nuova v{updaterStore.availableVersion}</span>
                   {/if}
                 </div>
-                <p class="uh-author-text">Software sviluppato da <strong>{APP_AUTHOR}</strong> · Repository: <code>riccardobettini/mysession</code></p>
+                <p class="uh-author-text">Software sviluppato da <strong>{APP_AUTHOR}</strong> · Repository: <code>riccardo-bettini/mysession</code></p>
                 {#if updaterStore.lastCheckDate}
                   <span class="uh-time-text">Ultimo controllo: oggi alle {updaterStore.lastCheckDate}</span>
                 {/if}
