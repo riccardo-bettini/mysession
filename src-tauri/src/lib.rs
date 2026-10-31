@@ -89,6 +89,14 @@ pub fn run() {
             commands::parse_timetable_image,
             commands::open_folder_in_explorer,
             commands::relaunch_app,
+            commands::get_system_hardware_info,
+            commands::get_ai_models_status,
+            commands::start_ai_model_download,
+            commands::cancel_ai_model_download,
+            commands::delete_ai_model,
+            commands::get_ai_runtime_status,
+            commands::stop_ai_runtime,
+            commands::start_ai_runtime,
         ])
         .run(tauri::generate_context!())
         .expect("Errore critico durante l'avvio di MySession (Tauri v2)");

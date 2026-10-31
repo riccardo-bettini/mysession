@@ -1,7 +1,7 @@
 use chrono::Utc;
 use rusqlite::{params, Connection, Result};
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 4;
+pub const CURRENT_SCHEMA_VERSION: i32 = 5;
 
 const MIGRATION_V1_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -223,6 +223,13 @@ const MIGRATION_V4_SQL: &str = r#"
 UPDATE app_settings SET ai_model = 'gemini-3.8-flash' WHERE ai_model = 'gemini-2.5-flash';
 "#;
 
+const MIGRATION_V5_SQL: &str = r#"
+ALTER TABLE app_settings ADD COLUMN ai_local_model_id TEXT NOT NULL DEFAULT 'qwen2.5-vl-3b';
+ALTER TABLE app_settings ADD COLUMN ai_idle_timeout_minutes INTEGER NOT NULL DEFAULT 5;
+ALTER TABLE app_settings ADD COLUMN ai_boot_strategy TEXT NOT NULL DEFAULT 'on_demand';
+ALTER TABLE app_settings ADD COLUMN ai_hardware_preference TEXT NOT NULL DEFAULT 'auto';
+"#;
+
 pub fn configure_connection_pragmas(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
@@ -296,6 +303,16 @@ pub fn run_migrations(conn: &mut Connection) -> Result<()> {
         tx.execute(
             "INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
             params![4, &now_iso],
+        )?;
+        tx.commit()?;
+    }
+
+    if current_version < 5 {
+        let tx = conn.transaction()?;
+        tx.execute_batch(MIGRATION_V5_SQL)?;
+        tx.execute(
+            "INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
+            params![5, &now_iso],
         )?;
         tx.commit()?;
     }

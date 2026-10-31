@@ -43,6 +43,10 @@ export interface AppSettings {
   aiEndpointUrl: string;
   aiModel: string;
   aiBarWidth: number;
+  aiLocalModelId: string;
+  aiIdleTimeoutMinutes: number;
+  aiBootStrategy: "on_demand" | "on_app_start" | "contextual";
+  aiHardwarePreference: "auto" | "gpu" | "cpu";
   activeSessionId: string | null;
   planFolder: string;
 }
@@ -500,4 +504,54 @@ export interface PlanDiffSummary {
   conflicts: TaskConflictItem[];
   examsChanged: ExamChangeItem[];
   coursesChanged: CourseChangeItem[];
+}
+
+export interface AiModelCatalogItem {
+  id: string;
+  name: string;
+  tagline: string;
+  tier: string;
+  tierLevel: number;
+  sizeGb: number;
+  vramReqGb: number;
+  recommendedRamGb: number;
+  fileName: string;
+  mmprojFileName: string;
+  downloadUrl: string;
+  mmprojDownloadUrl: string;
+  contextWindow: number;
+  description: string;
+  recommendedFor: string;
+  isDownloaded: boolean;
+  isActive: boolean;
+}
+
+export interface SystemHardwareInfo {
+  totalRamGb: number;
+  availableRamGb: number;
+  gpuName: string;
+  dedicatedVramGb: number;
+  hasDedicatedGpu: boolean;
+  recommendedModelId: string;
+  recommendedReason: string;
+}
+
+export interface AiRuntimeStatus {
+  state: "stopped" | "starting" | "ready" | "error";
+  activeModelId?: string | null;
+  port?: number | null;
+  idleTimeoutMinutes: number;
+  secondsUntilIdleShutdown?: number | null;
+  errorMessage?: string | null;
+}
+
+export interface AiModelDownloadProgress {
+  modelId: string;
+  fileName: string;
+  downloadedBytes: number;
+  totalBytes: number;
+  progressPct: number;
+  speedMbPerSec: number;
+  isCompleted: boolean;
+  error?: string | null;
 }

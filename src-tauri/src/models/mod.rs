@@ -56,6 +56,10 @@ pub struct AppSettings {
     pub ai_endpoint_url: String,       // Default "http://127.0.0.1:11434"
     pub ai_model: String,              // Default "gemini-3.8-flash"
     pub ai_bar_width: i32,             // Default 760
+    pub ai_local_model_id: String,     // Default "qwen2.5-vl-3b"
+    pub ai_idle_timeout_minutes: i32,  // Default 5 (0 = mai spegnere)
+    pub ai_boot_strategy: String,      // "on_demand" | "on_app_start" | "contextual"
+    pub ai_hardware_preference: String,// "auto" | "gpu" | "cpu"
     pub active_session_id: Option<String>,
     pub plan_folder: String,
 }
@@ -89,6 +93,10 @@ impl Default for AppSettings {
             ai_endpoint_url: "http://127.0.0.1:11434".to_string(),
             ai_model: "gemini-3.8-flash".to_string(),
             ai_bar_width: 760,
+            ai_local_model_id: "qwen2.5-vl-3b".to_string(),
+            ai_idle_timeout_minutes: 5,
+            ai_boot_strategy: "on_demand".to_string(),
+            ai_hardware_preference: "auto".to_string(),
             active_session_id: None,
             plan_folder: String::new(),
         }

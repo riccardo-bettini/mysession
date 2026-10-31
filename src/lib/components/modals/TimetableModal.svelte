@@ -4,6 +4,7 @@
   import type { ExtractedLessonItem, WeeklyLesson, UpsertWeeklyLessonInput } from "../../types/domain";
   import { UNIFIED_STANDARD_PALETTE, generateCourseColorTokens } from "../../utils/color";
   import { themeStore } from "../../stores/theme.svelte";
+  import { ipc } from "../../api/ipc";
   import { Sparkles, Calendar, Plus, Trash2, Edit2, Upload, Check, X, Clock, MapPin, User, ArrowRight } from "lucide-svelte";
 
   interface Props {
@@ -71,6 +72,13 @@
   let projectStartDate = $state(new Date().toISOString().slice(0, 10));
   let projectEndDate = $state(new Date().toISOString().slice(0, 10));
   let isProjecting = $state(false);
+
+  function openAiVisionModal() {
+    isAiVisionOpen = true;
+    if (themeStore.settings.aiProvider === "local" && themeStore.settings.aiBootStrategy === "contextual") {
+      ipc.startAiRuntime(themeStore.settings.aiLocalModelId).catch(() => {});
+    }
+  }
 
   $effect(() => {
     if (activeSession) {
@@ -337,7 +345,7 @@
         <button
           type="button"
           class="btn-ai pressable"
-          onclick={() => (isAiVisionOpen = true)}
+          onclick={openAiVisionModal}
           title="Carica foto dell'orario e importalo con Vision AI"
         >
           <Sparkles size={14} />
@@ -650,9 +658,18 @@
       >
         <div class="submodal-card ai-vision-card">
           <header class="submodal-header">
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
               <Sparkles size={18} color="#007AFF" />
               <h3>Vision AI — Scansiona Foto Orario</h3>
+              {#if themeStore.settings.aiProvider === "local"}
+                <span class="badge" style="background: rgba(52, 199, 89, 0.15); color: #34C759; font-size: 0.72rem; padding: 0.15rem 0.55rem; border-radius: 999px; font-weight: 700;">
+                  ● AI Locale ({themeStore.settings.aiLocalModelId})
+                </span>
+              {:else}
+                <span class="badge" style="background: rgba(0, 122, 255, 0.15); color: #007AFF; font-size: 0.72rem; padding: 0.15rem 0.55rem; border-radius: 999px; font-weight: 700;">
+                  Cloud ({themeStore.settings.aiProvider.toUpperCase()})
+                </span>
+              {/if}
             </div>
             <button
               type="button"

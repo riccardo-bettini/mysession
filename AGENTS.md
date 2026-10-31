@@ -76,9 +76,8 @@ Questo documento stabilisce le regole operative, architetturali e di design per 
   npm run release
   ```
 - **Artefatti Generati nella cartella `release/`**:
-  - Installer NSIS (`MySession_<version>_x64-setup.exe`)
-  - Installer MSI (`MySession_<version>_x64_en-US.msi`)
-  - Binario Standalone (`MySession_<version>_Standalone.exe`)
-  - Pacchetto Portatile compresso (`MySession_<version>_Portable_x64.zip`)
-  - Tabella Checksum SHA256 (`SHA256SUMS-<version>.txt`) e `WebView2Loader.dll`
+  - Installer Ufficiale NSIS Setup (`MySession_<version>_x64-setup.exe`)
+  - Firma di sicurezza auto-updater (`MySession_<version>_x64-setup.exe.sig`)
+  - Manifest GitHub Releases (`latest.json`)
+  - Tabella Checksum SHA256 (`SHA256SUMS-<version>.txt`)
 

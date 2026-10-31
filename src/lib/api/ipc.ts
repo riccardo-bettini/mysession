@@ -21,7 +21,10 @@ import type {
   PlanDiffSummary,
   WeeklyLesson,
   UpsertWeeklyLessonInput,
-  ExtractedLessonItem
+  ExtractedLessonItem,
+  AiModelCatalogItem,
+  SystemHardwareInfo,
+  AiRuntimeStatus
 } from "../types/domain";
 
 export const ipc = {
@@ -146,5 +149,29 @@ export const ipc = {
     invoke<ExtractedLessonItem[]>("parse_timetable_image", { sessionId, imageBase64, mimeType }),
 
   openFolderInExplorer: (path: string) =>
-    invoke<void>("open_folder_in_explorer", { path })
+    invoke<void>("open_folder_in_explorer", { path }),
+
+  getSystemHardwareInfo: () =>
+    invoke<SystemHardwareInfo>("get_system_hardware_info"),
+
+  getAiModelsStatus: () =>
+    invoke<AiModelCatalogItem[]>("get_ai_models_status"),
+
+  startAiModelDownload: (modelId: string) =>
+    invoke<void>("start_ai_model_download", { modelId }),
+
+  cancelAiModelDownload: (modelId: string) =>
+    invoke<void>("cancel_ai_model_download", { modelId }),
+
+  deleteAiModel: (modelId: string) =>
+    invoke<void>("delete_ai_model", { modelId }),
+
+  getAiRuntimeStatus: () =>
+    invoke<AiRuntimeStatus>("get_ai_runtime_status"),
+
+  stopAiRuntime: () =>
+    invoke<void>("stop_ai_runtime"),
+
+  startAiRuntime: (modelId?: string) =>
+    invoke<void>("start_ai_runtime", { modelId })
 };

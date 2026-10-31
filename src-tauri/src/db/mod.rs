@@ -39,6 +39,15 @@ pub struct DatabaseManager {
 }
 
 impl DatabaseManager {
+    /// Risolve la directory isolata dell'applicazione in %APPDATA%\com.mysession.app
+    pub fn resolve_app_data_dir() -> PathBuf {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            PathBuf::from(appdata).join("com.mysession.app")
+        } else {
+            PathBuf::from(".").join("data")
+        }
+    }
+
     /// Initializes the SQLite database inside the OS AppData directory (`%APPDATA%\com.mysession.app\mysession.db`)
     pub fn init_in_dir(app_data_dir: &Path) -> DbResult<Self> {
         if !app_data_dir.exists() {
@@ -136,7 +145,8 @@ impl DatabaseManager {
                    weekly_holiday_day, study_hours_per_cfu, accent_color, holiday_color,
                    sunday_color, cat_studio_color, cat_scadenza_color, cat_lezione_color,
                    cat_personale_color, ai_provider, ai_api_key, ai_endpoint_url,
-                   ai_model, ai_bar_width, active_session_id, plan_folder
+                   ai_model, ai_bar_width, active_session_id, plan_folder,
+                   ai_local_model_id, ai_idle_timeout_minutes, ai_boot_strategy, ai_hardware_preference
             FROM app_settings WHERE id = 1
             "#,
             [],
@@ -166,6 +176,10 @@ impl DatabaseManager {
                     ai_bar_width: row.get(21)?,
                     active_session_id: row.get(22)?,
                     plan_folder: row.get::<_, Option<String>>(23)?.unwrap_or_default(),
+                    ai_local_model_id: row.get::<_, Option<String>>(24)?.unwrap_or_else(|| "qwen2.5-vl-3b".to_string()),
+                    ai_idle_timeout_minutes: row.get::<_, Option<i32>>(25)?.unwrap_or(5),
+                    ai_boot_strategy: row.get::<_, Option<String>>(26)?.unwrap_or_else(|| "on_demand".to_string()),
+                    ai_hardware_preference: row.get::<_, Option<String>>(27)?.unwrap_or_else(|| "auto".to_string()),
                 })
             },
         )?;
@@ -201,7 +215,11 @@ impl DatabaseManager {
                 ai_model = ?21,
                 ai_bar_width = ?22,
                 active_session_id = ?23,
-                plan_folder = ?24
+                plan_folder = ?24,
+                ai_local_model_id = ?25,
+                ai_idle_timeout_minutes = ?26,
+                ai_boot_strategy = ?27,
+                ai_hardware_preference = ?28
             WHERE id = 1
             "#,
             params![
@@ -228,7 +246,11 @@ impl DatabaseManager {
                 s.ai_model,
                 clamped_ai_w,
                 s.active_session_id,
-                s.plan_folder
+                s.plan_folder,
+                s.ai_local_model_id,
+                s.ai_idle_timeout_minutes,
+                s.ai_boot_strategy,
+                s.ai_hardware_preference
             ],
         )?;
         Self::get_settings(conn)

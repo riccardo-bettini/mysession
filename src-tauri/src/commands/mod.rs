@@ -1,3 +1,6 @@
+pub mod ai;
+pub use ai::*;
+
 use crate::ai::{
     parse_timetable_image_with_ai, process_natural_command, AiAssistantResponse, ExtractedLessonItem,
 };

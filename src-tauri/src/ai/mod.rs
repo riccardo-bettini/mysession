@@ -1,3 +1,8 @@
+pub mod catalog;
+pub mod downloader;
+pub mod hardware;
+pub mod runtime;
+
 use crate::db::DatabaseManager;
 use crate::models::{
     AppSettings, SessionSnapshot, UpsertCourseInput, UpsertExamInput, UpsertTodoInput,
@@ -5,6 +10,18 @@ use crate::models::{
 use chrono::{Datelike, Local, NaiveDate};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
+
+static GLOBAL_RUNTIME: OnceLock<runtime::AiRuntimeManager> = OnceLock::new();
+static GLOBAL_DOWNLOADER: OnceLock<downloader::ModelDownloadManager> = OnceLock::new();
+
+pub fn get_runtime_manager() -> &'static runtime::AiRuntimeManager {
+    GLOBAL_RUNTIME.get_or_init(runtime::AiRuntimeManager::new)
+}
+
+pub fn get_download_manager() -> &'static downloader::ModelDownloadManager {
+    GLOBAL_DOWNLOADER.get_or_init(downloader::ModelDownloadManager::new)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -58,11 +75,11 @@ pub fn process_natural_command(
     let snapshot =
         DatabaseManager::build_session_snapshot(conn, session_id, &settings).map_err(|e| e.to_string())?;
 
-    // Se l'utente ha configurato un provider LLM esterno (gemini / openai / ollama),
-    // prova prima l'inferenza strutturata; in caso di provider "local" o errore di rete,
-    // esegue il parser deterministico di Intent & Tool Calling.
+    // Se l'utente ha configurato un provider LLM (gemini / openai / ollama / local con modello scaricato),
+    // prova prima l'inferenza strutturata; in caso di fallimento o provider "local" non pronto,
+    // esegue il parser deterministico di Intent & Tool Calling a latenza zero.
     let provider = settings.ai_provider.trim().to_lowercase();
-    if provider == "gemini" || provider == "openai" || provider == "ollama" {
+    if provider == "gemini" || provider == "openai" || provider == "ollama" || provider == "local" {
         if let Ok(llm_action) = try_call_external_llm(&settings, &snapshot, clean_prompt) {
             return apply_structured_llm_action(
                 conn,
@@ -186,7 +203,38 @@ fn try_call_external_llm(
                 .ok_or_else(|| "Risposta Ollama vuota".to_string())?
                 .to_string()
         }
-        _ => return Err("Provider locale".to_string()),
+        "local" => {
+            let app_data_dir = DatabaseManager::resolve_app_data_dir();
+            let runtime = get_runtime_manager();
+            let port = runtime
+                .ensure_started(
+                    &app_data_dir,
+                    &settings.ai_local_model_id,
+                    &settings.ai_hardware_preference,
+                    settings.ai_idle_timeout_minutes,
+                )
+                .map_err(|e| e.to_string())?;
+            runtime.touch_activity();
+
+            let body = serde_json::json!({
+                "model": settings.ai_local_model_id,
+                "response_format": { "type": "json_object" },
+                "messages": [
+                    { "role": "system", "content": system_instruction },
+                    { "role": "user", "content": user_prompt }
+                ]
+            });
+            let resp: serde_json::Value = ureq::post(&format!("http://127.0.0.1:{}/v1/chat/completions", port))
+                .send_json(body)
+                .map_err(|e| e.to_string())?
+                .into_json()
+                .map_err(|e| e.to_string())?;
+            resp["choices"][0]["message"]["content"]
+                .as_str()
+                .ok_or_else(|| "Risposta AI locale vuota".to_string())?
+                .to_string()
+        }
+        _ => return Err("Provider non supportato per inferenza remota".to_string()),
     };
 
     serde_json::from_str::<LlmStructuredAction>(&raw_json).map_err(|e| e.to_string())
@@ -1022,10 +1070,6 @@ pub fn parse_timetable_image_with_ai(
         return Err("Immagine troppo grande: usa una foto sotto i 15 MB.".to_string());
     }
 
-    if settings.ai_api_key.trim().is_empty() {
-        return Err("Per analizzare la foto dell'orario con l'IA, configura la chiave API (Gemini o OpenAI) nelle Impostazioni dell'app.".to_string());
-    }
-
     let clean_mime = if mime_type.is_empty() { "image/png" } else { mime_type };
     let clean_base64 = if let Some(idx) = image_base64.find(";base64,") {
         &image_base64[idx + 8..]
@@ -1033,8 +1077,71 @@ pub fn parse_timetable_image_with_ai(
         image_base64
     };
 
+    let prompt_text = "Analizza questa immagine contenente un orario delle lezioni scolastico/universitario. \
+        Estrai ogni singola lezione presente nella griglia o nella tabella. \
+        Rispondi con un oggetto JSON avente la chiave 'lessons', contenente una lista di oggetti con i seguenti campi esatti: \
+        dayOfWeek (intero 1..7 dove 1=Lunedì, 7=Domenica), startTime ('HH:MM'), endTime ('HH:MM'), courseName (stringa), classroom (stringa), professor (stringa).";
+
     match provider.as_str() {
+        "local" => {
+            let app_data_dir = DatabaseManager::resolve_app_data_dir();
+            let runtime = get_runtime_manager();
+            let port = runtime.ensure_started(
+                &app_data_dir,
+                &settings.ai_local_model_id,
+                &settings.ai_hardware_preference,
+                settings.ai_idle_timeout_minutes,
+            )?;
+            runtime.touch_activity();
+
+            let data_url = format!("data:{};base64,{}", clean_mime, clean_base64);
+            let body = serde_json::json!({
+                "model": settings.ai_local_model_id,
+                "response_format": { "type": "json_object" },
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            { "type": "text", "text": prompt_text },
+                            {
+                                "type": "image_url",
+                                "image_url": { "url": data_url }
+                            }
+                        ]
+                    }
+                ]
+            });
+
+            let resp: serde_json::Value = vision_agent()
+                .post(&format!("http://127.0.0.1:{}/v1/chat/completions", port))
+                .send_json(body)
+                .map_err(|e| sanitize_http_error("Errore chiamata AI Locale (llama-server)", e))?
+                .into_json()
+                .map_err(|e| format!("Errore parsing risposta AI Locale: {}", e))?;
+
+            let text = resp["choices"][0]["message"]["content"]
+                .as_str()
+                .ok_or_else(|| "Risposta AI Locale vuota o non valida".to_string())?;
+
+            #[derive(Deserialize)]
+            struct Wrapper {
+                lessons: Option<Vec<ExtractedLessonItem>>,
+                timetable: Option<Vec<ExtractedLessonItem>>,
+            }
+            if let Ok(wrapper) = serde_json::from_str::<Wrapper>(text) {
+                if let Some(list) = wrapper.lessons.or(wrapper.timetable) {
+                    return Ok(list);
+                }
+            }
+            if let Ok(list) = serde_json::from_str::<Vec<ExtractedLessonItem>>(text) {
+                return Ok(list);
+            }
+            Err(format!("Formato risposta AI non riconosciuto: {}", text))
+        }
         "gemini" => {
+            if settings.ai_api_key.trim().is_empty() {
+                return Err("Per analizzare con Gemini, configura la tua API Key nelle Impostazioni.".to_string());
+            }
             let model = if settings.ai_model.trim().is_empty() {
                 "gemini-3.8-flash"
             } else {
@@ -1044,16 +1151,6 @@ pub fn parse_timetable_image_with_ai(
                 "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
                 model
             );
-
-            let prompt_text = "Analizza questa immagine contenente un orario delle lezioni scolastico/universitario. \
-                Estrai ogni singola lezione presente nella griglia o nella tabella. \
-                Rispondi ESCLUSIVAMENTE con un JSON contenente una lista di oggetti con i seguenti campi esatti: \
-                dayOfWeek: numero intero da 1 a 7 (1=Lunedì, 2=Martedì, 3=Mercoledì, 4=Giovedì, 5=Venerdì, 6=Sabato, 7=Domenica), \
-                startTime: orario di inizio in formato 'HH:MM' (es. '09:00'), \
-                endTime: orario di fine in formato 'HH:MM' (es. '11:00'), \
-                courseName: nome della materia o insegnamento, \
-                classroom: aula se presente (o stringa vuota), \
-                professor: docente se presente (o stringa vuota).";
 
             let body = serde_json::json!({
                 "contents": [{
@@ -1082,9 +1179,6 @@ pub fn parse_timetable_image_with_ai(
                 .as_str()
                 .ok_or_else(|| "Risposta Gemini vuota o non valida".to_string())?;
 
-            if let Ok(list) = serde_json::from_str::<Vec<ExtractedLessonItem>>(text) {
-                return Ok(list);
-            }
             #[derive(Deserialize)]
             struct Wrapper {
                 lessons: Option<Vec<ExtractedLessonItem>>,
@@ -1095,18 +1189,20 @@ pub fn parse_timetable_image_with_ai(
                     return Ok(list);
                 }
             }
+            if let Ok(list) = serde_json::from_str::<Vec<ExtractedLessonItem>>(text) {
+                return Ok(list);
+            }
             Err(format!("Formato risposta AI non riconosciuto: {}", text))
         }
         "openai" => {
+            if settings.ai_api_key.trim().is_empty() {
+                return Err("Per analizzare con OpenAI, configura la tua API Key nelle Impostazioni.".to_string());
+            }
             let model = if settings.ai_model.trim().is_empty() {
                 "gpt-4o"
             } else {
                 settings.ai_model.trim()
             };
-            let prompt_text = "Analizza questa immagine contenente un orario delle lezioni scolastico/universitario. \
-                Estrai ogni singola lezione presente nella griglia o nella tabella. \
-                Rispondi con un oggetto JSON avente la chiave 'lessons', contenente una lista di oggetti con i seguenti campi esatti: \
-                dayOfWeek (intero 1..7 dove 1=Lunedì, 7=Domenica), startTime ('HH:MM'), endTime ('HH:MM'), courseName (stringa), classroom (stringa), professor (stringa).";
 
             let data_url = format!("data:{};base64,{}", clean_mime, clean_base64);
 
@@ -1142,9 +1238,10 @@ pub fn parse_timetable_image_with_ai(
             #[derive(Deserialize)]
             struct Wrapper {
                 lessons: Option<Vec<ExtractedLessonItem>>,
+                timetable: Option<Vec<ExtractedLessonItem>>,
             }
             if let Ok(wrapper) = serde_json::from_str::<Wrapper>(text) {
-                if let Some(list) = wrapper.lessons {
+                if let Some(list) = wrapper.lessons.or(wrapper.timetable) {
                     return Ok(list);
                 }
             }
@@ -1153,7 +1250,47 @@ pub fn parse_timetable_image_with_ai(
             }
             Err(format!("Formato risposta AI non riconosciuto: {}", text))
         }
-        _ => Err("L'analisi delle immagini richiede un provider AI cloud configurato (Google Gemini o OpenAI). Vai nelle Impostazioni per impostare la tua API Key.".to_string()),
+        "ollama" => {
+            let base = settings.ai_endpoint_url.trim().trim_end_matches('/');
+            let url = format!("{}/api/chat", base);
+            let body = serde_json::json!({
+                "model": settings.ai_model.trim(),
+                "messages": [{
+                    "role": "user",
+                    "content": prompt_text,
+                    "images": [clean_base64]
+                }],
+                "format": "json",
+                "stream": false
+            });
+
+            let resp: serde_json::Value = vision_agent()
+                .post(&url)
+                .send_json(body)
+                .map_err(|e| sanitize_http_error("Errore chiamata Ollama Vision", e))?
+                .into_json()
+                .map_err(|e| format!("Errore parsing risposta Ollama: {}", e))?;
+
+            let text = resp["message"]["content"]
+                .as_str()
+                .ok_or_else(|| "Risposta Ollama vuota o non valida".to_string())?;
+
+            #[derive(Deserialize)]
+            struct Wrapper {
+                lessons: Option<Vec<ExtractedLessonItem>>,
+                timetable: Option<Vec<ExtractedLessonItem>>,
+            }
+            if let Ok(wrapper) = serde_json::from_str::<Wrapper>(text) {
+                if let Some(list) = wrapper.lessons.or(wrapper.timetable) {
+                    return Ok(list);
+                }
+            }
+            if let Ok(list) = serde_json::from_str::<Vec<ExtractedLessonItem>>(text) {
+                return Ok(list);
+            }
+            Err(format!("Formato risposta AI non riconosciuto: {}", text))
+        }
+        _ => Err("Seleziona 'AI Locale' o un provider supportato nelle Impostazioni per analizzare la foto dell'orario.".to_string()),
     }
 }
 

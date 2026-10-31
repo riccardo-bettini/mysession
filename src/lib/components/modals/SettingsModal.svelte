@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onMount, onDestroy } from "svelte";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { open, save } from "@tauri-apps/plugin-dialog";
   import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
   import { APP_AUTHOR, APP_VERSION } from "../../constants/version";
@@ -6,12 +8,17 @@
   import { themeStore } from "../../stores/theme.svelte";
   import { planStore } from "../../stores/plan.svelte";
   import { updaterStore } from "../../stores/updater.svelte";
+  import { ipc } from "../../api/ipc";
   import type {
     AiProvider,
     BackdropMaterial,
     CalendarViewMode,
     ThemeChoice,
-    WindowControlsStyle
+    WindowControlsStyle,
+    AiModelCatalogItem,
+    SystemHardwareInfo,
+    AiRuntimeStatus,
+    AiModelDownloadProgress
   } from "../../types/domain";
   import ColorPickerField from "../common/ColorPickerField.svelte";
 
@@ -53,6 +60,145 @@
   let aiApiKey = $state<string>(themeStore.settings.aiApiKey);
   let aiModel = $state<string>(themeStore.settings.aiModel);
   let aiEndpointUrl = $state<string>(themeStore.settings.aiEndpointUrl);
+  let aiLocalModelId = $state<string>(themeStore.settings.aiLocalModelId || "qwen2.5-vl-3b");
+  let aiIdleTimeoutMinutes = $state<number>(themeStore.settings.aiIdleTimeoutMinutes ?? 5);
+  let aiBootStrategy = $state<"on_demand" | "on_app_start" | "contextual">(
+    themeStore.settings.aiBootStrategy || "on_demand"
+  );
+  let aiHardwarePreference = $state<"auto" | "gpu" | "cpu">(
+    themeStore.settings.aiHardwarePreference || "auto"
+  );
+
+  let hardwareInfo = $state<SystemHardwareInfo | null>(null);
+  let modelCatalog = $state<AiModelCatalogItem[]>([]);
+  let runtimeStatus = $state<AiRuntimeStatus | null>(null);
+  let downloadProgressMap = $state<Record<string, AiModelDownloadProgress>>({});
+  let isAiLoading = $state<boolean>(false);
+  let isWakingAi = $state<boolean>(false);
+  let isStoppingAi = $state<boolean>(false);
+  let runtimePollTimer: number | null = null;
+  let unlistenDownloadProgress: UnlistenFn | null = null;
+
+  async function loadAiData() {
+    isAiLoading = true;
+    try {
+      const [hw, models, status] = await Promise.all([
+        ipc.getSystemHardwareInfo().catch(() => null),
+        ipc.getAiModelsStatus().catch(() => []),
+        ipc.getAiRuntimeStatus().catch(() => null)
+      ]);
+      if (hw) hardwareInfo = hw;
+      if (models) modelCatalog = models;
+      if (status) runtimeStatus = status;
+    } finally {
+      isAiLoading = false;
+    }
+  }
+
+  async function handleDownloadModel(modelId: string) {
+    try {
+      await ipc.startAiModelDownload(modelId);
+      onToast?.("Download del modello avviato in background");
+    } catch (e) {
+      onToast?.(`Errore avvio download: ${e}`);
+    }
+  }
+
+  async function handleCancelDownload(modelId: string) {
+    try {
+      await ipc.cancelAiModelDownload(modelId);
+      const nextMap = { ...downloadProgressMap };
+      delete nextMap[modelId];
+      downloadProgressMap = nextMap;
+      onToast?.("Download annullato");
+    } catch (e) {
+      onToast?.(`Errore annullamento: ${e}`);
+    }
+  }
+
+  async function handleDeleteModel(modelId: string) {
+    try {
+      await ipc.deleteAiModel(modelId);
+      await loadAiData();
+      onToast?.("File del modello eliminato dal disco");
+    } catch (e) {
+      onToast?.(`Errore eliminazione: ${e}`);
+    }
+  }
+
+  async function handleSetActiveModel(modelId: string) {
+    aiLocalModelId = modelId;
+    await themeStore.updateSettings({ aiLocalModelId: modelId });
+    await loadAiData();
+    onToast?.("Modello AI impostato come predefinito");
+  }
+
+  async function handleWakeUpRuntime() {
+    isWakingAi = true;
+    try {
+      await ipc.startAiRuntime(aiLocalModelId);
+      runtimeStatus = await ipc.getAiRuntimeStatus();
+      onToast?.("Modello AI pronto in memoria");
+    } catch (e) {
+      onToast?.(`Errore avvio AI: ${e}`);
+    } finally {
+      isWakingAi = false;
+    }
+  }
+
+  async function handleStopRuntime() {
+    isStoppingAi = true;
+    try {
+      await ipc.stopAiRuntime();
+      runtimeStatus = await ipc.getAiRuntimeStatus();
+      onToast?.("Memoria RAM e VRAM liberata con successo");
+    } catch (e) {
+      onToast?.(`Errore spegnimento AI: ${e}`);
+    } finally {
+      isStoppingAi = false;
+    }
+  }
+
+  onMount(async () => {
+    await loadAiData();
+    try {
+      unlistenDownloadProgress = await listen<AiModelDownloadProgress>(
+        "ai-model-download-progress",
+        async (event) => {
+          const p = event.payload;
+          downloadProgressMap = {
+            ...downloadProgressMap,
+            [p.modelId]: p
+          };
+          if (p.isCompleted) {
+            const nextMap = { ...downloadProgressMap };
+            delete nextMap[p.modelId];
+            downloadProgressMap = nextMap;
+            await loadAiData();
+            onToast?.("Download del modello completato con successo!");
+          } else if (p.error) {
+            const nextMap = { ...downloadProgressMap };
+            delete nextMap[p.modelId];
+            downloadProgressMap = nextMap;
+            onToast?.(`Errore download: ${p.error}`);
+          }
+        }
+      );
+    } catch {}
+
+    runtimePollTimer = window.setInterval(async () => {
+      if (activeTab === "ai") {
+        try {
+          runtimeStatus = await ipc.getAiRuntimeStatus();
+        } catch {}
+      }
+    }, 2000);
+  });
+
+  onDestroy(() => {
+    if (unlistenDownloadProgress) unlistenDownloadProgress();
+    if (runtimePollTimer) clearInterval(runtimePollTimer);
+  });
   let studyHoursPerCfu = $state<number>(themeStore.settings.studyHoursPerCfu || 25);
   let startDayOfWeek = $state<number>(themeStore.settings.startDayOfWeek ?? 1);
   let weeklyHolidayDay = $state<number>(themeStore.settings.weeklyHolidayDay ?? 0);
@@ -104,7 +250,11 @@
         aiProvider,
         aiApiKey: aiApiKey.trim(),
         aiModel: aiModel.trim(),
-        aiEndpointUrl: aiEndpointUrl.trim()
+        aiEndpointUrl: aiEndpointUrl.trim(),
+        aiLocalModelId,
+        aiIdleTimeoutMinutes,
+        aiBootStrategy,
+        aiHardwarePreference
       });
 
       await sessionStore.upsertProfile({
@@ -666,15 +816,15 @@
         <!-- 5. ASSISTENTE AI & NLP -->
         {:else if activeTab === "ai"}
           <div class="panel-group">
-            <h3 class="group-title">Architettura Disaccoppiata Assistente AI</h3>
+            <h3 class="group-title">Architettura Assistente AI Multimodale</h3>
             <p class="field-hint">
-              Nessuna credenziale è cablata nel codice. Puoi sfruttare il motore locale a latenza zero
-              oppure collegare chiavi personali o modelli locali senza inviare dati a terzi.
+              Scegli tra l'AI locale on-demand a privacy totale (senza token o abbonamenti) oppure provider esterni cloud.
+              I modelli locali vengono eseguiti direttamente su questa macchina e liberano la memoria RAM/VRAM non appena finisci di usarli.
             </p>
 
             <div class="segmented-row">
               {#each [
-                { id: "local", label: "Locale Deterministico" },
+                { id: "local", label: "AI Locale On-Demand" },
                 { id: "gemini", label: "Google Gemini" },
                 { id: "openai", label: "OpenAI" },
                 { id: "ollama", label: "Ollama / LM Studio" }
@@ -690,7 +840,226 @@
               {/each}
             </div>
 
-            {#if aiProvider === "gemini" || aiProvider === "openai"}
+            {#if aiProvider === "local"}
+              <!-- 1. Scheda Hardware Rilevato -->
+              {#if hardwareInfo}
+                <div class="ai-hw-banner">
+                  <div class="hw-icon-col">💻</div>
+                  <div class="hw-details-col">
+                    <div class="hw-title-row">
+                      <strong>Hardware Rilevato:</strong>
+                      <span class="hw-gpu-tag">{hardwareInfo.gpuName} ({hardwareInfo.dedicatedVramGb > 0 ? `${hardwareInfo.dedicatedVramGb} GB VRAM` : "Integrata"})</span>
+                      <span class="hw-ram-tag">{hardwareInfo.totalRamGb} GB RAM Totale</span>
+                    </div>
+                    <p class="hw-reason-text">
+                      <span class="star-badge">★</span> {hardwareInfo.recommendedReason}
+                    </p>
+                  </div>
+                </div>
+              {/if}
+
+              <!-- 2. Pannello Controllo Memoria & Alimentazione On-Demand -->
+              <div class="ai-control-box">
+                <div class="ai-control-header">
+                  <div class="ai-status-indicator">
+                    {#if runtimeStatus?.state === "ready"}
+                      <span class="status-dot ready"></span>
+                      <div>
+                        <strong style="color: #34C759;">Pronto in Memoria</strong>
+                        <span class="status-sub">
+                          {#if runtimeStatus.secondsUntilIdleShutdown !== null && runtimeStatus.secondsUntilIdleShutdown !== undefined}
+                            Spegnimento automatico tra {Math.floor(runtimeStatus.secondsUntilIdleShutdown / 60)}m {runtimeStatus.secondsUntilIdleShutdown % 60}s
+                          {:else}
+                            Sempre attivo (inattività disattivata)
+                          {/if}
+                        </span>
+                      </div>
+                    {:else if runtimeStatus?.state === "starting"}
+                      <span class="status-dot starting"></span>
+                      <div>
+                        <strong style="color: #FF9500;">Caricamento in memoria...</strong>
+                        <span class="status-sub">Inizializzazione pesi e layer GPU</span>
+                      </div>
+                    {:else if runtimeStatus?.state === "error"}
+                      <span class="status-dot error"></span>
+                      <div>
+                        <strong style="color: #FF3B30;">Stato: Errore</strong>
+                        <span class="status-sub">{runtimeStatus.errorMessage || "Impossibile avviare il modello"}</span>
+                      </div>
+                    {:else}
+                      <span class="status-dot stopped"></span>
+                      <div>
+                        <strong>Stato: Spento a Riposo</strong>
+                        <span class="status-sub">0 MB di RAM e VRAM occupati (latenza zero all'avvio app)</span>
+                      </div>
+                    {/if}
+                  </div>
+
+                  <div class="ai-quick-actions">
+                    {#if runtimeStatus?.state === "ready" || runtimeStatus?.state === "starting"}
+                      <button
+                        type="button"
+                        class="btn-danger-sub pressable"
+                        disabled={isStoppingAi}
+                        onclick={handleStopRuntime}
+                      >
+                        {isStoppingAi ? "Spegnimento..." : "🛑 Libera Memoria Adesso"}
+                      </button>
+                    {:else}
+                      <button
+                        type="button"
+                        class="btn-wake-sub pressable"
+                        disabled={isWakingAi}
+                        onclick={handleWakeUpRuntime}
+                      >
+                        {isWakingAi ? "Avvio in corso..." : "⚡ Sveglia / Avvia Ora"}
+                      </button>
+                    {/if}
+                  </div>
+                </div>
+
+                <div class="form-grid-3" style="margin-top: 1rem;">
+                  <label class="field">
+                    <span>Spegnimento per Inattività</span>
+                    <select bind:value={aiIdleTimeoutMinutes}>
+                      <option value={1}>Dopo 1 minuto</option>
+                      <option value={3}>Dopo 3 minuti</option>
+                      <option value={5}>Dopo 5 minuti (Consigliato)</option>
+                      <option value={10}>Dopo 10 minuti</option>
+                      <option value={15}>Dopo 15 minuti</option>
+                      <option value={30}>Dopo 30 minuti</option>
+                      <option value={0}>Mai (Sempre attivo)</option>
+                    </select>
+                  </label>
+
+                  <label class="field">
+                    <span>Strategia di Avvio</span>
+                    <select bind:value={aiBootStrategy}>
+                      <option value="on_demand">Su richiesta (Zero RAM all'avvio)</option>
+                      <option value="on_app_start">Precarica all'avvio dell'app</option>
+                      <option value="contextual">Contestuale (All'apertura orario)</option>
+                    </select>
+                  </label>
+
+                  <label class="field">
+                    <span>Accelerazione Hardware</span>
+                    <select bind:value={aiHardwarePreference}>
+                      <option value="auto">Automatico (GPU raccomandata)</option>
+                      <option value="gpu">Forza GPU (Vulkan / DirectML)</option>
+                      <option value="cpu">Forza solo CPU (Preserva VRAM)</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <!-- 3. Model Hub & Catalogo 5 Modelli -->
+              <div class="models-catalog-section">
+                <div class="models-catalog-header">
+                  <div>
+                    <h4 style="margin: 0; font-size: 0.95rem; font-weight: 700;">Catalogo Modelli Multimodali Locali</h4>
+                    <p class="field-hint">Seleziona o scarica il modello più adatto alla potenza del tuo computer.</p>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn-refresh-sub pressable"
+                    disabled={isAiLoading}
+                    onclick={loadAiData}
+                  >
+                    🔄 Aggiorna Stato
+                  </button>
+                </div>
+
+                <div class="models-grid">
+                  {#each modelCatalog as m (m.id)}
+                    {@const isRec = hardwareInfo?.recommendedModelId === m.id}
+                    {@const isSelected = aiLocalModelId === m.id}
+                    {@const dlProgress = downloadProgressMap[m.id]}
+
+                    <div
+                      class="model-card"
+                      class:selected-active={isSelected && m.isDownloaded}
+                      class:recommended-card={isRec}
+                    >
+                      <div class="model-card-top">
+                        <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                          <span class="tier-pill tier-{m.tier}">Livello {m.tierLevel} · {m.tier.toUpperCase()}</span>
+                          {#if isRec}
+                            <span class="badge-recommended">★ Consigliato per te</span>
+                          {/if}
+                          {#if isSelected && m.isDownloaded}
+                            <span class="badge-active-model">● Modello Predefinito</span>
+                          {/if}
+                        </div>
+                        <h5 class="model-name">{m.name}</h5>
+                        <p class="model-tagline">{m.tagline}</p>
+                      </div>
+
+                      <div class="model-specs-row">
+                        <span title="Spazio occupato sul disco SSD">💾 ~{m.sizeGb} GB</span>
+                        <span title="Memoria RAM/VRAM occupata durante l'uso">⚡ ~{m.vramReqGb} GB</span>
+                        <span title="Finestra di contesto token">📝 {m.contextWindow} tok</span>
+                      </div>
+
+                      <p class="model-desc">{m.description}</p>
+                      <p class="model-rec-for"><strong>Adatto a:</strong> {m.recommendedFor}</p>
+
+                      <div class="model-card-actions">
+                        {#if dlProgress}
+                          <div class="download-progress-container">
+                            <div class="dl-text-row">
+                              <span>Download in corso... ({dlProgress.progressPct}%)</span>
+                              <span>{dlProgress.speedMbPerSec} MB/s</span>
+                            </div>
+                            <div class="progress-bar-track">
+                              <div class="progress-bar-fill" style="width: {dlProgress.progressPct}%"></div>
+                            </div>
+                            <button
+                              type="button"
+                              class="btn-cancel-dl pressable"
+                              onclick={() => handleCancelDownload(m.id)}
+                            >
+                              Annulla
+                            </button>
+                          </div>
+                        {:else if m.isDownloaded}
+                          <div class="action-btn-row">
+                            {#if !isSelected}
+                              <button
+                                type="button"
+                                class="btn-set-active pressable"
+                                onclick={() => handleSetActiveModel(m.id)}
+                              >
+                                Imposta come Attivo
+                              </button>
+                            {:else}
+                              <span class="installed-tag">✓ Attivo per Vision & Chat</span>
+                            {/if}
+                            <button
+                              type="button"
+                              class="btn-delete-model pressable"
+                              title="Elimina file dal disco per liberare spazio"
+                              onclick={() => handleDeleteModel(m.id)}
+                            >
+                              🗑️ Elimina (~{m.sizeGb} GB)
+                            </button>
+                          </div>
+                        {:else}
+                          <button
+                            type="button"
+                            class="btn-download-model pressable"
+                            class:btn-rec-cta={isRec}
+                            onclick={() => handleDownloadModel(m.id)}
+                          >
+                            ⬇️ Scarica Modello (~{m.sizeGb} GB)
+                          </button>
+                        {/if}
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+              </div>
+
+            {:else if aiProvider === "gemini" || aiProvider === "openai"}
               <label class="field">
                 <span>API Key Personale ({aiProvider === "gemini" ? "Google AI Studio" : "OpenAI"})</span>
                 <input
@@ -708,6 +1077,7 @@
                   placeholder={aiProvider === "gemini" ? "gemini-3.8-flash" : "gpt-4o-mini"}
                 />
               </label>
+
             {:else if aiProvider === "ollama"}
               <label class="field">
                 <span>Endpoint Locale Ollama / LM Studio</span>
@@ -725,15 +1095,6 @@
                   placeholder="llama3.2"
                 />
               </label>
-            {:else}
-              <div class="info-card">
-                <strong>Motore NLP Deterministico Offline a Latenza Zero</strong>
-                <p>
-                  Esegue in modo nativo su Rust l'analisi dei comandi in italiano, consentendo l'aggiunta rapida
-                  di appelli, materie, task e to-do, interrogazioni sullo stato dei CFU e cambi istantanei
-                  di tema o materiali senza richiedere connessione internet o token esterni.
-                </p>
-              </div>
             {/if}
           </div>
 
@@ -1544,6 +1905,394 @@
     white-space: nowrap;
   }
 
+  /* =========================================================================
+     AI Multimodale Locale & Model Hub (Apple HIG)
+     ========================================================================= */
+  .ai-hw-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    padding: 0.85rem 1rem;
+    border-radius: var(--radius-md);
+    background: rgba(0, 122, 255, 0.08);
+    border: 0.5px solid rgba(0, 122, 255, 0.25);
+  }
+
+  .hw-icon-col {
+    font-size: 1.5rem;
+    line-height: 1;
+  }
+
+  .hw-details-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.82rem;
+  }
+
+  .hw-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    color: var(--text-primary);
+  }
+
+  .hw-gpu-tag,
+  .hw-ram-tag {
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-pill);
+    background: rgba(0, 122, 255, 0.14);
+    color: var(--accent, #007AFF);
+    font-size: 0.74rem;
+    font-weight: 600;
+  }
+
+  .hw-reason-text {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.77rem;
+    line-height: 1.4;
+  }
+
+  .star-badge {
+    color: #FF9500;
+    font-weight: 800;
+  }
+
+  .ai-control-box {
+    padding: 1rem 1.15rem;
+    border-radius: var(--radius-md);
+    border: 0.5px solid var(--hairline-border);
+    background: rgba(128, 128, 128, 0.06);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ai-control-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .ai-status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    font-size: 0.82rem;
+  }
+
+  .status-dot {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
+
+  .status-dot.ready {
+    background: #34C759;
+    box-shadow: 0 0 8px rgba(52, 199, 89, 0.6);
+  }
+
+  .status-dot.starting {
+    background: #FF9500;
+    box-shadow: 0 0 8px rgba(255, 149, 0, 0.6);
+    animation: pulse 1.2s infinite alternate;
+  }
+
+  .status-dot.stopped {
+    background: #8E8E93;
+  }
+
+  .status-dot.error {
+    background: #FF3B30;
+  }
+
+  @keyframes pulse {
+    from { opacity: 0.5; }
+    to { opacity: 1; }
+  }
+
+  .status-sub {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .ai-quick-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .btn-danger-sub {
+    padding: 0.45rem 0.85rem;
+    border-radius: var(--radius-sm);
+    border: 0.5px solid rgba(255, 59, 48, 0.4);
+    background: rgba(255, 59, 48, 0.12);
+    color: #FF3B30;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .btn-wake-sub {
+    padding: 0.45rem 0.85rem;
+    border-radius: var(--radius-sm);
+    border: 0.5px solid rgba(0, 122, 255, 0.4);
+    background: rgba(0, 122, 255, 0.12);
+    color: var(--accent, #007AFF);
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .form-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .models-catalog-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
+
+  .models-catalog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .btn-refresh-sub {
+    padding: 0.35rem 0.65rem;
+    border-radius: var(--radius-pill);
+    border: 0.5px solid var(--hairline-border);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .models-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  .model-card {
+    padding: 1rem 1.15rem;
+    border-radius: var(--radius-md);
+    border: 0.5px solid var(--hairline-border);
+    background: rgba(128, 128, 128, 0.04);
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    transition: all 180ms ease;
+  }
+
+  .model-card:hover {
+    border-color: rgba(128, 128, 128, 0.35);
+    background: rgba(128, 128, 128, 0.07);
+  }
+
+  .model-card.recommended-card {
+    border-color: rgba(255, 149, 0, 0.4);
+    background: rgba(255, 149, 0, 0.03);
+  }
+
+  .model-card.selected-active {
+    border-color: var(--accent, #007AFF);
+    box-shadow: 0 0 0 1px var(--accent, #007AFF);
+  }
+
+  .tier-pill {
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.68rem;
+    font-weight: 700;
+    background: rgba(128, 128, 128, 0.18);
+    color: var(--text-secondary);
+  }
+
+  .tier-pill.tier-bilanciato {
+    background: rgba(0, 122, 255, 0.18);
+    color: var(--accent, #007AFF);
+  }
+
+  .tier-pill.tier-avanzato {
+    background: rgba(175, 82, 222, 0.18);
+    color: #AF52DE;
+  }
+
+  .badge-recommended {
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.68rem;
+    font-weight: 700;
+    background: rgba(255, 149, 0, 0.18);
+    color: #FF9500;
+  }
+
+  .badge-active-model {
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.68rem;
+    font-weight: 700;
+    background: rgba(52, 199, 89, 0.18);
+    color: #34C759;
+  }
+
+  .model-name {
+    margin: 0.25rem 0 0;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .model-tagline {
+    margin: 0;
+    font-size: 0.77rem;
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+
+  .model-specs-row {
+    display: flex;
+    gap: 0.85rem;
+    flex-wrap: wrap;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+
+  .model-desc {
+    margin: 0;
+    font-size: 0.79rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+  }
+
+  .model-rec-for {
+    margin: 0;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+  }
+
+  .model-card-actions {
+    margin-top: 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .action-btn-row {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+  }
+
+  .btn-set-active {
+    padding: 0.4rem 0.85rem;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: var(--accent, #007AFF);
+    color: #fff;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .installed-tag {
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: #34C759;
+  }
+
+  .btn-delete-model {
+    padding: 0.4rem 0.75rem;
+    border-radius: var(--radius-sm);
+    border: 0.5px solid var(--hairline-border);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .btn-delete-model:hover {
+    color: #FF3B30;
+    border-color: rgba(255, 59, 48, 0.4);
+    background: rgba(255, 59, 48, 0.08);
+  }
+
+  .btn-download-model {
+    padding: 0.48rem 1rem;
+    border-radius: var(--radius-sm);
+    border: 0.5px solid var(--hairline-border);
+    background: var(--surface-card, rgba(128, 128, 128, 0.12));
+    color: var(--text-primary);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .btn-download-model.btn-rec-cta {
+    background: var(--accent, #007AFF);
+    border-color: var(--accent, #007AFF);
+    color: #fff;
+    font-weight: 700;
+  }
+
+  .download-progress-container {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .dl-text-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.74rem;
+    color: var(--accent, #007AFF);
+    font-weight: 600;
+  }
+
+  .progress-bar-track {
+    width: 100%;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: rgba(128, 128, 128, 0.2);
+    overflow: hidden;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--accent, #007AFF);
+    border-radius: 999px;
+    transition: width 200ms ease;
+  }
+
+  .btn-cancel-dl {
+    align-self: flex-start;
+    padding: 0.25rem 0.55rem;
+    border-radius: var(--radius-xs);
+    border: 0.5px solid var(--hairline-border);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    cursor: pointer;
+  }
+
   .uac-notes {
     padding: 0.75rem;
     border-radius: var(--radius-sm);
@@ -1629,5 +2378,393 @@
     cursor: pointer;
     box-shadow: 0 2px 8px rgba(48, 209, 88, 0.35);
     white-space: nowrap;
+  }
+
+  /* =========================================================================
+     AI Multimodale Locale & Model Hub (Apple HIG)
+     ========================================================================= */
+  .ai-hw-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    padding: 0.85rem 1rem;
+    border-radius: var(--radius-md);
+    background: rgba(0, 122, 255, 0.08);
+    border: 0.5px solid rgba(0, 122, 255, 0.25);
+  }
+
+  .hw-icon-col {
+    font-size: 1.5rem;
+    line-height: 1;
+  }
+
+  .hw-details-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.82rem;
+  }
+
+  .hw-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    color: var(--text-primary);
+  }
+
+  .hw-gpu-tag,
+  .hw-ram-tag {
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-pill);
+    background: rgba(0, 122, 255, 0.14);
+    color: var(--accent, #007AFF);
+    font-size: 0.74rem;
+    font-weight: 600;
+  }
+
+  .hw-reason-text {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.77rem;
+    line-height: 1.4;
+  }
+
+  .star-badge {
+    color: #FF9500;
+    font-weight: 800;
+  }
+
+  .ai-control-box {
+    padding: 1rem 1.15rem;
+    border-radius: var(--radius-md);
+    border: 0.5px solid var(--hairline-border);
+    background: rgba(128, 128, 128, 0.06);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ai-control-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .ai-status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    font-size: 0.82rem;
+  }
+
+  .status-dot {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
+
+  .status-dot.ready {
+    background: #34C759;
+    box-shadow: 0 0 8px rgba(52, 199, 89, 0.6);
+  }
+
+  .status-dot.starting {
+    background: #FF9500;
+    box-shadow: 0 0 8px rgba(255, 149, 0, 0.6);
+    animation: pulse 1.2s infinite alternate;
+  }
+
+  .status-dot.stopped {
+    background: #8E8E93;
+  }
+
+  .status-dot.error {
+    background: #FF3B30;
+  }
+
+  @keyframes pulse {
+    from { opacity: 0.5; }
+    to { opacity: 1; }
+  }
+
+  .status-sub {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .ai-quick-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .btn-danger-sub {
+    padding: 0.45rem 0.85rem;
+    border-radius: var(--radius-sm);
+    border: 0.5px solid rgba(255, 59, 48, 0.4);
+    background: rgba(255, 59, 48, 0.12);
+    color: #FF3B30;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .btn-wake-sub {
+    padding: 0.45rem 0.85rem;
+    border-radius: var(--radius-sm);
+    border: 0.5px solid rgba(0, 122, 255, 0.4);
+    background: rgba(0, 122, 255, 0.12);
+    color: var(--accent, #007AFF);
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .form-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .models-catalog-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
+
+  .models-catalog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .btn-refresh-sub {
+    padding: 0.35rem 0.65rem;
+    border-radius: var(--radius-pill);
+    border: 0.5px solid var(--hairline-border);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .models-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  .model-card {
+    padding: 1rem 1.15rem;
+    border-radius: var(--radius-md);
+    border: 0.5px solid var(--hairline-border);
+    background: rgba(128, 128, 128, 0.04);
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    transition: all 180ms ease;
+  }
+
+  .model-card:hover {
+    border-color: rgba(128, 128, 128, 0.35);
+    background: rgba(128, 128, 128, 0.07);
+  }
+
+  .model-card.recommended-card {
+    border-color: rgba(255, 149, 0, 0.4);
+    background: rgba(255, 149, 0, 0.03);
+  }
+
+  .model-card.selected-active {
+    border-color: var(--accent, #007AFF);
+    box-shadow: 0 0 0 1px var(--accent, #007AFF);
+  }
+
+  .tier-pill {
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.68rem;
+    font-weight: 700;
+    background: rgba(128, 128, 128, 0.18);
+    color: var(--text-secondary);
+  }
+
+  .tier-pill.tier-bilanciato {
+    background: rgba(0, 122, 255, 0.18);
+    color: var(--accent, #007AFF);
+  }
+
+  .tier-pill.tier-avanzato {
+    background: rgba(175, 82, 222, 0.18);
+    color: #AF52DE;
+  }
+
+  .badge-recommended {
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.68rem;
+    font-weight: 700;
+    background: rgba(255, 149, 0, 0.18);
+    color: #FF9500;
+  }
+
+  .badge-active-model {
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.68rem;
+    font-weight: 700;
+    background: rgba(52, 199, 89, 0.18);
+    color: #34C759;
+  }
+
+  .model-name {
+    margin: 0.25rem 0 0;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .model-tagline {
+    margin: 0;
+    font-size: 0.77rem;
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+
+  .model-specs-row {
+    display: flex;
+    gap: 0.85rem;
+    flex-wrap: wrap;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+
+  .model-desc {
+    margin: 0;
+    font-size: 0.79rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+  }
+
+  .model-rec-for {
+    margin: 0;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+  }
+
+  .model-card-actions {
+    margin-top: 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .action-btn-row {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+  }
+
+  .btn-set-active {
+    padding: 0.4rem 0.85rem;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: var(--accent, #007AFF);
+    color: #fff;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .installed-tag {
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: #34C759;
+  }
+
+  .btn-delete-model {
+    padding: 0.4rem 0.75rem;
+    border-radius: var(--radius-sm);
+    border: 0.5px solid var(--hairline-border);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .btn-delete-model:hover {
+    color: #FF3B30;
+    border-color: rgba(255, 59, 48, 0.4);
+    background: rgba(255, 59, 48, 0.08);
+  }
+
+  .btn-download-model {
+    padding: 0.48rem 1rem;
+    border-radius: var(--radius-sm);
+    border: 0.5px solid var(--hairline-border);
+    background: var(--surface-card, rgba(128, 128, 128, 0.12));
+    color: var(--text-primary);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .btn-download-model.btn-rec-cta {
+    background: var(--accent, #007AFF);
+    border-color: var(--accent, #007AFF);
+    color: #fff;
+    font-weight: 700;
+  }
+
+  .download-progress-container {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .dl-text-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.74rem;
+    color: var(--accent, #007AFF);
+    font-weight: 600;
+  }
+
+  .progress-bar-track {
+    width: 100%;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: rgba(128, 128, 128, 0.2);
+    overflow: hidden;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--accent, #007AFF);
+    border-radius: 999px;
+    transition: width 200ms ease;
+  }
+
+  .btn-cancel-dl {
+    align-self: flex-start;
+    padding: 0.25rem 0.55rem;
+    border-radius: var(--radius-xs);
+    border: 0.5px solid var(--hairline-border);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    cursor: pointer;
   }
 </style>

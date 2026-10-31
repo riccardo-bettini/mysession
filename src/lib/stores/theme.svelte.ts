@@ -43,6 +43,10 @@ class ThemeAndWindowStore {
     aiEndpointUrl: "http://127.0.0.1:11434",
     aiModel: "gemini-3.8-flash",
     aiBarWidth: 760,
+    aiLocalModelId: "qwen2.5-vl-3b",
+    aiIdleTimeoutMinutes: 5,
+    aiBootStrategy: "on_demand",
+    aiHardwarePreference: "auto",
     activeSessionId: null,
     planFolder: ""
   });
