@@ -19,9 +19,11 @@
   import SettingsModal from "./lib/components/modals/SettingsModal.svelte";
   import PlanUpdateModal from "./lib/components/modals/PlanUpdateModal.svelte";
   import TimetableModal from "./lib/components/modals/TimetableModal.svelte";
+  import UpdateNotificationBanner from "./lib/components/common/UpdateNotificationBanner.svelte";
   import { sessionStore } from "./lib/stores/session.svelte";
   import { themeStore } from "./lib/stores/theme.svelte";
   import { planStore } from "./lib/stores/plan.svelte";
+  import { updaterStore } from "./lib/stores/updater.svelte";
   import type {
     AcademicSession,
     Course,
@@ -73,7 +75,7 @@
   let conflictsModalOpen = $state<boolean>(false);
   let settingsModalState = $state<{
     open: boolean;
-    tab: "appearance" | "colors" | "calendar" | "workload" | "plan" | "ai" | "profile" | "backup";
+    tab: "appearance" | "colors" | "calendar" | "workload" | "plan" | "ai" | "profile" | "backup" | "updates";
   }>({
     open: false,
     tab: "appearance"
@@ -120,6 +122,7 @@
       currentWeekAnchorIso = sessionStore.todayIso;
       selectedDate = sessionStore.todayIso;
       await planStore.init();
+      updaterStore.checkForUpdates(true);
     })();
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -353,6 +356,9 @@
 <svelte:window onclick={handleWindowClick} />
 
 <div class="app-window-frame">
+  <!-- Banner Notifica Aggiornamenti Disponibili / Progresso Download -->
+  <UpdateNotificationBanner />
+
   <!-- Barra Superiore Unificata (Apple HIG + Windows 11 Snap Layouts) -->
   <UnifiedToolbar
     sessions={sessionStore.sessions}

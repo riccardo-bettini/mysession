@@ -10,7 +10,7 @@ use db::DatabaseManager;
 use tauri::Manager;
 use win32::{apply_window_backdrop_and_theme, install_window_subclass};
 
-pub const APP_VERSION: &str = "1.0.37";
+pub const APP_VERSION: &str = "1.0.38";
 pub const APP_AUTHOR: &str = "Riccardo Bettini";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -18,6 +18,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let app_data_dir = app
                 .path()
@@ -87,6 +88,7 @@ pub fn run() {
             commands::project_lessons_to_calendar,
             commands::parse_timetable_image,
             commands::open_folder_in_explorer,
+            commands::relaunch_app,
         ])
         .run(tauri::generate_context!())
         .expect("Errore critico durante l'avvio di MySession (Tauri v2)");

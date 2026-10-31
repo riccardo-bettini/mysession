@@ -5,6 +5,7 @@
   import { sessionStore } from "../../stores/session.svelte";
   import { themeStore } from "../../stores/theme.svelte";
   import { planStore } from "../../stores/plan.svelte";
+  import { updaterStore } from "../../stores/updater.svelte";
   import type {
     AiProvider,
     BackdropMaterial,
@@ -22,7 +23,8 @@
     | "plan"
     | "ai"
     | "profile"
-    | "backup";
+    | "backup"
+    | "updates";
 
   interface Props {
     initialTab?: SettingsTab;
@@ -298,6 +300,18 @@
           >
             <span class="nav-icon">💾</span>
             <span>Dati & Backup JSON</span>
+          </button>
+          <button
+            type="button"
+            class="nav-item pressable"
+            class:active={activeTab === "updates"}
+            onclick={() => (activeTab = "updates")}
+          >
+            <span class="nav-icon">🚀</span>
+            <span>Aggiornamenti</span>
+            {#if updaterStore.status === "available"}
+              <span class="nav-update-dot"></span>
+            {/if}
           </button>
         </div>
 
@@ -804,6 +818,117 @@
               <div class="backup-status-banner">{backupStatus}</div>
             {/if}
           </div>
+
+        <!-- 9. AGGIORNAMENTI & GITHUB -->
+        {:else if activeTab === "updates"}
+          <div class="panel-group">
+            <h3 class="group-title">Stato Installazione & Versione MySession</h3>
+            <p class="field-hint">
+              MySession supporta l'aggiornamento automatico e trasparente tramite le release ufficiali di GitHub con firma crittografica Minisign.
+            </p>
+
+            <div class="update-hero-card">
+              <div class="uh-icon-col">
+                <span class="uh-icon">🚀</span>
+              </div>
+              <div class="uh-info-col">
+                <div class="uh-version-row">
+                  <span class="uh-app-name">MySession</span>
+                  <span class="uh-badge">v{APP_VERSION}</span>
+                  {#if updaterStore.status === "up-to-date"}
+                    <span class="badge-status-ok">✓ Aggiornato</span>
+                  {:else if updaterStore.status === "available"}
+                    <span class="badge-status-new">Nuova v{updaterStore.availableVersion}</span>
+                  {/if}
+                </div>
+                <p class="uh-author-text">Software sviluppato da <strong>{APP_AUTHOR}</strong> · Repository: <code>riccardobettini/mysession</code></p>
+                {#if updaterStore.lastCheckDate}
+                  <span class="uh-time-text">Ultimo controllo: oggi alle {updaterStore.lastCheckDate}</span>
+                {/if}
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-group">
+            <h3 class="group-title">Controllo e Download Aggiornamenti</h3>
+            {#if updaterStore.status === "checking"}
+              <div class="info-card">
+                <p>⏳ Verifica della disponibilità di nuove release su GitHub in corso...</p>
+              </div>
+            {:else if updaterStore.status === "available"}
+              <div class="update-available-card">
+                <div class="uac-header">
+                  <div>
+                    <h4 style="margin: 0; font-size: 0.95rem; font-weight: 700;">Nuova versione v{updaterStore.availableVersion} disponibile!</h4>
+                    {#if updaterStore.releaseDate}
+                      <span style="font-size: 0.74rem; color: var(--text-tertiary);">Rilasciata il {updaterStore.releaseDate}</span>
+                    {/if}
+                  </div>
+                  <button
+                    type="button"
+                    class="btn-install-update pressable"
+                    onclick={() => updaterStore.downloadAndInstall()}
+                  >
+                    ⬇ Scarica e Installa Ora
+                  </button>
+                </div>
+                {#if updaterStore.releaseNotes}
+                  <div class="uac-notes">
+                    <strong>Note di rilascio:</strong>
+                    <div class="notes-body">{updaterStore.releaseNotes}</div>
+                  </div>
+                {/if}
+              </div>
+            {:else if updaterStore.status === "downloading"}
+              <div class="update-progress-box">
+                <div class="upb-header">
+                  <span>Download aggiornamento v{updaterStore.availableVersion}...</span>
+                  <strong>{updaterStore.downloadProgress}%</strong>
+                </div>
+                <div class="progress-track">
+                  <div class="progress-bar-fill" style:width="{updaterStore.downloadProgress}%"></div>
+                </div>
+              </div>
+            {:else if updaterStore.status === "ready"}
+              <div class="update-ready-box">
+                <div class="urb-text">
+                  <span class="urb-icon">✓</span>
+                  <div>
+                    <h4 style="margin: 0; font-size: 0.95rem; font-weight: 700;">Aggiornamento installato con successo!</h4>
+                    <p style="margin: 0.2rem 0 0; font-size: 0.77rem; color: var(--text-secondary);">La nuova versione v{updaterStore.availableVersion} è pronta. Riavvia per completare l'aggiornamento.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="btn-relaunch pressable"
+                  onclick={() => updaterStore.relaunch()}
+                >
+                  Riavvia Ora
+                </button>
+              </div>
+            {:else}
+              <div style="display: flex; gap: 0.75rem; align-items: center;">
+                <button
+                  type="button"
+                  class="btn-action pressable"
+                  onclick={() => updaterStore.checkForUpdates(false)}
+                >
+                  🔄 Verifica Aggiornamenti Ora
+                </button>
+                {#if updaterStore.status === "up-to-date"}
+                  <span style="font-size: 0.8rem; color: #30D158; font-weight: 600;">
+                    ✓ Stai utilizzando l'ultima versione disponibile.
+                  </span>
+                {/if}
+              </div>
+              {#if updaterStore.errorMessage}
+                <div class="info-card" style="border-color: rgba(255, 69, 58, 0.4); margin-top: 0.75rem;">
+                  <p style="color: #FF453A; font-weight: 600; margin: 0;">Errore durante la verifica:</p>
+                  <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.2rem;">{updaterStore.errorMessage}</p>
+                </div>
+              {/if}
+            {/if}
+          </div>
         {/if}
       </div>
     </div>
@@ -1292,5 +1417,217 @@
     font-size: 0.84rem;
     font-weight: 600;
     cursor: pointer;
+  }
+
+  /* Scheda Aggiornamenti */
+  .nav-update-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--accent-primary, #0A84FF);
+    margin-left: auto;
+  }
+
+  .update-hero-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.15rem 1.25rem;
+    border-radius: var(--radius-md);
+    background: var(--surface-card);
+    border: 0.5px solid var(--hairline-border);
+  }
+
+  .uh-icon-col {
+    width: 3.25rem;
+    height: 3.25rem;
+    border-radius: 999px;
+    background: rgba(10, 132, 255, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    flex-shrink: 0;
+  }
+
+  .uh-info-col {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .uh-version-row {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+  }
+
+  .uh-app-name {
+    font-size: 1.1rem;
+    font-weight: 800;
+  }
+
+  .uh-badge {
+    padding: 0.12rem 0.55rem;
+    border-radius: 999px;
+    background: var(--surface-pill);
+    border: 0.5px solid var(--hairline-border);
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  .badge-status-ok {
+    padding: 0.12rem 0.55rem;
+    border-radius: 999px;
+    background: rgba(48, 209, 88, 0.15);
+    color: #30D158;
+    font-size: 0.7rem;
+    font-weight: 700;
+  }
+
+  .badge-status-new {
+    padding: 0.12rem 0.55rem;
+    border-radius: 999px;
+    background: var(--accent-primary, #0A84FF);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+  }
+
+  .uh-author-text {
+    margin: 0.25rem 0 0;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+  }
+
+  .uh-author-text code {
+    font-family: monospace;
+    font-size: 0.74rem;
+    background: rgba(0, 0, 0, 0.15);
+    padding: 0.1rem 0.35rem;
+    border-radius: var(--radius-xs);
+  }
+
+  .uh-time-text {
+    display: inline-block;
+    margin-top: 0.35rem;
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+  }
+
+  .update-available-card {
+    padding: 1.15rem;
+    border-radius: var(--radius-md);
+    background: var(--surface-card);
+    border: 0.5px solid var(--accent-primary, #0A84FF);
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  .uac-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .btn-install-update {
+    padding: 0.5rem 1.1rem;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: var(--accent-primary, #0A84FF);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(10, 132, 255, 0.35);
+    white-space: nowrap;
+  }
+
+  .uac-notes {
+    padding: 0.75rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface-base);
+    border: 0.5px solid var(--hairline-border);
+    font-size: 0.78rem;
+  }
+
+  .notes-body {
+    margin-top: 0.35rem;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    line-height: 1.4;
+  }
+
+  .update-progress-box {
+    padding: 1.15rem;
+    border-radius: var(--radius-md);
+    background: var(--surface-card);
+    border: 0.5px solid var(--hairline-border);
+  }
+
+  .upb-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.82rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+
+  .progress-track {
+    width: 100%;
+    height: 6px;
+    background: rgba(128, 128, 128, 0.2);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--accent-primary, #0A84FF);
+    border-radius: 999px;
+    transition: width 140ms ease;
+  }
+
+  .update-ready-box {
+    padding: 1.15rem;
+    border-radius: var(--radius-md);
+    background: rgba(48, 209, 88, 0.1);
+    border: 0.5px solid rgba(48, 209, 88, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .urb-text {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .urb-icon {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 999px;
+    background: #30D158;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+  }
+
+  .btn-relaunch {
+    padding: 0.5rem 1.2rem;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: #30D158;
+    color: #fff;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(48, 209, 88, 0.35);
+    white-space: nowrap;
   }
 </style>

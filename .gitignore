@@ -29,3 +29,8 @@ src-tauri/gen/
 
 # Installer di release generati da scripts/build-release.ps1
 release/
+
+# Chiavi crittografiche private per firma aggiornamenti Tauri
+*.key
+*.key.pub
+.tauri/

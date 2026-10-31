@@ -602,6 +602,11 @@ pub fn open_folder_in_explorer(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn relaunch_app(app: tauri::AppHandle) {
+    app.restart();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

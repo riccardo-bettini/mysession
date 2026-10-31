@@ -90,6 +90,14 @@ if (-not $SkipTests) {
 # 5. Generazione bundle di rilascio tramite Tauri CLI (NSIS .exe / MSI)
 Write-Host ''
 Write-Host '[4/5] Compilazione Release del binario nativo ed packaging installer...' -ForegroundColor Yellow
+
+$privateKeyPath = Join-Path $ProjectRoot '.tauri\mysession.key'
+if (Test-Path $privateKeyPath) {
+    $env:TAURI_SIGNING_PRIVATE_KEY = (Get-Content $privateKeyPath -Raw).Trim()
+    $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = 'mysession-release-2026'
+    Write-Host '[OK] Chiave privata di firma configurata per Tauri updater.' -ForegroundColor Green
+}
+
 $bundleDir = Join-Path $ProjectRoot 'src-tauri\target\release\bundle'
 if (Test-Path $bundleDir) {
     Remove-Item -Path $bundleDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -116,15 +124,39 @@ if (-not (Test-Path $releaseOutDir)) {
 }
 
 # Pulizia di installer e file di release di versioni precedenti
-Get-ChildItem -Path $releaseOutDir -File | Where-Object { $_.Name -notlike "*$appVersion*" -and $_.Name -ne 'WebView2Loader.dll' } | Remove-Item -Force -ErrorAction SilentlyContinue
+Get-ChildItem -Path $releaseOutDir -File | Where-Object { $_.Name -notlike "*$appVersion*" -and $_.Name -ne 'WebView2Loader.dll' -and $_.Name -ne 'latest.json' } | Remove-Item -Force -ErrorAction SilentlyContinue
 
 $bundleDir = Join-Path $ProjectRoot 'src-tauri\target\release\bundle'
 if (Test-Path $bundleDir) {
-    Get-ChildItem -Path $bundleDir -Recurse -File | Where-Object { $_.Extension -match 'exe|msi' } | ForEach-Object {
+    Get-ChildItem -Path $bundleDir -Recurse -File | Where-Object { $_.Extension -match 'exe|msi|sig|zip' } | ForEach-Object {
         Copy-Item -Path $_.FullName -Destination (Join-Path $releaseOutDir $_.Name) -Force
         $sizeMb = [math]::Round($_.Length / 1MB, 2)
-        $msg = '  -> Esportato installer: ' + $_.Name + ' (' + $sizeMb + ' MB)'
+        $msg = '  -> Esportato artefatto di rilascio: ' + $_.Name + ' (' + $sizeMb + ' MB)'
         Write-Host $msg -ForegroundColor Green
+    }
+
+    # Generazione del manifest latest.json per GitHub Releases (Tauri v2 Auto-Updater)
+    $setupSig = Get-ChildItem -Path $releaseOutDir -Filter "*$appVersion*setup.exe.sig" | Select-Object -First 1
+    $setupExe = Get-ChildItem -Path $releaseOutDir -Filter "*$appVersion*setup.exe" | Select-Object -First 1
+    if ($setupSig -and $setupExe) {
+        $sigContent = (Get-Content $setupSig.FullName -Raw).Trim()
+        $isoNow = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+        $manifestJson = @"
+{
+  "version": "$appVersion",
+  "notes": "MySession v$appVersion — Aggiornamento automatico nativo con supporto GitHub Releases",
+  "pub_date": "$isoNow",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "$sigContent",
+      "url": "https://github.com/riccardobettini/mysession/releases/download/v$appVersion/$($setupExe.Name)"
+    }
+  }
+}
+"@
+        $latestJsonPath = Join-Path $releaseOutDir 'latest.json'
+        Set-Content -Path $latestJsonPath -Value $manifestJson -Encoding UTF8
+        Write-Host "  -> Generato manifest GitHub Releases firmato: latest.json" -ForegroundColor Green
     }
 }
 
