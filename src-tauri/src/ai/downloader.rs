@@ -134,7 +134,9 @@ fn download_single_file(
 ) -> Result<(), String> {
     let part_path = dest_path.with_extension("part");
 
-    let resp = ureq::get(url)
+    let agent = get_http_agent();
+    let resp = agent
+        .get(url)
         .call()
         .map_err(|e| format!("Errore di rete durante il download di {}: {}", display_name, e))?;
 
@@ -217,4 +219,31 @@ fn emit_error(app: &AppHandle, model_id: &str, error: &str) {
             error: Some(error.to_string()),
         },
     );
+}
+
+/// Costruisce un client HTTP configurato con il TLS nativo del sistema operativo (Schannel su Windows)
+/// garantendo la piena compatibilità con i certificati radice del sistema e software antivirus/proxy (es. Kaspersky)
+pub fn get_http_agent() -> ureq::Agent {
+    #[cfg(windows)]
+    {
+        if let Ok(connector) = native_tls::TlsConnector::new() {
+            return ureq::builder()
+                .tls_connector(std::sync::Arc::new(connector))
+                .redirects(10)
+                .build();
+        }
+    }
+    ureq::builder().redirects(10).build()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_huggingface_tls_connection() {
+        let agent = get_http_agent();
+        let res = agent.get("https://huggingface.co").call();
+        assert!(res.is_ok(), "Connessione TLS a HuggingFace fallita: {:?}", res.err());
+    }
 }

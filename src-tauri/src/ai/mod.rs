@@ -125,6 +125,7 @@ fn try_call_external_llm(
         snapshot.conflicts.len()
     );
 
+    let agent = crate::ai::downloader::get_http_agent();
     let raw_json = match provider.as_str() {
         "gemini" => {
             if settings.ai_api_key.trim().is_empty() {
@@ -145,7 +146,7 @@ fn try_call_external_llm(
                 "contents": [{ "parts": [{ "text": user_prompt }] }],
                 "generationConfig": { "responseMimeType": "application/json" }
             });
-            let resp: serde_json::Value = ureq::post(&url)
+            let resp: serde_json::Value = agent.post(&url)
                 .send_json(body)
                 .map_err(|e| e.to_string())?
                 .into_json()
@@ -172,7 +173,7 @@ fn try_call_external_llm(
                     { "role": "user", "content": user_prompt }
                 ]
             });
-            let resp: serde_json::Value = ureq::post("https://api.openai.com/v1/chat/completions")
+            let resp: serde_json::Value = agent.post("https://api.openai.com/v1/chat/completions")
                 .set("Authorization", &format!("Bearer {}", settings.ai_api_key.trim()))
                 .send_json(body)
                 .map_err(|e| e.to_string())?
@@ -193,7 +194,7 @@ fn try_call_external_llm(
                 "format": "json",
                 "stream": false
             });
-            let resp: serde_json::Value = ureq::post(&url)
+            let resp: serde_json::Value = agent.post(&url)
                 .send_json(body)
                 .map_err(|e| e.to_string())?
                 .into_json()
@@ -1041,10 +1042,7 @@ pub struct ExtractedLessonItem {
 const MAX_IMAGE_BASE64_BYTES: usize = 20 * 1024 * 1024;
 
 fn vision_agent() -> ureq::Agent {
-    ureq::AgentBuilder::new()
-        .timeout_connect(std::time::Duration::from_secs(15))
-        .timeout(std::time::Duration::from_secs(90))
-        .build()
+    crate::ai::downloader::get_http_agent()
 }
 
 fn sanitize_http_error(prefix: &str, err: ureq::Error) -> String {
