@@ -50,13 +50,14 @@ $releaseResp = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releas
 $releaseId = $releaseResp.id
 Write-Host "Release creata con ID: $releaseId"
 
+$versionClean = $Tag.TrimStart('v')
 $uploadUrl = "https://uploads.github.com/repos/$repo/releases/$releaseId/assets?name="
 
 $assets = @(
-    @{ Path = "release\MySession_1.0.43_x64-setup.exe"; ContentType = "application/octet-stream"; Name = "MySession_1.0.43_x64-setup.exe" },
-    @{ Path = "release\MySession_1.0.43_x64-setup.exe.sig"; ContentType = "text/plain"; Name = "MySession_1.0.43_x64-setup.exe.sig" },
+    @{ Path = "release\MySession_${versionClean}_x64-setup.exe"; ContentType = "application/octet-stream"; Name = "MySession_${versionClean}_x64-setup.exe" },
+    @{ Path = "release\MySession_${versionClean}_x64-setup.exe.sig"; ContentType = "text/plain"; Name = "MySession_${versionClean}_x64-setup.exe.sig" },
     @{ Path = "release\latest.json"; ContentType = "application/json"; Name = "latest.json" },
-    @{ Path = "release\SHA256SUMS-1.0.43.txt"; ContentType = "text/plain"; Name = "SHA256SUMS-1.0.43.txt" }
+    @{ Path = "release\SHA256SUMS-${versionClean}.txt"; ContentType = "text/plain"; Name = "SHA256SUMS-${versionClean}.txt" }
 )
 
 foreach ($asset in $assets) {
