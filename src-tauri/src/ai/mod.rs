@@ -1115,6 +1115,225 @@ pub fn parse_day_of_week_value(val: &serde_json::Value) -> Option<i32> {
     None
 }
 
+/// Rende tollerante un testo JSON prodotto da modelli AI:
+/// 1) Converte apici singoli `'...'` in doppi apici `"..."`
+/// 2) Aggiunge doppi apici a chiavi di oggetti non virgolettate (es. `{ lessons :` -> `{ "lessons":`)
+/// 3) Chiude correttamente stringhe lasciate aperte da troncamenti
+pub fn sanitize_lenient_json(input: &str) -> String {
+    let mut out = String::with_capacity(input.len() + 128);
+    let chars: Vec<char> = input.chars().collect();
+    let n = chars.len();
+    let mut i = 0;
+    let mut in_double_quote = false;
+    let mut in_single_quote = false;
+    let mut escape = false;
+
+    while i < n {
+        let c = chars[i];
+
+        if in_double_quote {
+            out.push(c);
+            if escape {
+                escape = false;
+            } else if c == '\\' {
+                escape = true;
+            } else if c == '"' {
+                in_double_quote = false;
+            }
+            i += 1;
+            continue;
+        }
+
+        if in_single_quote {
+            if escape {
+                out.push(c);
+                escape = false;
+            } else if c == '\\' {
+                out.push(c);
+                escape = true;
+            } else if c == '\'' {
+                out.push('"');
+                in_single_quote = false;
+            } else if c == '"' {
+                out.push_str("\\\"");
+            } else {
+                out.push(c);
+            }
+            i += 1;
+            continue;
+        }
+
+        if c == '"' {
+            in_double_quote = true;
+            out.push(c);
+            i += 1;
+            continue;
+        }
+
+        if c == '\'' {
+            in_single_quote = true;
+            out.push('"');
+            i += 1;
+            continue;
+        }
+
+        // Se troviamo una parola/identificatore non virgolettato
+        if c.is_ascii_alphabetic() || c == '_' {
+            let start = i;
+            while i < n && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
+                i += 1;
+            }
+            let word: String = chars[start..i].iter().collect();
+
+            // Salta spazi bianchi per verificare se è una chiave seguita da ':'
+            let mut j = i;
+            while j < n && (chars[j] == ' ' || chars[j] == '\t' || chars[j] == '\r' || chars[j] == '\n') {
+                j += 1;
+            }
+
+            if j < n && chars[j] == ':' && word != "true" && word != "false" && word != "null" {
+                out.push('"');
+                out.push_str(&word);
+                out.push('"');
+            } else {
+                out.push_str(&word);
+            }
+            continue;
+        }
+
+        out.push(c);
+        i += 1;
+    }
+
+    if in_double_quote || in_single_quote {
+        out.push('"');
+    }
+
+    out
+}
+
+/// Ripara un JSON troncato bruscamente a metà generazione (es. per raggiungimento limite token in un loop)
+pub fn repair_truncated_json(input: &str) -> String {
+    let trimmed = input.trim();
+    if trimmed.ends_with('}') || trimmed.ends_with(']') {
+        return trimmed.to_string();
+    }
+
+    if let Some(last_obj_end) = trimmed.rfind('}') {
+        let mut sliced = trimmed[..=last_obj_end].trim().to_string();
+        let open_brackets = sliced.chars().filter(|&c| c == '[').count();
+        let close_brackets = sliced.chars().filter(|&c| c == ']').count();
+        let open_braces = sliced.chars().filter(|&c| c == '{').count();
+        let close_braces = sliced.chars().filter(|&c| c == '}').count();
+
+        if open_brackets > close_brackets {
+            for _ in 0..(open_brackets - close_brackets) {
+                sliced.push(']');
+            }
+        }
+        if open_braces > close_braces {
+            for _ in 0..(open_braces - close_braces) {
+                sliced.push('}');
+            }
+        }
+        return sliced;
+    }
+
+    trimmed.to_string()
+}
+
+/// Estrae un valore tollerante da un singolo blocco di lezione senza richiedere JSON rigoroso
+fn extract_lenient_val(block: &str, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Some(pos) = block.find(key) {
+            let after_key = &block[pos + key.len()..];
+            if let Some(colon_pos) = after_key.find(|c| c == ':' || c == '=') {
+                let rest = after_key[colon_pos + 1..].trim_start();
+                if rest.starts_with('"') {
+                    if let Some(end_quote) = rest[1..].find('"') {
+                        let val = &rest[1..=end_quote];
+                        return Some(val.trim().to_string());
+                    }
+                } else if rest.starts_with('\'') {
+                    if let Some(end_quote) = rest[1..].find('\'') {
+                        let val = &rest[1..=end_quote];
+                        return Some(val.trim().to_string());
+                    }
+                } else {
+                    let end_pos = rest.find(|c| c == ',' || c == '}' || c == '\n' || c == '\r').unwrap_or(rest.len());
+                    let val = rest[..end_pos].trim().trim_matches(|c| c == '"' || c == '\'');
+                    if !val.is_empty() {
+                        return Some(val.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Parser di fallback permissivo che recupera le lezioni analizzando i singoli blocchi `{ ... }`
+pub fn fallback_extract_lessons_lenient(text: &str) -> Vec<ExtractedLessonItem> {
+    let mut items = Vec::new();
+    let mut depth: i32 = 0;
+    let mut start_idx = None;
+
+    for (idx, ch) in text.char_indices() {
+        if ch == '{' {
+            if depth >= 1 && start_idx.is_none() {
+                start_idx = Some(idx);
+            }
+            depth += 1;
+        } else if ch == '}' {
+            depth = depth.saturating_sub(1);
+            if depth >= 1 {
+                if let Some(start) = start_idx.take() {
+                    let block = &text[start..=idx];
+                    let day_raw = extract_lenient_val(block, &["dayOfWeek", "day_of_week", "day", "giorno", "weekday"]);
+                    let day = day_raw.and_then(|d| parse_day_of_week_value(&serde_json::Value::String(d))).unwrap_or(1);
+
+                    let start_raw = extract_lenient_val(block, &["startTime", "start_time", "start", "ora_inizio", "inizio"]);
+                    let end_raw = extract_lenient_val(block, &["endTime", "end_time", "end", "ora_fine", "fine"]);
+                    let mut norm_start = start_raw.as_deref().and_then(normalize_hour_string);
+                    let mut norm_end = end_raw.as_deref().and_then(normalize_hour_string);
+
+                    if norm_start.is_none() || norm_end.is_none() {
+                        if let Some(combined) = extract_lenient_val(block, &["time", "orario", "hours", "fascia_oraria", "slot"]) {
+                            let parts: Vec<&str> = combined.split(|c| c == '-' || c == '—' || c == '/' || c == '–').collect();
+                            if parts.len() >= 2 {
+                                if norm_start.is_none() {
+                                    norm_start = normalize_hour_string(parts[0]);
+                                }
+                                if norm_end.is_none() {
+                                    norm_end = normalize_hour_string(parts[1]);
+                                }
+                            }
+                        }
+                    }
+
+                    let course_name = extract_lenient_val(block, &["courseName", "course_name", "course", "materia", "subject", "title", "nome_corso"])
+                        .unwrap_or_default();
+                    let classroom = extract_lenient_val(block, &["classroom", "aula", "room", "location"]).unwrap_or_default();
+                    let professor = extract_lenient_val(block, &["professor", "docente", "teacher", "prof"]).unwrap_or_default();
+
+                    if !course_name.is_empty() {
+                        items.push(ExtractedLessonItem {
+                            day_of_week: day,
+                            start_time: norm_start.unwrap_or_else(|| "09:00".to_string()),
+                            end_time: norm_end.unwrap_or_else(|| "11:00".to_string()),
+                            course_name,
+                            classroom,
+                            professor,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    items
+}
+
 /// Pulisce e deserializza in modo super-resiliente il JSON restituito da qualsiasi modello Vision
 pub fn clean_and_parse_lessons_json(text: &str) -> Result<Vec<ExtractedLessonItem>, String> {
     let clean = text.trim();
@@ -1139,8 +1358,12 @@ pub fn clean_and_parse_lessons_json(text: &str) -> Result<Vec<ExtractedLessonIte
         clean
     };
 
-    // 2. Isola la sottostringa JSON più esterna valida
-    let trimmed = json_candidate.trim();
+    // 2. Normalizza e correggi eventuali apici singoli o chiavi non virgolettate
+    let sanitized = sanitize_lenient_json(json_candidate.trim());
+    let repaired = repair_truncated_json(&sanitized);
+
+    // 3. Isola la sottostringa JSON più esterna valida
+    let trimmed = repaired.trim();
     let json_slice = match (trimmed.find('{'), trimmed.rfind('}'), trimmed.find('['), trimmed.rfind(']')) {
         (Some(first_obj), Some(last_obj), Some(first_arr), Some(last_arr)) => {
             if first_arr < first_obj && last_arr > last_obj {
@@ -1154,166 +1377,188 @@ pub fn clean_and_parse_lessons_json(text: &str) -> Result<Vec<ExtractedLessonIte
         _ => trimmed,
     };
 
-    let parsed: serde_json::Value = serde_json::from_str(json_slice)
-        .map_err(|e| format!("Impossibile interpretare il JSON AI ({}). Risposta grezza: {}", e, text))?;
+    let parsed_res: Result<serde_json::Value, _> = serde_json::from_str(json_slice);
+    let mut raw_lessons = Vec::new();
 
-    // 3. Estrai l'array contenente le lezioni
-    let items_array = if let Some(arr) = parsed.as_array() {
-        arr
-    } else if let Some(obj) = parsed.as_object() {
-        let candidate_keys = ["lessons", "timetable", "schedule", "orario", "classes", "items", "lezioni", "data"];
-        let mut found = None;
-        for key in &candidate_keys {
-            if let Some(val) = obj.get(*key) {
-                if let Some(arr) = val.as_array() {
-                    found = Some(arr);
-                    break;
-                }
-            }
-        }
-        if found.is_none() {
-            for val in obj.values() {
-                if let Some(arr) = val.as_array() {
-                    found = Some(arr);
-                    break;
-                }
-            }
-        }
-        found.ok_or_else(|| format!("Nessun elenco di lezioni trovato nel JSON generato: {}", text))?
-    } else {
-        return Err(format!("Formato JSON non riconosciuto: {}", text));
-    };
-
-    let course_aliases = ["courseName", "course_name", "course", "materia", "subject", "title", "nome_corso", "lezione", "name", "disciplina"];
-    let start_aliases = ["startTime", "start_time", "start", "ora_inizio", "inizio", "from", "time_start", "oraInizio"];
-    let end_aliases = ["endTime", "end_time", "end", "ora_fine", "fine", "to", "time_end", "oraFine"];
-    let combined_time_aliases = ["time", "orario", "hours", "fascia_oraria", "fasciaOraria", "slot", "interval"];
-    let day_aliases = ["dayOfWeek", "day_of_week", "day", "giorno", "weekday", "day_number"];
-    let classroom_aliases = ["classroom", "aula", "room", "location", "luogo", "sede"];
-    let professor_aliases = ["professor", "docente", "teacher", "insegnante", "prof", "professore"];
-
-    let mut result = Vec::new();
-    for item in items_array {
-        if let Some(obj) = item.as_object() {
-            // Giorno della settimana
-            let mut day = 1;
-            for alias in &day_aliases {
-                if let Some(val) = obj.get(*alias) {
-                    if let Some(d) = parse_day_of_week_value(val) {
-                        day = d;
-                        break;
+    match parsed_res {
+        Ok(parsed) => {
+            let items_array_opt = if let Some(arr) = parsed.as_array() {
+                Some(arr.clone())
+            } else if let Some(obj) = parsed.as_object() {
+                let candidate_keys = ["lessons", "timetable", "schedule", "orario", "classes", "items", "lezioni", "data"];
+                let mut found = None;
+                for key in &candidate_keys {
+                    if let Some(val) = obj.get(*key) {
+                        if let Some(arr) = val.as_array() {
+                            found = Some(arr.clone());
+                            break;
+                        }
                     }
                 }
-            }
-
-            // Orario Inizio e Fine
-            let mut start_raw = String::new();
-            for alias in &start_aliases {
-                if let Some(val) = obj.get(*alias) {
-                    if let Some(s) = val.as_str() {
-                        start_raw = s.trim().to_string();
-                        break;
-                    } else if let Some(n) = val.as_i64() {
-                        start_raw = n.to_string();
-                        break;
+                if found.is_none() {
+                    for val in obj.values() {
+                        if let Some(arr) = val.as_array() {
+                            found = Some(arr.clone());
+                            break;
+                        }
                     }
                 }
-            }
+                found
+            } else {
+                None
+            };
 
-            let mut end_raw = String::new();
-            for alias in &end_aliases {
-                if let Some(val) = obj.get(*alias) {
-                    if let Some(s) = val.as_str() {
-                        end_raw = s.trim().to_string();
-                        break;
-                    } else if let Some(n) = val.as_i64() {
-                        end_raw = n.to_string();
-                        break;
-                    }
-                }
-            }
+            if let Some(items_array) = items_array_opt {
+                let course_aliases = ["courseName", "course_name", "course", "materia", "subject", "title", "nome_corso", "lezione", "name", "disciplina"];
+                let start_aliases = ["startTime", "start_time", "start", "ora_inizio", "inizio", "from", "time_start", "oraInizio"];
+                let end_aliases = ["endTime", "end_time", "end", "ora_fine", "fine", "to", "time_end", "oraFine"];
+                let combined_time_aliases = ["time", "orario", "hours", "fascia_oraria", "fasciaOraria", "slot", "interval"];
+                let day_aliases = ["dayOfWeek", "day_of_week", "day", "giorno", "weekday", "day_number"];
+                let classroom_aliases = ["classroom", "aula", "room", "location", "luogo", "sede"];
+                let professor_aliases = ["professor", "docente", "teacher", "insegnante", "prof", "professore"];
 
-            let mut norm_start = normalize_hour_string(&start_raw);
-            let mut norm_end = normalize_hour_string(&end_raw);
-
-            // Se mancano inizio o fine, controlla campo orario combinato (es. "08:30 - 10:30")
-            if norm_start.is_none() || norm_end.is_none() {
-                for alias in &combined_time_aliases {
-                    if let Some(val) = obj.get(*alias) {
-                        if let Some(combined) = val.as_str() {
-                            let parts: Vec<&str> = combined.split(|c| c == '-' || c == '—' || c == '/' || c == '–').collect();
-                            if parts.len() >= 2 {
-                                if norm_start.is_none() {
-                                    norm_start = normalize_hour_string(parts[0]);
-                                }
-                                if norm_end.is_none() {
-                                    norm_end = normalize_hour_string(parts[1]);
+                for item in items_array {
+                    if let Some(obj) = item.as_object() {
+                        let mut day = 1;
+                        for alias in &day_aliases {
+                            if let Some(val) = obj.get(*alias) {
+                                if let Some(d) = parse_day_of_week_value(val) {
+                                    day = d;
+                                    break;
                                 }
                             }
                         }
-                    }
-                }
-            }
 
-            // Nome Materia
-            let mut course_name = String::new();
-            for alias in &course_aliases {
-                if let Some(val) = obj.get(*alias) {
-                    if let Some(s) = val.as_str() {
-                        if !s.trim().is_empty() {
-                            course_name = s.trim().to_string();
-                            break;
+                        let mut start_raw = String::new();
+                        for alias in &start_aliases {
+                            if let Some(val) = obj.get(*alias) {
+                                if let Some(s) = val.as_str() {
+                                    start_raw = s.trim().to_string();
+                                    break;
+                                } else if let Some(n) = val.as_i64() {
+                                    start_raw = n.to_string();
+                                    break;
+                                }
+                            }
+                        }
+
+                        let mut end_raw = String::new();
+                        for alias in &end_aliases {
+                            if let Some(val) = obj.get(*alias) {
+                                if let Some(s) = val.as_str() {
+                                    end_raw = s.trim().to_string();
+                                    break;
+                                } else if let Some(n) = val.as_i64() {
+                                    end_raw = n.to_string();
+                                    break;
+                                }
+                            }
+                        }
+
+                        let mut norm_start = normalize_hour_string(&start_raw);
+                        let mut norm_end = normalize_hour_string(&end_raw);
+
+                        if norm_start.is_none() || norm_end.is_none() {
+                            for alias in &combined_time_aliases {
+                                if let Some(val) = obj.get(*alias) {
+                                    if let Some(combined) = val.as_str() {
+                                        let parts: Vec<&str> = combined.split(|c| c == '-' || c == '—' || c == '/' || c == '–').collect();
+                                        if parts.len() >= 2 {
+                                            if norm_start.is_none() {
+                                                norm_start = normalize_hour_string(parts[0]);
+                                            }
+                                            if norm_end.is_none() {
+                                                norm_end = normalize_hour_string(parts[1]);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        let mut course_name = String::new();
+                        for alias in &course_aliases {
+                            if let Some(val) = obj.get(*alias) {
+                                if let Some(s) = val.as_str() {
+                                    if !s.trim().is_empty() {
+                                        course_name = s.trim().to_string();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        let mut classroom = String::new();
+                        for alias in &classroom_aliases {
+                            if let Some(val) = obj.get(*alias) {
+                                if let Some(s) = val.as_str() {
+                                    if !s.trim().is_empty() {
+                                        classroom = s.trim().to_string();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        let mut professor = String::new();
+                        for alias in &professor_aliases {
+                            if let Some(val) = obj.get(*alias) {
+                                if let Some(s) = val.as_str() {
+                                    if !s.trim().is_empty() {
+                                        professor = s.trim().to_string();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        if !course_name.is_empty() {
+                            let final_start = norm_start.unwrap_or_else(|| "09:00".to_string());
+                            let final_end = norm_end.unwrap_or_else(|| "11:00".to_string());
+                            raw_lessons.push(ExtractedLessonItem {
+                                day_of_week: day,
+                                start_time: final_start,
+                                end_time: final_end,
+                                course_name,
+                                classroom,
+                                professor,
+                            });
                         }
                     }
                 }
             }
-
-            // Aula
-            let mut classroom = String::new();
-            for alias in &classroom_aliases {
-                if let Some(val) = obj.get(*alias) {
-                    if let Some(s) = val.as_str() {
-                        if !s.trim().is_empty() {
-                            classroom = s.trim().to_string();
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Docente
-            let mut professor = String::new();
-            for alias in &professor_aliases {
-                if let Some(val) = obj.get(*alias) {
-                    if let Some(s) = val.as_str() {
-                        if !s.trim().is_empty() {
-                            professor = s.trim().to_string();
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if !course_name.is_empty() {
-                let final_start = norm_start.unwrap_or_else(|| "09:00".to_string());
-                let final_end = norm_end.unwrap_or_else(|| "11:00".to_string());
-                result.push(ExtractedLessonItem {
-                    day_of_week: day,
-                    start_time: final_start,
-                    end_time: final_end,
-                    course_name,
-                    classroom,
-                    professor,
-                });
-            }
+        }
+        Err(_) => {
+            // Se serde_json fallisce nonostante le correzioni, usiamo il parser lenient sui blocchi
+            let fallback_items = fallback_extract_lessons_lenient(text);
+            raw_lessons.extend(fallback_items);
         }
     }
 
-    if result.is_empty() {
-        return Err("Nessuna lezione identificata nell'orario. Verifica che la foto mostri chiaramente le caselle con le materie.".to_string());
+    if raw_lessons.is_empty() {
+        let fallback_items = fallback_extract_lessons_lenient(text);
+        raw_lessons.extend(fallback_items);
     }
 
-    Ok(result)
+    // 4. Deduplicazione lezioni (elimina ripetizioni identiche generate da loop AI)
+    let mut unique_lessons = Vec::new();
+    for item in raw_lessons {
+        let is_duplicate = unique_lessons.iter().any(|existing: &ExtractedLessonItem| {
+            existing.day_of_week == item.day_of_week
+                && existing.start_time == item.start_time
+                && existing.end_time == item.end_time
+                && existing.course_name.eq_ignore_ascii_case(&item.course_name)
+        });
+        if !is_duplicate {
+            unique_lessons.push(item);
+        }
+    }
+
+    if unique_lessons.is_empty() {
+        return Err(format!("Nessuna lezione identificata nell'orario. Risposta grezza: {}", text));
+    }
+
+    Ok(unique_lessons)
 }
 
 /// Limite massimo del payload base64 inviato al provider (≈ 15 MB).
@@ -1391,12 +1636,15 @@ pub fn parse_timetable_image_with_ai(
                 "model": settings.ai_local_model_id,
                 "temperature": 0.0,
                 "top_p": 0.1,
-                "max_tokens": 4096,
+                "repeat_penalty": 1.25,
+                "frequency_penalty": 0.5,
+                "presence_penalty": 0.3,
+                "max_tokens": 2048,
                 "response_format": { "type": "json_object" },
                 "messages": [
                     {
                         "role": "system",
-                        "content": "Sei un sistema OCR specializzato in orari universitari e scolastici. Trascrivi con assoluta precisione i testi e gli orari visualizzati, senza mai inventare o allucinare dati non presenti nell'immagine."
+                        "content": "Sei un analizzatore OCR per orari universitari. Genera ESCLUSIVAMENTE JSON conforme a RFC 8259 (tutte le chiavi e valori testuali tra doppi apici \"...\"). Non usare mai apici singoli né chiavi non virgolettate. Elenca ciascuna lezione visibile UNA SOLA VOLTA e chiudi immediatamente il JSON con ']}' senza mai ripetere."
                     },
                     {
                         "role": "user",
@@ -1631,6 +1879,43 @@ mod tests {
         assert_eq!(parsed[0].end_time, "11:00");
         assert_eq!(parsed[0].course_name, "Chimica Generale");
         assert_eq!(parsed[0].classroom, "Lab 2");
+    }
+
+    #[test]
+    fn test_parse_user_unquoted_single_quoted_and_repeating_lessons() {
+        // Stringa identica a quella riscontrata dall'utente nello screenshot:
+        // chiavi senza virgolette ('lessons:', 'dayOfWeek:'), apici singoli ('08:15'),
+        // lezioni duplicate a causa di loop e JSON troncato alla fine.
+        let raw_user_error = r#"{ lessons : [ 
+            { dayOfWeek : 3, startTime : '08:15', endTime : '10:15', "courseName": "Progettazione di Sistemi Meccanici", "classroom": "BL.28.2.1", "professor": "Filippini Mauro" },
+            { 'dayOfWeek': 4, 'startTime': '10:15', 'endTime': '12:15', courseName: 'Progettazione di Sistemi Meccanici', classroom: 'BL.28.2.1', professor: 'Filippini Mauro' },
+            { dayOfWeek: 3, startTime: "13:15", endTime: "15:15", courseName: "Progettazione di Sistemi Meccanici", classroom: "BL.28.4", professor: "Filippini Mauro" },
+            { dayOfWeek: 4, startTime: "15:15", endTime: "17:15", courseName: "Progettazione di Sistemi Meccanici", classroom: "BL.28.4", professor: "Filippini Mauro" },
+            { dayOfWeek: 3, startTime: "08:15", endTime: "10:15", courseName: "Progettazione di Sistemi Meccanici", classroom: "BL.28.2.1", professor: "Filippini Mauro" },
+            { dayOfWeek: 4, startTime: "10:15", endTime: "12:15", courseName: "Progettazione di Sistemi Meccanici", classroom: "BL.28.2.1", professor: "Filippini Mauro" },
+            { dayOfWeek: 3, startTime: "13:15", endTime: "15:15", courseName: "Progettazione di Sistemi Meccanici", classroom: "BL.28.4", professor: "Filippini Mauro" }
+        "#;
+        let parsed = clean_and_parse_lessons_json(raw_user_error).expect("Dovrebbe riparare, parsare e deduplicare con successo");
+        assert_eq!(parsed.len(), 4);
+        assert_eq!(parsed[0].day_of_week, 3);
+        assert_eq!(parsed[0].start_time, "08:15");
+        assert_eq!(parsed[0].end_time, "10:15");
+        assert_eq!(parsed[0].classroom, "BL.28.2.1");
+
+        assert_eq!(parsed[1].day_of_week, 4);
+        assert_eq!(parsed[1].start_time, "10:15");
+        assert_eq!(parsed[1].end_time, "12:15");
+        assert_eq!(parsed[1].classroom, "BL.28.2.1");
+
+        assert_eq!(parsed[2].day_of_week, 3);
+        assert_eq!(parsed[2].start_time, "13:15");
+        assert_eq!(parsed[2].end_time, "15:15");
+        assert_eq!(parsed[2].classroom, "BL.28.4");
+
+        assert_eq!(parsed[3].day_of_week, 4);
+        assert_eq!(parsed[3].start_time, "15:15");
+        assert_eq!(parsed[3].end_time, "17:15");
+        assert_eq!(parsed[3].classroom, "BL.28.4");
     }
 
     #[test]
