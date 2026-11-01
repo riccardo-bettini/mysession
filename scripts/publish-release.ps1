@@ -1,5 +1,5 @@
 param(
-    [string]$Tag = "v1.0.43",
+    [string]$Tag = "v1.0.45",
     [string]$Token = $env:GITHUB_TOKEN
 )
 
@@ -27,13 +27,12 @@ if ($existing) {
 }
 
 $releaseNotes = @"
-### Novità e Migliorie di MySession v1.0.43
+### Novità e Migliorie di MySession v1.0.45
 
-- **OCR Orari Accademici ad Alta Fedeltà**: decodifica greedy deterministica (temperature 0.0) per eliminare del tutto le allucinazioni e gli orari casuali.
-- **Prompt Strutturato con Ragionamento Spaziale**: istruzioni avanzate per allineare colonne giorni (1..7) e fasce orarie, leggendo con priorità l'orario scritto dentro la singola casella della lezione.
-- **Normalizzazione Oraria Rigorosa**: formato 24 ore 'HH:MM' con zero iniziale (es. '08:30', '09:00', '14:30') pienamente compatibile con gli input time nativi HTML5 e il database SQLite.
-- **Finestra di Contesto Espansa a 8192 token**: supporto completo a immagini ad alta risoluzione (2000-3000 token visivi) senza rischio di troncamento dei token.
-- **Ottimizzatore Dimensioni Immagini**: ridimensionamento proporzionale ad alta qualità per scatti pesanti da smartphone senza saturazione della RAM/VRAM.
+- **Tasto Annulla Interattivo**: il tasto Annulla, il pulsante di chiusura e lo sfondo rimangono sempre reattivi e attivi durante l'analisi Vision AI, consentendo di interrompere istantaneamente l'elaborazione.
+- **Supporto Orari Testuali PoliMi / Esse3**: parsing intelligente per elenchi testuali con codici corso (es. '086472 - PROGETTAZIONE DI SISTEMI MECCANICI') ed ereditarietà automatica di materia e docente sui singoli slot orari.
+- **Scaling Automatico Ritagli a Bassa Risoluzione**: screenshot e ritagli bassi (sotto i 600px di altezza) vengono automaticamente scalati in alta risoluzione 2.5x prima del passaggio al VLM per eliminare artefatti OCR.
+- **Prompt Vision Dual-Mode**: riconoscimento ottimizzato sia per griglie calendario settimanali che per elenchi testuali strutturati ad albero.
 "@
 
 $releasePayload = @{
