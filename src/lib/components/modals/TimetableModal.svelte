@@ -209,6 +209,18 @@
     }
   }
 
+  let currentAnalysisId = 0;
+
+  function handleCancelVisionModal() {
+    currentAnalysisId++;
+    isAiAnalyzing = false;
+    isAiVisionOpen = false;
+    aiImagePreview = null;
+    aiImageBase64 = null;
+    aiError = null;
+    extractedLessons = [];
+  }
+
   async function optimizeImageForVision(file: File): Promise<{ base64: string; mime: string }> {
     return new Promise((resolve, reject) => {
       if (!file.type.startsWith("image/") || file.type.includes("svg")) {
@@ -227,8 +239,18 @@
         let width = img.width;
         let height = img.height;
 
-        // Se l'immagine è già <= 2560px e < 5MB (es. screenshot 1080p o 1440p), mantieni lossless
-        if (width <= maxDimension && height <= maxDimension && file.size < 5 * 1024 * 1024) {
+        let scale = 1.0;
+
+        // Se l'immagine è un ritaglio o ha altezza ridotta con testo denso (es. ritaglio da portale Esse3/PoliMi 753x222 o height < 600)
+        // ingrandiamo proporzionalmente per garantire che ogni riga di testo abbia risoluzione OCR nitida
+        if (height < 600 && width < 1800) {
+          scale = Math.min(2.5, Math.max(1.5, 750 / height));
+        } else if (width > maxDimension || height > maxDimension) {
+          scale = maxDimension / Math.max(width, height);
+        }
+
+        // Se non c'è bisogno di scalare ed è leggera, mantieni lossless nativo
+        if (scale === 1.0 && file.size < 5 * 1024 * 1024) {
           const reader = new FileReader();
           reader.onload = () => resolve({ base64: reader.result as string, mime: file.type || "image/png" });
           reader.onerror = reject;
@@ -236,20 +258,12 @@
           return;
         }
 
-        // Ridimensionamento proporzionale ad alta fedeltà solo se eccede i 2560px (foto smartphone)
-        if (width > maxDimension || height > maxDimension) {
-          if (width > height) {
-            height = Math.round((height * maxDimension) / width);
-            width = maxDimension;
-          } else {
-            width = Math.round((width * maxDimension) / height);
-            height = maxDimension;
-          }
-        }
+        const targetWidth = Math.round(width * scale);
+        const targetHeight = Math.round(height * scale);
 
         const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
         const ctx = canvas.getContext("2d");
         if (!ctx) {
           const reader = new FileReader();
@@ -261,10 +275,10 @@
 
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
-        ctx.drawImage(img, 0, 0, width, height);
+        ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
 
-        const targetMime = file.type === "image/png" ? "image/png" : "image/jpeg";
-        const base64 = canvas.toDataURL(targetMime, 0.95);
+        const targetMime = "image/png";
+        const base64 = canvas.toDataURL(targetMime);
         resolve({ base64, mime: targetMime });
       };
       img.onerror = () => {
@@ -294,19 +308,24 @@
   }
 
   async function runVisionAiAnalysis(base64: string, mime: string) {
+    const analysisId = ++currentAnalysisId;
     isAiAnalyzing = true;
     aiError = null;
     try {
       const items = await sessionStore.parseTimetableImage(base64, mime);
+      if (currentAnalysisId !== analysisId) return; // Annullato dall'utente
       if (!items || items.length === 0) {
         aiError = "Nessuna lezione identificata nell'immagine. Assicurati che l'orario sia ben visibile e leggibile.";
       } else {
         extractedLessons = items;
       }
     } catch (e) {
+      if (currentAnalysisId !== analysisId) return; // Annullato dall'utente
       aiError = e instanceof Error ? e.message : String(e);
     } finally {
-      isAiAnalyzing = false;
+      if (currentAnalysisId === analysisId) {
+        isAiAnalyzing = false;
+      }
     }
   }
 
@@ -716,8 +735,8 @@
         aria-label="Vision AI Timetable Scanner"
         tabindex="-1"
         onclick={(e) => {
-          if (e.target === e.currentTarget && !isAiAnalyzing && !isSavingExtracted) {
-            isAiVisionOpen = false;
+          if (e.target === e.currentTarget && !isSavingExtracted) {
+            handleCancelVisionModal();
           }
         }}
       >
@@ -739,8 +758,9 @@
             <button
               type="button"
               class="btn-close-sub pressable"
-              disabled={isAiAnalyzing || isSavingExtracted}
-              onclick={() => (isAiVisionOpen = false)}
+              disabled={isSavingExtracted}
+              onclick={handleCancelVisionModal}
+              title="Chiudi e annulla"
             >
               <X size={15} />
             </button>
@@ -783,8 +803,10 @@
                   <button
                     type="button"
                     class="btn-change-image pressable"
-                    disabled={isAiAnalyzing || isSavingExtracted}
+                    disabled={isSavingExtracted}
                     onclick={() => {
+                      currentAnalysisId++;
+                      isAiAnalyzing = false;
                       aiImagePreview = null;
                       aiImageBase64 = null;
                       extractedLessons = [];
@@ -801,6 +823,14 @@
                       <div class="ai-spinner"></div>
                       <h4>L'Intelligenza Artificiale sta leggendo l'orario…</h4>
                       <p>Riconoscimento automatico di giorni, materie, aule e docenti in corso.</p>
+                      <button
+                        type="button"
+                        class="btn-cancel-analyzing pressable"
+                        onclick={handleCancelVisionModal}
+                        style="margin-top: 0.85rem; background: rgba(255, 69, 58, 0.12); color: #FF453A; border: 1px solid rgba(255, 69, 58, 0.25); border-radius: 8px; padding: 0.4rem 0.9rem; font-size: 0.82rem; font-weight: 600; cursor: pointer;"
+                      >
+                        Interrompi analisi
+                      </button>
                     </div>
                   {:else if aiError}
                     <div class="ai-error-box">
@@ -907,10 +937,10 @@
             <button
               type="button"
               class="btn-secondary pressable"
-              disabled={isAiAnalyzing || isSavingExtracted}
-              onclick={() => (isAiVisionOpen = false)}
+              disabled={isSavingExtracted}
+              onclick={handleCancelVisionModal}
             >
-              Annulla
+              {isAiAnalyzing ? "Interrompi e Chiudi" : "Annulla"}
             </button>
             {#if extractedLessons.length > 0}
               <button

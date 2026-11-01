@@ -1242,6 +1242,18 @@ pub fn repair_truncated_json(input: &str) -> String {
     trimmed.to_string()
 }
 
+/// Rimuove eventuali prefissi con codici numerici accademici (es. '086472 - MATERIA' -> 'MATERIA')
+pub fn sanitize_course_title(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if let Some(pos) = trimmed.find(" - ") {
+        let prefix = &trimmed[..pos];
+        if prefix.chars().all(|c| c.is_ascii_digit() || c.is_whitespace()) {
+            return trimmed[pos + 3..].trim().to_string();
+        }
+    }
+    trimmed.to_string()
+}
+
 /// Estrae un valore tollerante da un singolo blocco di lezione senza richiedere JSON rigoroso
 fn extract_lenient_val(block: &str, keys: &[&str]) -> Option<String> {
     for key in keys {
@@ -1277,6 +1289,8 @@ pub fn fallback_extract_lessons_lenient(text: &str) -> Vec<ExtractedLessonItem> 
     let mut items = Vec::new();
     let mut depth: i32 = 0;
     let mut start_idx = None;
+    let mut last_course = String::new();
+    let mut last_prof = String::new();
 
     for (idx, ch) in text.char_indices() {
         if ch == '{' {
@@ -1316,14 +1330,34 @@ pub fn fallback_extract_lessons_lenient(text: &str) -> Vec<ExtractedLessonItem> 
                     let classroom = extract_lenient_val(block, &["classroom", "aula", "room", "location"]).unwrap_or_default();
                     let professor = extract_lenient_val(block, &["professor", "docente", "teacher", "prof"]).unwrap_or_default();
 
-                    if !course_name.is_empty() {
+                    let clean_title = sanitize_course_title(&course_name);
+                    let final_course = if clean_title.is_empty() {
+                        last_course.clone()
+                    } else {
+                        clean_title.clone()
+                    };
+
+                    let final_prof = if professor.is_empty() {
+                        if final_course.eq_ignore_ascii_case(&last_course) {
+                            last_prof.clone()
+                        } else {
+                            String::new()
+                        }
+                    } else {
+                        professor.clone()
+                    };
+
+                    if !final_course.is_empty() {
+                        last_course = final_course.clone();
+                        last_prof = final_prof.clone();
+
                         items.push(ExtractedLessonItem {
                             day_of_week: day,
                             start_time: norm_start.unwrap_or_else(|| "09:00".to_string()),
                             end_time: norm_end.unwrap_or_else(|| "11:00".to_string()),
-                            course_name,
+                            course_name: final_course,
                             classroom,
-                            professor,
+                            professor: final_prof,
                         });
                     }
                 }
@@ -1416,6 +1450,9 @@ pub fn clean_and_parse_lessons_json(text: &str) -> Result<Vec<ExtractedLessonIte
                 let day_aliases = ["dayOfWeek", "day_of_week", "day", "giorno", "weekday", "day_number"];
                 let classroom_aliases = ["classroom", "aula", "room", "location", "luogo", "sede"];
                 let professor_aliases = ["professor", "docente", "teacher", "insegnante", "prof", "professore"];
+
+                let mut last_course_name = String::new();
+                let mut last_professor = String::new();
 
                 for item in items_array {
                     if let Some(obj) = item.as_object() {
@@ -1512,16 +1549,37 @@ pub fn clean_and_parse_lessons_json(text: &str) -> Result<Vec<ExtractedLessonIte
                             }
                         }
 
-                        if !course_name.is_empty() {
+                        // Se la materia o il docente sono omessi nei punti elenco successivi, ereditali dal blocco corso
+                        let clean_title = sanitize_course_title(&course_name);
+                        let final_course = if clean_title.is_empty() {
+                            last_course_name.clone()
+                        } else {
+                            clean_title.clone()
+                        };
+
+                        let final_prof = if professor.is_empty() {
+                            if final_course.eq_ignore_ascii_case(&last_course_name) {
+                                last_professor.clone()
+                            } else {
+                                String::new()
+                            }
+                        } else {
+                            professor.clone()
+                        };
+
+                        if !final_course.is_empty() {
+                            last_course_name = final_course.clone();
+                            last_professor = final_prof.clone();
+
                             let final_start = norm_start.unwrap_or_else(|| "09:00".to_string());
                             let final_end = norm_end.unwrap_or_else(|| "11:00".to_string());
                             raw_lessons.push(ExtractedLessonItem {
                                 day_of_week: day,
                                 start_time: final_start,
                                 end_time: final_end,
-                                course_name,
+                                course_name: final_course,
                                 classroom,
-                                professor,
+                                professor: final_prof,
                             });
                         }
                     }
@@ -1598,23 +1656,31 @@ pub fn parse_timetable_image_with_ai(
         image_base64
     };
 
-    let prompt_text = "Sei un sistema esperto di OCR e comprensione visiva strutturata di orari universitari e scolastici.\n\
-        Analizza con la massima attenzione l'immagine dell'orario ed estrai TUTTE le lezioni settimanali presenti nella tabella o griglia.\n\n\
-        REGOLE FONDAMENTALI DI ESTRAZIONE:\n\
-        1. ASSE DEI GIORNI: Identifica i giorni della settimana (colonne o righe): Lunedì=1, Martedì=2, Mercoledì=3, Giovedì=4, Venerdì=5, Sabato=6, Domenica=7.\n\
-        2. ASSE DEGLI ORARI: Leggi con assoluta precisione l'ora esatta di inizio (startTime) e fine (endTime). Se la fascia oraria è scritta dentro la casella della lezione (es. '08:30-10:30', '14.00 - 16.00'), usa SEMPRE prioritariamente quella. Se è indicata sulla griglia, segui con precisione la riga corrispondente.\n\
-        3. FORMATO ORARIO RIGOROSO: Esprimi startTime ed endTime ESCLUSIVAMENTE nel formato a 24 ore 'HH:MM' con zero iniziale (es. '08:30', '09:00', '14:30', '16:00'). Non troncare i minuti e non invertire mai inizio e fine.\n\
-        4. NOMI E AULE: Trascrivi fedelmente il nome della materia (courseName), l'aula (classroom) e il docente (professor) se visibili (altrimenti lascia stringa vuota '').\n\
-        5. FORMATO RISPOSTA: Restituisci ESCLUSIVAMENTE un oggetto JSON valido avente la chiave 'lessons':\n\
+    let prompt_text = "Sei un analizzatore OCR esperto per orari scolastici e universitari da screenshot, foto o portali studenti.\n\
+        Analizza l'immagine ed estrai TUTTE le lezioni settimanali presenti. L'immagine può presentarsi in due forme:\n\n\
+        FORMA 1 — ELENCO O LISTA TESTUALE (es. portali universitari tipo Esse3 o PoliMi):\n\
+        - Sono presenti titoli di corso come '086472 - PROGETTAZIONE DI SISTEMI MECCANICI (Docente: Filippini Mauro)' seguiti da punti elenco con i giorni e le ore:\n\
+          '▪ Mercoledì dalle 08:15 alle 10:15 in aula BL.28.2.1'\n\
+          '▪ Venerdì dalle 10:15 alle 12:15 in aula B8 1.1'\n\
+        - In questo caso ogni riga con giorno e orario è una lezione! Estrai: dayOfWeek (Mercoledì=3, Venerdì=5), startTime (es. '08:15'), endTime (es. '10:15'), classroom ('BL.28.2.1'), courseName (dal titolo del corso sopra: 'Progettazione di Sistemi Meccanici', omettendo il codice numerico iniziale) e professor (dal docente indicato nell'intestazione: 'Filippini Mauro').\n\n\
+        FORMA 2 — GRIGLIA O CALENDARIO SETTIMANALE A BLOCCHI (es. Google Calendar, Outlook o tabelle):\n\
+        - Colonne corrispondenti ai giorni (LUN, MAR, MER, GIO, VEN) e asse laterale delle ore.\n\
+        - Ciascun blocco colorato rappresenta una lezione: estrai dayOfWeek (dalla colonna), startTime ed endTime (dall'asse orario laterale o scritti nel blocco), courseName, classroom e professor.\n\n\
+        REGOLE TASSATIVE DI OUTPUT:\n\
+        1. dayOfWeek: numero intero da 1 a 7 (1=Lunedì, 2=Martedì, 3=Mercoledì, 4=Giovedì, 5=Venerdì, 6=Sabato, 7=Domenica).\n\
+        2. startTime ed endTime: SEMPRE in formato 24 ore 'HH:MM' con due cifre (es. '08:15', '10:15', '13:15', '15:15').\n\
+        3. courseName: DEVE contenere il nome del corso/materia (es. 'Progettazione di Sistemi Meccanici', 'Macchine e Sistemi Energetici'). Non lasciarlo mai vuoto se il nome è visibile!\n\
+        4. Inserisci ciascuna lezione visibile UNA SOLA VOLTA e chiudi il JSON. Non generare lezioni con campi vuoti o placeholder.\n\
+        5. Formato JSON rigoroso:\n\
         {\n\
           \"lessons\": [\n\
             {\n\
-              \"dayOfWeek\": 1,\n\
-              \"startTime\": \"08:30\",\n\
-              \"endTime\": \"10:30\",\n\
-              \"courseName\": \"Nome Corso\",\n\
-              \"classroom\": \"Aula 3\",\n\
-              \"professor\": \"Prof. Rossi\"\n\
+              \"dayOfWeek\": 3,\n\
+              \"startTime\": \"08:15\",\n\
+              \"endTime\": \"10:15\",\n\
+              \"courseName\": \"Progettazione di Sistemi Meccanici\",\n\
+              \"classroom\": \"BL.28.2.1\",\n\
+              \"professor\": \"Filippini Mauro\"\n\
             }\n\
           ]\n\
         }";
@@ -1916,6 +1982,78 @@ mod tests {
         assert_eq!(parsed[3].start_time, "15:15");
         assert_eq!(parsed[3].end_time, "17:15");
         assert_eq!(parsed[3].classroom, "BL.28.4");
+    }
+
+    #[test]
+    fn test_parse_polimi_textual_format_with_inheritance() {
+        let ai_polimi_output = r#"{
+          "lessons": [
+            {
+              "courseName": "086472 - PROGETTAZIONE DI SISTEMI MECCANICI",
+              "professor": "Filippini Mauro",
+              "dayOfWeek": 3,
+              "startTime": "08:15",
+              "endTime": "10:15",
+              "classroom": "BL.28.2.1"
+            },
+            {
+              "dayOfWeek": 5,
+              "startTime": "10:15",
+              "endTime": "12:15",
+              "classroom": "B8 1.1"
+            },
+            {
+              "courseName": "086470 - MACCHINE E SISTEMI ENERGETICI",
+              "professor": "Della Torre Augusto",
+              "dayOfWeek": 3,
+              "startTime": "10:15",
+              "endTime": "12:15",
+              "classroom": "BL.28.2.1"
+            },
+            {
+              "dayOfWeek": 4,
+              "startTime": "13:15",
+              "endTime": "15:15",
+              "classroom": "B8 0.4"
+            },
+            {
+              "dayOfWeek": 5,
+              "startTime": "08:15",
+              "endTime": "10:15",
+              "classroom": "B8 1.1"
+            }
+          ]
+        }"#;
+
+        let parsed = clean_and_parse_lessons_json(ai_polimi_output).expect("Dovrebbe parsare le 5 lezioni PoliMi con ereditarieta materia e docente");
+        assert_eq!(parsed.len(), 5);
+        assert_eq!(parsed[0].course_name, "PROGETTAZIONE DI SISTEMI MECCANICI");
+        assert_eq!(parsed[0].day_of_week, 3);
+        assert_eq!(parsed[0].start_time, "08:15");
+        assert_eq!(parsed[0].end_time, "10:15");
+        assert_eq!(parsed[0].professor, "Filippini Mauro");
+
+        assert_eq!(parsed[1].course_name, "PROGETTAZIONE DI SISTEMI MECCANICI");
+        assert_eq!(parsed[1].day_of_week, 5);
+        assert_eq!(parsed[1].start_time, "10:15");
+        assert_eq!(parsed[1].end_time, "12:15");
+        assert_eq!(parsed[1].professor, "Filippini Mauro");
+
+        assert_eq!(parsed[2].course_name, "MACCHINE E SISTEMI ENERGETICI");
+        assert_eq!(parsed[2].day_of_week, 3);
+        assert_eq!(parsed[2].start_time, "10:15");
+        assert_eq!(parsed[2].end_time, "12:15");
+        assert_eq!(parsed[2].professor, "Della Torre Augusto");
+
+        assert_eq!(parsed[3].course_name, "MACCHINE E SISTEMI ENERGETICI");
+        assert_eq!(parsed[3].day_of_week, 4);
+        assert_eq!(parsed[3].start_time, "13:15");
+        assert_eq!(parsed[3].end_time, "15:15");
+
+        assert_eq!(parsed[4].course_name, "MACCHINE E SISTEMI ENERGETICI");
+        assert_eq!(parsed[4].day_of_week, 5);
+        assert_eq!(parsed[4].start_time, "08:15");
+        assert_eq!(parsed[4].end_time, "10:15");
     }
 
     #[test]
