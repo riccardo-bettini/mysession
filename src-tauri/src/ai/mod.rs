@@ -1027,15 +1027,293 @@ fn extract_iso_or_italian_date(text_lower: &str, reference_today: &str) -> Optio
     None
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtractedLessonItem {
+    #[serde(alias = "day_of_week", alias = "day", alias = "giorno", alias = "dayOfWeek", alias = "weekday")]
     pub day_of_week: i32, // 1..7 (1=Lun, 7=Dom)
+
+    #[serde(alias = "start_time", alias = "start", alias = "startTime", alias = "ora_inizio", alias = "inizio", alias = "oraInizio")]
     pub start_time: String, // HH:MM
+
+    #[serde(alias = "end_time", alias = "end", alias = "endTime", alias = "ora_fine", alias = "fine", alias = "oraFine")]
     pub end_time: String,   // HH:MM
+
+    #[serde(alias = "course_name", alias = "courseName", alias = "course", alias = "materia", alias = "subject", alias = "title", alias = "nome_corso", alias = "disciplina")]
     pub course_name: String,
+
+    #[serde(default, alias = "aula", alias = "room", alias = "location", alias = "luogo", alias = "sede")]
     pub classroom: String,
+
+    #[serde(default, alias = "prof", alias = "teacher", alias = "docente", alias = "insegnante", alias = "professore")]
     pub professor: String,
+}
+
+/// Normalizza una stringa oraria nel formato rigoroso a 24 ore "HH:MM" (es. "8:30" -> "08:30", "9.00" -> "09:00", "14" -> "14:00")
+pub fn normalize_hour_string(s: &str) -> Option<String> {
+    let clean = s.trim().replace('.', ":").replace('h', ":").replace('H', ":");
+    let parts: Vec<&str> = clean.split(':').collect();
+    if parts.is_empty() {
+        return None;
+    }
+    let h_digits: String = parts[0].chars().filter(|c| c.is_ascii_digit()).collect();
+    if h_digits.is_empty() {
+        return None;
+    }
+    let hours: u32 = h_digits.parse().ok()?;
+    if hours > 23 {
+        return None;
+    }
+    let minutes: u32 = if parts.len() > 1 {
+        let m_digits: String = parts[1].chars().filter(|c| c.is_ascii_digit()).collect();
+        m_digits.parse().unwrap_or(0)
+    } else {
+        0
+    };
+    if minutes > 59 {
+        return None;
+    }
+    Some(format!("{:02}:{:02}", hours, minutes))
+}
+
+/// Converte un valore generico (numero 1..7 o stringa "Lunedì", "Mon", "1") nel numero del giorno 1..7
+pub fn parse_day_of_week_value(val: &serde_json::Value) -> Option<i32> {
+    if let Some(n) = val.as_i64() {
+        if (1..=7).contains(&n) {
+            return Some(n as i32);
+        }
+    }
+    if let Some(s) = val.as_str() {
+        let trimmed = s.trim().to_lowercase();
+        if let Ok(n) = trimmed.parse::<i32>() {
+            if (1..=7).contains(&n) {
+                return Some(n);
+            }
+        }
+        if trimmed.contains("lun") || trimmed.contains("mon") {
+            return Some(1);
+        }
+        if trimmed.contains("mar") || trimmed.contains("tue") {
+            return Some(2);
+        }
+        if trimmed.contains("mer") || trimmed.contains("wed") {
+            return Some(3);
+        }
+        if trimmed.contains("gio") || trimmed.contains("thu") {
+            return Some(4);
+        }
+        if trimmed.contains("ven") || trimmed.contains("fri") {
+            return Some(5);
+        }
+        if trimmed.contains("sab") || trimmed.contains("sat") {
+            return Some(6);
+        }
+        if trimmed.contains("dom") || trimmed.contains("sun") {
+            return Some(7);
+        }
+    }
+    None
+}
+
+/// Pulisce e deserializza in modo super-resiliente il JSON restituito da qualsiasi modello Vision
+pub fn clean_and_parse_lessons_json(text: &str) -> Result<Vec<ExtractedLessonItem>, String> {
+    let clean = text.trim();
+    if clean.is_empty() {
+        return Err("Risposta AI vuota.".to_string());
+    }
+
+    // 1. Rimuovi blocchi markdown ```json ... ``` se presenti
+    let json_candidate = if let Some(start) = clean.find("```") {
+        let after_fence = &clean[start + 3..];
+        let content_start = if let Some(newline) = after_fence.find('\n') {
+            &after_fence[newline + 1..]
+        } else {
+            after_fence
+        };
+        if let Some(end) = content_start.rfind("```") {
+            &content_start[..end]
+        } else {
+            content_start
+        }
+    } else {
+        clean
+    };
+
+    // 2. Isola la sottostringa JSON più esterna valida
+    let trimmed = json_candidate.trim();
+    let json_slice = match (trimmed.find('{'), trimmed.rfind('}'), trimmed.find('['), trimmed.rfind(']')) {
+        (Some(first_obj), Some(last_obj), Some(first_arr), Some(last_arr)) => {
+            if first_arr < first_obj && last_arr > last_obj {
+                &trimmed[first_arr..=last_arr]
+            } else {
+                &trimmed[first_obj..=last_obj]
+            }
+        }
+        (Some(first_obj), Some(last_obj), _, _) => &trimmed[first_obj..=last_obj],
+        (_, _, Some(first_arr), Some(last_arr)) => &trimmed[first_arr..=last_arr],
+        _ => trimmed,
+    };
+
+    let parsed: serde_json::Value = serde_json::from_str(json_slice)
+        .map_err(|e| format!("Impossibile interpretare il JSON AI ({}). Risposta grezza: {}", e, text))?;
+
+    // 3. Estrai l'array contenente le lezioni
+    let items_array = if let Some(arr) = parsed.as_array() {
+        arr
+    } else if let Some(obj) = parsed.as_object() {
+        let candidate_keys = ["lessons", "timetable", "schedule", "orario", "classes", "items", "lezioni", "data"];
+        let mut found = None;
+        for key in &candidate_keys {
+            if let Some(val) = obj.get(*key) {
+                if let Some(arr) = val.as_array() {
+                    found = Some(arr);
+                    break;
+                }
+            }
+        }
+        if found.is_none() {
+            for val in obj.values() {
+                if let Some(arr) = val.as_array() {
+                    found = Some(arr);
+                    break;
+                }
+            }
+        }
+        found.ok_or_else(|| format!("Nessun elenco di lezioni trovato nel JSON generato: {}", text))?
+    } else {
+        return Err(format!("Formato JSON non riconosciuto: {}", text));
+    };
+
+    let course_aliases = ["courseName", "course_name", "course", "materia", "subject", "title", "nome_corso", "lezione", "name", "disciplina"];
+    let start_aliases = ["startTime", "start_time", "start", "ora_inizio", "inizio", "from", "time_start", "oraInizio"];
+    let end_aliases = ["endTime", "end_time", "end", "ora_fine", "fine", "to", "time_end", "oraFine"];
+    let combined_time_aliases = ["time", "orario", "hours", "fascia_oraria", "fasciaOraria", "slot", "interval"];
+    let day_aliases = ["dayOfWeek", "day_of_week", "day", "giorno", "weekday", "day_number"];
+    let classroom_aliases = ["classroom", "aula", "room", "location", "luogo", "sede"];
+    let professor_aliases = ["professor", "docente", "teacher", "insegnante", "prof", "professore"];
+
+    let mut result = Vec::new();
+    for item in items_array {
+        if let Some(obj) = item.as_object() {
+            // Giorno della settimana
+            let mut day = 1;
+            for alias in &day_aliases {
+                if let Some(val) = obj.get(*alias) {
+                    if let Some(d) = parse_day_of_week_value(val) {
+                        day = d;
+                        break;
+                    }
+                }
+            }
+
+            // Orario Inizio e Fine
+            let mut start_raw = String::new();
+            for alias in &start_aliases {
+                if let Some(val) = obj.get(*alias) {
+                    if let Some(s) = val.as_str() {
+                        start_raw = s.trim().to_string();
+                        break;
+                    } else if let Some(n) = val.as_i64() {
+                        start_raw = n.to_string();
+                        break;
+                    }
+                }
+            }
+
+            let mut end_raw = String::new();
+            for alias in &end_aliases {
+                if let Some(val) = obj.get(*alias) {
+                    if let Some(s) = val.as_str() {
+                        end_raw = s.trim().to_string();
+                        break;
+                    } else if let Some(n) = val.as_i64() {
+                        end_raw = n.to_string();
+                        break;
+                    }
+                }
+            }
+
+            let mut norm_start = normalize_hour_string(&start_raw);
+            let mut norm_end = normalize_hour_string(&end_raw);
+
+            // Se mancano inizio o fine, controlla campo orario combinato (es. "08:30 - 10:30")
+            if norm_start.is_none() || norm_end.is_none() {
+                for alias in &combined_time_aliases {
+                    if let Some(val) = obj.get(*alias) {
+                        if let Some(combined) = val.as_str() {
+                            let parts: Vec<&str> = combined.split(|c| c == '-' || c == '—' || c == '/' || c == '–').collect();
+                            if parts.len() >= 2 {
+                                if norm_start.is_none() {
+                                    norm_start = normalize_hour_string(parts[0]);
+                                }
+                                if norm_end.is_none() {
+                                    norm_end = normalize_hour_string(parts[1]);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Nome Materia
+            let mut course_name = String::new();
+            for alias in &course_aliases {
+                if let Some(val) = obj.get(*alias) {
+                    if let Some(s) = val.as_str() {
+                        if !s.trim().is_empty() {
+                            course_name = s.trim().to_string();
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Aula
+            let mut classroom = String::new();
+            for alias in &classroom_aliases {
+                if let Some(val) = obj.get(*alias) {
+                    if let Some(s) = val.as_str() {
+                        if !s.trim().is_empty() {
+                            classroom = s.trim().to_string();
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Docente
+            let mut professor = String::new();
+            for alias in &professor_aliases {
+                if let Some(val) = obj.get(*alias) {
+                    if let Some(s) = val.as_str() {
+                        if !s.trim().is_empty() {
+                            professor = s.trim().to_string();
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if !course_name.is_empty() {
+                let final_start = norm_start.unwrap_or_else(|| "09:00".to_string());
+                let final_end = norm_end.unwrap_or_else(|| "11:00".to_string());
+                result.push(ExtractedLessonItem {
+                    day_of_week: day,
+                    start_time: final_start,
+                    end_time: final_end,
+                    course_name,
+                    classroom,
+                    professor,
+                });
+            }
+        }
+    }
+
+    if result.is_empty() {
+        return Err("Nessuna lezione identificata nell'orario. Verifica che la foto mostri chiaramente le caselle con le materie.".to_string());
+    }
+
+    Ok(result)
 }
 
 /// Limite massimo del payload base64 inviato al provider (≈ 15 MB).
@@ -1075,10 +1353,26 @@ pub fn parse_timetable_image_with_ai(
         image_base64
     };
 
-    let prompt_text = "Analizza questa immagine contenente un orario delle lezioni scolastico/universitario. \
-        Estrai ogni singola lezione presente nella griglia o nella tabella. \
-        Rispondi con un oggetto JSON avente la chiave 'lessons', contenente una lista di oggetti con i seguenti campi esatti: \
-        dayOfWeek (intero 1..7 dove 1=Lunedì, 7=Domenica), startTime ('HH:MM'), endTime ('HH:MM'), courseName (stringa), classroom (stringa), professor (stringa).";
+    let prompt_text = "Sei un sistema esperto di OCR e comprensione visiva strutturata di orari universitari e scolastici.\n\
+        Analizza con la massima attenzione l'immagine dell'orario ed estrai TUTTE le lezioni settimanali presenti nella tabella o griglia.\n\n\
+        REGOLE FONDAMENTALI DI ESTRAZIONE:\n\
+        1. ASSE DEI GIORNI: Identifica i giorni della settimana (colonne o righe): Lunedì=1, Martedì=2, Mercoledì=3, Giovedì=4, Venerdì=5, Sabato=6, Domenica=7.\n\
+        2. ASSE DEGLI ORARI: Leggi con assoluta precisione l'ora esatta di inizio (startTime) e fine (endTime). Se la fascia oraria è scritta dentro la casella della lezione (es. '08:30-10:30', '14.00 - 16.00'), usa SEMPRE prioritariamente quella. Se è indicata sulla griglia, segui con precisione la riga corrispondente.\n\
+        3. FORMATO ORARIO RIGOROSO: Esprimi startTime ed endTime ESCLUSIVAMENTE nel formato a 24 ore 'HH:MM' con zero iniziale (es. '08:30', '09:00', '14:30', '16:00'). Non troncare i minuti e non invertire mai inizio e fine.\n\
+        4. NOMI E AULE: Trascrivi fedelmente il nome della materia (courseName), l'aula (classroom) e il docente (professor) se visibili (altrimenti lascia stringa vuota '').\n\
+        5. FORMATO RISPOSTA: Restituisci ESCLUSIVAMENTE un oggetto JSON valido avente la chiave 'lessons':\n\
+        {\n\
+          \"lessons\": [\n\
+            {\n\
+              \"dayOfWeek\": 1,\n\
+              \"startTime\": \"08:30\",\n\
+              \"endTime\": \"10:30\",\n\
+              \"courseName\": \"Nome Corso\",\n\
+              \"classroom\": \"Aula 3\",\n\
+              \"professor\": \"Prof. Rossi\"\n\
+            }\n\
+          ]\n\
+        }";
 
     match provider.as_str() {
         "local" => {
@@ -1095,8 +1389,15 @@ pub fn parse_timetable_image_with_ai(
             let data_url = format!("data:{};base64,{}", clean_mime, clean_base64);
             let body = serde_json::json!({
                 "model": settings.ai_local_model_id,
+                "temperature": 0.0,
+                "top_p": 0.1,
+                "max_tokens": 4096,
                 "response_format": { "type": "json_object" },
                 "messages": [
+                    {
+                        "role": "system",
+                        "content": "Sei un sistema OCR specializzato in orari universitari e scolastici. Trascrivi con assoluta precisione i testi e gli orari visualizzati, senza mai inventare o allucinare dati non presenti nell'immagine."
+                    },
                     {
                         "role": "user",
                         "content": [
@@ -1121,27 +1422,14 @@ pub fn parse_timetable_image_with_ai(
                 .as_str()
                 .ok_or_else(|| "Risposta AI Locale vuota o non valida".to_string())?;
 
-            #[derive(Deserialize)]
-            struct Wrapper {
-                lessons: Option<Vec<ExtractedLessonItem>>,
-                timetable: Option<Vec<ExtractedLessonItem>>,
-            }
-            if let Ok(wrapper) = serde_json::from_str::<Wrapper>(text) {
-                if let Some(list) = wrapper.lessons.or(wrapper.timetable) {
-                    return Ok(list);
-                }
-            }
-            if let Ok(list) = serde_json::from_str::<Vec<ExtractedLessonItem>>(text) {
-                return Ok(list);
-            }
-            Err(format!("Formato risposta AI non riconosciuto: {}", text))
+            clean_and_parse_lessons_json(text)
         }
         "gemini" => {
             if settings.ai_api_key.trim().is_empty() {
                 return Err("Per analizzare con Gemini, configura la tua API Key nelle Impostazioni.".to_string());
             }
             let model = if settings.ai_model.trim().is_empty() {
-                "gemini-3.8-flash"
+                "gemini-2.5-flash"
             } else {
                 settings.ai_model.trim()
             };
@@ -1162,7 +1450,10 @@ pub fn parse_timetable_image_with_ai(
                         }
                     ]
                 }],
-                "generationConfig": { "responseMimeType": "application/json" }
+                "generationConfig": {
+                    "responseMimeType": "application/json",
+                    "temperature": 0.0
+                }
             });
 
             let resp: serde_json::Value = vision_agent()
@@ -1177,20 +1468,7 @@ pub fn parse_timetable_image_with_ai(
                 .as_str()
                 .ok_or_else(|| "Risposta Gemini vuota o non valida".to_string())?;
 
-            #[derive(Deserialize)]
-            struct Wrapper {
-                lessons: Option<Vec<ExtractedLessonItem>>,
-                timetable: Option<Vec<ExtractedLessonItem>>,
-            }
-            if let Ok(wrapper) = serde_json::from_str::<Wrapper>(text) {
-                if let Some(list) = wrapper.lessons.or(wrapper.timetable) {
-                    return Ok(list);
-                }
-            }
-            if let Ok(list) = serde_json::from_str::<Vec<ExtractedLessonItem>>(text) {
-                return Ok(list);
-            }
-            Err(format!("Formato risposta AI non riconosciuto: {}", text))
+            clean_and_parse_lessons_json(text)
         }
         "openai" => {
             if settings.ai_api_key.trim().is_empty() {
@@ -1206,6 +1484,7 @@ pub fn parse_timetable_image_with_ai(
 
             let body = serde_json::json!({
                 "model": model,
+                "temperature": 0.0,
                 "response_format": { "type": "json_object" },
                 "messages": [
                     {
@@ -1233,20 +1512,7 @@ pub fn parse_timetable_image_with_ai(
                 .as_str()
                 .ok_or_else(|| "Risposta OpenAI vuota o non valida".to_string())?;
 
-            #[derive(Deserialize)]
-            struct Wrapper {
-                lessons: Option<Vec<ExtractedLessonItem>>,
-                timetable: Option<Vec<ExtractedLessonItem>>,
-            }
-            if let Ok(wrapper) = serde_json::from_str::<Wrapper>(text) {
-                if let Some(list) = wrapper.lessons.or(wrapper.timetable) {
-                    return Ok(list);
-                }
-            }
-            if let Ok(list) = serde_json::from_str::<Vec<ExtractedLessonItem>>(text) {
-                return Ok(list);
-            }
-            Err(format!("Formato risposta AI non riconosciuto: {}", text))
+            clean_and_parse_lessons_json(text)
         }
         "ollama" => {
             let base = settings.ai_endpoint_url.trim().trim_end_matches('/');
@@ -1258,6 +1524,9 @@ pub fn parse_timetable_image_with_ai(
                     "content": prompt_text,
                     "images": [clean_base64]
                 }],
+                "options": {
+                    "temperature": 0.0
+                },
                 "format": "json",
                 "stream": false
             });
@@ -1273,20 +1542,7 @@ pub fn parse_timetable_image_with_ai(
                 .as_str()
                 .ok_or_else(|| "Risposta Ollama vuota o non valida".to_string())?;
 
-            #[derive(Deserialize)]
-            struct Wrapper {
-                lessons: Option<Vec<ExtractedLessonItem>>,
-                timetable: Option<Vec<ExtractedLessonItem>>,
-            }
-            if let Ok(wrapper) = serde_json::from_str::<Wrapper>(text) {
-                if let Some(list) = wrapper.lessons.or(wrapper.timetable) {
-                    return Ok(list);
-                }
-            }
-            if let Ok(list) = serde_json::from_str::<Vec<ExtractedLessonItem>>(text) {
-                return Ok(list);
-            }
-            Err(format!("Formato risposta AI non riconosciuto: {}", text))
+            clean_and_parse_lessons_json(text)
         }
         _ => Err("Seleziona 'AI Locale' o un provider supportato nelle Impostazioni per analizzare la foto dell'orario.".to_string()),
     }
@@ -1297,8 +1553,97 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_normalize_hour_string() {
+        assert_eq!(normalize_hour_string("8:30"), Some("08:30".to_string()));
+        assert_eq!(normalize_hour_string("08:30"), Some("08:30".to_string()));
+        assert_eq!(normalize_hour_string("8.30"), Some("08:30".to_string()));
+        assert_eq!(normalize_hour_string("8h30"), Some("08:30".to_string()));
+        assert_eq!(normalize_hour_string("9"), Some("09:00".to_string()));
+        assert_eq!(normalize_hour_string("14:00"), Some("14:00".to_string()));
+        assert_eq!(normalize_hour_string("14.45"), Some("14:45".to_string()));
+        assert_eq!(normalize_hour_string("25:00"), None);
+        assert_eq!(normalize_hour_string("invalid"), None);
+    }
+
+    #[test]
+    fn test_clean_and_parse_lessons_json_resilience() {
+        // Formato con markdown codefence, chiavi snake_case, orari senza zero iniziale e giorno come stringa
+        let ai_markdown_output = r#"
+        Certamente! Ecco le lezioni identificate nella griglia:
+        ```json
+        {
+          "lessons": [
+            {
+              "giorno": "Lunedì",
+              "ora_inizio": "8:30",
+              "ora_fine": "10.30",
+              "materia": "Fisica Sperimentale 1",
+              "aula": "Aula 4B",
+              "docente": "Prof. Bianchi"
+            },
+            {
+              "dayOfWeek": 3,
+              "startTime": "14:00",
+              "endTime": "16:00",
+              "courseName": "Analisi Matematica I",
+              "classroom": "Aula Magna"
+            }
+          ]
+        }
+        ```
+        Buono studio!
+        "#;
+
+        let parsed = clean_and_parse_lessons_json(ai_markdown_output).expect("Dovrebbe parsare con successo");
+        assert_eq!(parsed.len(), 2);
+
+        assert_eq!(parsed[0].day_of_week, 1);
+        assert_eq!(parsed[0].start_time, "08:30");
+        assert_eq!(parsed[0].end_time, "10:30");
+        assert_eq!(parsed[0].course_name, "Fisica Sperimentale 1");
+        assert_eq!(parsed[0].classroom, "Aula 4B");
+        assert_eq!(parsed[0].professor, "Prof. Bianchi");
+
+        assert_eq!(parsed[1].day_of_week, 3);
+        assert_eq!(parsed[1].start_time, "14:00");
+        assert_eq!(parsed[1].end_time, "16:00");
+        assert_eq!(parsed[1].course_name, "Analisi Matematica I");
+        assert_eq!(parsed[1].classroom, "Aula Magna");
+        assert_eq!(parsed[1].professor, "");
+    }
+
+    #[test]
+    fn test_clean_and_parse_lessons_json_combined_slot() {
+        let ai_output = r#"
+        [
+          {
+            "day": "giovedì",
+            "time": "09:00 - 11:00",
+            "subject": "Chimica Generale",
+            "room": "Lab 2"
+          }
+        ]
+        "#;
+        let parsed = clean_and_parse_lessons_json(ai_output).expect("Dovrebbe parsare array con fascia combinata");
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].day_of_week, 4);
+        assert_eq!(parsed[0].start_time, "09:00");
+        assert_eq!(parsed[0].end_time, "11:00");
+        assert_eq!(parsed[0].course_name, "Chimica Generale");
+        assert_eq!(parsed[0].classroom, "Lab 2");
+    }
+
+    #[test]
     fn test_ai_deterministic_tool_calling_and_queries() {
         let db = DatabaseManager::init_in_memory().unwrap();
+        db.with_conn(|conn| {
+            let mut settings = DatabaseManager::get_settings(conn).unwrap();
+            settings.ai_provider = "none".to_string();
+            DatabaseManager::save_settings(conn, &settings).unwrap();
+            Ok(())
+        })
+        .unwrap();
+
         let session = db
             .with_conn(|conn| {
                 DatabaseManager::upsert_session(

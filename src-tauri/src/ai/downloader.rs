@@ -245,6 +245,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "Richiede connessione internet attiva ad HuggingFace"]
     fn test_huggingface_tls_connection() {
         let agent = get_http_agent();
         let res = agent.get("https://huggingface.co").call();
@@ -252,6 +253,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Richiede connessione internet attiva ad HuggingFace"]
     fn test_all_catalog_download_urls() {
         let agent = get_http_agent();
         let catalog = get_ai_model_catalog();

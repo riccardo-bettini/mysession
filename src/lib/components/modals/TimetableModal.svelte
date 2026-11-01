@@ -209,23 +209,88 @@
     }
   }
 
+  async function optimizeImageForVision(file: File): Promise<{ base64: string; mime: string }> {
+    return new Promise((resolve, reject) => {
+      if (!file.type.startsWith("image/") || file.type.includes("svg")) {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ base64: reader.result as string, mime: file.type || "image/png" });
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        const maxDimension = 2560;
+        let width = img.width;
+        let height = img.height;
+
+        // Se l'immagine è già <= 2560px e < 5MB (es. screenshot 1080p o 1440p), mantieni lossless
+        if (width <= maxDimension && height <= maxDimension && file.size < 5 * 1024 * 1024) {
+          const reader = new FileReader();
+          reader.onload = () => resolve({ base64: reader.result as string, mime: file.type || "image/png" });
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+          return;
+        }
+
+        // Ridimensionamento proporzionale ad alta fedeltà solo se eccede i 2560px (foto smartphone)
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          const reader = new FileReader();
+          reader.onload = () => resolve({ base64: reader.result as string, mime: file.type || "image/png" });
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+          return;
+        }
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const targetMime = file.type === "image/png" ? "image/png" : "image/jpeg";
+        const base64 = canvas.toDataURL(targetMime, 0.95);
+        resolve({ base64, mime: targetMime });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        const reader = new FileReader();
+        reader.onload = () => resolve({ base64: reader.result as string, mime: file.type || "image/png" });
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      };
+      img.src = objectUrl;
+    });
+  }
+
   async function handleFileSelected(file: File) {
     aiError = null;
     extractedLessons = [];
-    const mime = file.type || "image/png";
-    aiImageMime = mime;
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const result = reader.result as string;
-      aiImagePreview = result;
-      aiImageBase64 = result;
-      await runVisionAiAnalysis(result, mime);
-    };
-    reader.onerror = () => {
-      aiError = "Impossibile leggere il file selezionato.";
-    };
-    reader.readAsDataURL(file);
+    try {
+      const { base64, mime } = await optimizeImageForVision(file);
+      aiImageMime = mime;
+      aiImagePreview = base64;
+      aiImageBase64 = base64;
+      await runVisionAiAnalysis(base64, mime);
+    } catch {
+      aiError = "Impossibile leggere o ottimizzare il file selezionato.";
+    }
   }
 
   async function runVisionAiAnalysis(base64: string, mime: string) {
