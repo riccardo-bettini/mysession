@@ -2,7 +2,8 @@ pub mod ai;
 pub use ai::*;
 
 use crate::ai::{
-    parse_timetable_image_with_ai, process_natural_command, AiAssistantResponse, ExtractedLessonItem,
+    parse_timetable_image_with_ai, parse_timetable_prompt_with_ai, process_natural_command,
+    AiAssistantResponse, ExtractedLessonItem,
 };
 use crate::db::DatabaseManager;
 use crate::engine::holidays::list_holidays_for_years;
@@ -573,6 +574,22 @@ pub async fn parse_timetable_image(
     })
     .await
     .map_err(|e| format!("Errore interno analisi foto: {}", e))?
+}
+
+#[tauri::command]
+pub async fn parse_timetable_prompt(
+    db: State<'_, DatabaseManager>,
+    session_id: String,
+    prompt: String,
+) -> Result<Vec<ExtractedLessonItem>, String> {
+    let settings = db
+        .with_conn(|conn| DatabaseManager::get_settings(conn))
+        .map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        parse_timetable_prompt_with_ai(&settings, &session_id, &prompt)
+    })
+    .await
+    .map_err(|e| format!("Errore interno analisi prompt: {}", e))?
 }
 
 #[tauri::command]

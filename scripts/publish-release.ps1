@@ -1,5 +1,5 @@
 param(
-    [string]$Tag = "v1.0.46",
+    [string]$Tag = "v1.0.47",
     [string]$Token = $env:GITHUB_TOKEN
 )
 
@@ -27,11 +27,11 @@ if ($existing) {
 }
 
 $releaseNotes = @"
-### Novità e Migliorie di MySession v1.0.46
+### Novità e Migliorie di MySession v1.0.47
 
-- **Risoluzione Definitiva Orari Vuoti e Strutture JSON Corrotte**: rimossi i parametri penalizzanti di presenza e frequenza (`frequency_penalty`, `presence_penalty`) e calibrata la `repeat_penalty` a 1.02, eliminando il bug che costringeva il modello Vision locale ad emettere campi orari vuoti o ad omettere il nome del corso.
-- **Supporto Avanzato Griglie Google Calendar / Outlook**: prompt con istruzioni mirate per ignorare indicatori orizzontali rossi dell'orario corrente (es. '10:42') e mappare con precisione colonne dei giorni e blocchi multipli sovrapposti.
-- **Meccanismo di Ripristino e Fallback Morbido**: sia il parser JSON che il decoder leniente recuperano automaticamente qualsiasi lezione con giorno valido anche in presenza di campi vuoti, pre-compilando la scheda per consentire la modifica immediata da interfaccia utente anziché bloccare l'utente con un messaggio di errore.
+- **Inserimento Orario tramite Prompt & Dettatura Vocale**: nuova modalità interattiva "Prompt & Voce" nel modal Orario Lezioni. Permette di digitare liberamente, incollare il testo dal portale universitario (es. Esse3 o PoliMi) oppure dettare direttamente a voce con il microfono (`it-IT`). L'assistente AI (locale o cloud) estrae e compila automaticamente giorni, orari, aule e materie.
+- **Scansione Completa di Blocchi Multipli e Impilati su Griglia**: perfezionamento del prompt Vision OCR per analizzare l'intera colonna di ciascun giorno da inizio mattina a fine pomeriggio, garantendo l'estrazione di tutte le lezioni consecutive o pomeridiane senza fermarsi alla prima lezione della giornata.
+- **Pulsante di Navigazione Input**: aggiunto il tasto "← Modifica input" nella tabella di revisione lezioni per passare agevolmente tra testo/voce, immagine e dati estratti.
 "@
 
 $releasePayload = @{

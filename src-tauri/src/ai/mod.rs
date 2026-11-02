@@ -1664,16 +1664,25 @@ pub fn parse_timetable_image_with_ai(
         image_base64
     };
 
-    let prompt_text = "Sei un analizzatore OCR per orari scolastici e accademici.\n\
-        Analizza con attenzione l'immagine ed estrai TUTTE le lezioni settimanali presenti in formato JSON.\n\n\
+    let prompt_text = "Sei un analizzatore OCR esperto per orari scolastici e accademici.\n\
+        Analizza con la massima attenzione l'immagine ed estrai TUTTE le lezioni settimanali presenti in formato JSON.\n\n\
         L'immagine può presentarsi in due forme:\n\n\
-        FORMA 1 — CALENDARIO SETTIMANALE O TABELLA A COLONNE (es. Google Calendar, Outlook o tabelle orario):\n\
-        - In alto compaiono le colonne dei giorni (LUN=1, MAR=2, MER=3, GIO=4, VEN=5, SAB=6, DOM=7).\n\
-        - L'asse orario a sinistra riporta le ore (es. 8, 9, 10, 11, 12, 13, 14, 15, 16).\n\
-        - NOTA BENE: Ignora eventuali linee o indicatori orizzontali rossi dell'orario corrente (es. '10:42'), non rappresentano lezioni!\n\
-        - Ciascun blocco/riquadro colorato posizionato dentro una colonna è una lezione.\n\
-        - Se una colonna contiene più blocchi (es. mattina e pomeriggio, o due blocchi consecutivi), estrai ciascun blocco assegnando il rispettivo dayOfWeek della colonna.\n\
-        - Per ogni lezione rileva: dayOfWeek (1..7), startTime ed endTime in formato 24 ore 'HH:MM', courseName (nome della materia scritto nel blocco), classroom (aula se indicata sotto la materia).\n\n\
+        FORMA 1 — CALENDARIO SETTIMANALE O TABELLA A COLONNE (es. Google Calendar, Outlook, orari universitari a griglia):\n\
+        - In alto sono disposte le colonne dei giorni (LUN=1, MAR=2, MER=3, GIO=4, VEN=5, SAB=6, DOM=7).\n\
+        - A sinistra compare l'asse degli orari (es. 8, 9, 10, 11, 12, 13, 14, 15, 16...).\n\
+        - NOTA BENE: Ignora eventuali linee orizzontali o marker rossi dell'ora attuale (es. '10:42'), non sono lezioni!\n\
+        - REGOLA FONDAMENTALE DI CONTEGGIO E SCANSIONE:\n\
+          * Ogni singolo blocco o riquadro colorato presente nella griglia rappresenta una lezione.\n\
+          * Prima di generare l'output, conta TUTTI i riquadri colorati visibili nell'intera settimana: il numero di elementi in 'lessons' DEVE corrispondere al numero totale di riquadri presenti!\n\
+          * ATTENZIONE AI BLOCCHI MULTIPLI/IMPILATI NELLO STESSO GIORNO:\n\
+            Spesso in una stessa colonna ci sono due o più lezioni (es. mercoledì 08:15-10:15 e subito sotto 10:15-12:15, oppure venerdì 08:15-10:15 e subito sotto 10:15-12:15, oppure pomeriggi come giovedì 13:15-15:15).\n\
+            DEVI percorrere ogni colonna dall'alto verso il basso (da inizio mattino a fine pomeriggio) ed estrarre CIASCUN blocco come lezione separata con il rispettivo dayOfWeek.\n\
+            NON fermarti assolutamente dopo il primo blocco del giorno!\n\
+        - Per ogni lezione rileva:\n\
+          * dayOfWeek (1=Lun, 2=Mar, 3=Mer, 4=Gio, 5=Ven, 6=Sab, 7=Dom)\n\
+          * startTime ed endTime in formato 24 ore 'HH:MM' ricavati dalla posizione verticale rispetto alle linee orarie (es. '08:15', '10:15', '12:15', '13:15', '15:15')\n\
+          * courseName: nome della materia scritto dentro il riquadro\n\
+          * classroom: aula indicata sotto la materia (es. 'BL 28.2.1', 'B8 1.1', 'B8 0.4')\n\n\
         FORMA 2 — ELENCO O LISTA TESTUALE (es. portali Esse3 o PoliMi):\n\
         - Sono presenti intestazioni di corso (es. '086472 - PROGETTAZIONE DI SISTEMI MECCANICI') seguite da punti elenco (es. '▪ Mercoledì dalle 08:15 alle 10:15 in aula BL.28.2.1').\n\
         - In questo caso ogni riga con giorno e orario è una lezione: estrai dayOfWeek (Mercoledì=3, Venerdì=5), startTime ('08:15'), endTime ('10:15'), classroom ('BL.28.2.1'), courseName (dal titolo del corso omettendo codici numerici) e professor (dal docente indicato).\n\n\
@@ -1690,7 +1699,7 @@ pub fn parse_timetable_image_with_ai(
               \"startTime\": \"08:15\",\n\
               \"endTime\": \"10:15\",\n\
               \"courseName\": \"Progettazione di Sistemi Meccanici\",\n\
-              \"classroom\": \"BL.28.2.1\",\n\
+              \"classroom\": \"BL 28.2.1\",\n\
               \"professor\": \"\"\n\
             }\n\
           ]\n\
@@ -1721,7 +1730,7 @@ pub fn parse_timetable_image_with_ai(
                 "messages": [
                     {
                         "role": "system",
-                        "content": "Sei un analizzatore OCR per orari universitari. Genera ESCLUSIVAMENTE JSON conforme a RFC 8259 (tutte le chiavi e valori testuali tra doppi apici \"...\"). Elenca ciascuna lezione visibile UNA SOLA VOLTA e chiudi immediatamente il JSON con ']}' senza mai ripetere."
+                        "content": "Sei un analizzatore OCR per orari universitari. Genera ESCLUSIVAMENTE JSON conforme a RFC 8259. Esamina l'intera settimana giorno per giorno (Lunedì-Domenica) dall'alto in basso ed estrai TUTTI i blocchi di lezione colorati presenti, inclusi blocchi multipli o consecutivi nello stesso giorno (es. Mercoledì mattina e pomeriggio, Venerdì mattina e pomeriggio). Chiudi con ']}'."
                     },
                     {
                         "role": "user",
@@ -1870,6 +1879,215 @@ pub fn parse_timetable_image_with_ai(
             clean_and_parse_lessons_json(text)
         }
         _ => Err("Seleziona 'AI Locale' o un provider supportato nelle Impostazioni per analizzare la foto dell'orario.".to_string()),
+    }
+}
+
+/// Estrae l'orario accademico partendo da una descrizione testuale (dettata a voce o scritta dall'utente).
+pub fn parse_timetable_prompt_with_ai(
+    settings: &crate::models::AppSettings,
+    _session_id: &str,
+    user_prompt: &str,
+) -> Result<Vec<ExtractedLessonItem>, String> {
+    let clean_prompt = user_prompt.trim();
+    if clean_prompt.is_empty() {
+        return Err("Il testo del prompt è vuoto. Dettagli o inserisci il tuo orario.".to_string());
+    }
+
+    let provider = settings.ai_provider.trim().to_lowercase();
+
+    let nlp_system_prompt = "Sei un analizzatore NLP esperto per orari scolastici e accademici. \
+        Il tuo compito è estrarre con massima precisione le lezioni settimanali dal testo fornito dall'utente \
+        (che può essere dettato a voce, digitato a mano o incollato da un portale universitario Esse3/PoliMi).\n\
+        Genera ESCLUSIVAMENTE un JSON conforme a RFC 8259 contenente l'elenco 'lessons', senza preamboli né markdown estraneo.";
+
+    let nlp_prompt_text = format!(
+        "Estrai tutte le lezioni settimanali presenti nel seguente testo:\n\n\
+        \"{}\"\n\n\
+        REGOLE TASSATIVE DI ESTRAZIONE:\n\
+        1. dayOfWeek: numero intero da 1 a 7 (1=Lunedì, 2=Martedì, 3=Mercoledì, 4=Giovedì, 5=Venerdì, 6=Sabato, 7=Domenica).\n\
+        2. startTime ed endTime: SEMPRE in formato 24 ore 'HH:MM' con due cifre (es. '08:15', '09:00', '10:15', '13:15', '15:15'). Se l'utente dice 'dalle 9 alle 11', usa '09:00' e '11:00'.\n\
+        3. courseName: nome della materia o del corso (es. 'Progettazione di Sistemi Meccanici', 'Macchine e Sistemi Energetici'). Rimuovi eventuali codici numerici iniziali.\n\
+        4. classroom: aula indicata (es. 'BL.28.2.1', 'B8 0.4', 'Aula Magna'), altrimenti stringa vuota \"\".\n\
+        5. professor: docente se menzionato, altrimenti stringa vuota \"\".\n\
+        6. Se una materia si ripete in più giorni o fasce orarie, crea una voce separata per ciascun blocco.\n\n\
+        Formato JSON atteso:\n\
+        {{\n\
+          \"lessons\": [\n\
+            {{\n\
+              \"dayOfWeek\": 3,\n\
+              \"startTime\": \"08:15\",\n\
+              \"endTime\": \"10:15\",\n\
+              \"courseName\": \"Progettazione di Sistemi Meccanici\",\n\
+              \"classroom\": \"BL.28.2.1\",\n\
+              \"professor\": \"Filippini Mauro\"\n\
+            }}\n\
+          ]\n\
+        }}",
+        clean_prompt
+    );
+
+    match provider.as_str() {
+        "local" => {
+            let app_data_dir = DatabaseManager::resolve_app_data_dir();
+            let runtime = get_runtime_manager();
+            let port = runtime.ensure_started(
+                &app_data_dir,
+                &settings.ai_local_model_id,
+                &settings.ai_hardware_preference,
+                settings.ai_idle_timeout_minutes,
+            )?;
+            runtime.touch_activity();
+
+            let body = serde_json::json!({
+                "model": settings.ai_local_model_id,
+                "temperature": 0.1,
+                "top_p": 0.9,
+                "repeat_penalty": 1.02,
+                "frequency_penalty": 0.0,
+                "presence_penalty": 0.0,
+                "max_tokens": 2048,
+                "response_format": { "type": "json_object" },
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": nlp_system_prompt
+                    },
+                    {
+                        "role": "user",
+                        "content": nlp_prompt_text
+                    }
+                ]
+            });
+
+            let resp: serde_json::Value = vision_agent()
+                .post(&format!("http://127.0.0.1:{}/v1/chat/completions", port))
+                .send_json(body)
+                .map_err(|e| sanitize_http_error("Errore chiamata AI Locale (llama-server)", e))?
+                .into_json()
+                .map_err(|e| format!("Errore parsing risposta AI Locale: {}", e))?;
+
+            let text = resp["choices"][0]["message"]["content"]
+                .as_str()
+                .ok_or_else(|| "Risposta AI Locale vuota o non valida".to_string())?;
+
+            clean_and_parse_lessons_json(text)
+        }
+        "gemini" => {
+            if settings.ai_api_key.trim().is_empty() {
+                return Err("Per analizzare con Gemini, configura la tua API Key nelle Impostazioni.".to_string());
+            }
+            let model = if settings.ai_model.trim().is_empty() {
+                "gemini-2.5-flash"
+            } else {
+                settings.ai_model.trim()
+            };
+            let url = format!(
+                "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+                model
+            );
+
+            let body = serde_json::json!({
+                "contents": [{
+                    "parts": [
+                        { "text": format!("{}\n\n{}", nlp_system_prompt, nlp_prompt_text) }
+                    ]
+                }],
+                "generationConfig": {
+                    "responseMimeType": "application/json",
+                    "temperature": 0.1
+                }
+            });
+
+            let resp: serde_json::Value = vision_agent()
+                .post(&url)
+                .set("x-goog-api-key", settings.ai_api_key.trim())
+                .send_json(body)
+                .map_err(|e| sanitize_http_error("Errore chiamata Gemini NLP", e))?
+                .into_json()
+                .map_err(|e| format!("Errore parsing risposta Gemini: {}", e))?;
+
+            let text = resp["candidates"][0]["content"]["parts"][0]["text"]
+                .as_str()
+                .ok_or_else(|| "Risposta Gemini vuota o non valida".to_string())?;
+
+            clean_and_parse_lessons_json(text)
+        }
+        "openai" => {
+            if settings.ai_api_key.trim().is_empty() {
+                return Err("Per analizzare con OpenAI, configura la tua API Key nelle Impostazioni.".to_string());
+            }
+            let model = if settings.ai_model.trim().is_empty() {
+                "gpt-4o"
+            } else {
+                settings.ai_model.trim()
+            };
+
+            let body = serde_json::json!({
+                "model": model,
+                "temperature": 0.1,
+                "response_format": { "type": "json_object" },
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": nlp_system_prompt
+                    },
+                    {
+                        "role": "user",
+                        "content": nlp_prompt_text
+                    }
+                ]
+            });
+
+            let resp: serde_json::Value = vision_agent()
+                .post("https://api.openai.com/v1/chat/completions")
+                .set("Authorization", &format!("Bearer {}", settings.ai_api_key.trim()))
+                .send_json(body)
+                .map_err(|e| sanitize_http_error("Errore chiamata OpenAI NLP", e))?
+                .into_json()
+                .map_err(|e| format!("Errore parsing risposta OpenAI: {}", e))?;
+
+            let text = resp["choices"][0]["message"]["content"]
+                .as_str()
+                .ok_or_else(|| "Risposta OpenAI vuota o non valida".to_string())?;
+
+            clean_and_parse_lessons_json(text)
+        }
+        "ollama" => {
+            let base = settings.ai_endpoint_url.trim().trim_end_matches('/');
+            let url = format!("{}/api/chat", base);
+            let body = serde_json::json!({
+                "model": settings.ai_model.trim(),
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": nlp_system_prompt
+                    },
+                    {
+                        "role": "user",
+                        "content": nlp_prompt_text
+                    }
+                ],
+                "options": {
+                    "temperature": 0.1
+                },
+                "format": "json",
+                "stream": false
+            });
+
+            let resp: serde_json::Value = vision_agent()
+                .post(&url)
+                .send_json(body)
+                .map_err(|e| sanitize_http_error("Errore chiamata Ollama NLP", e))?
+                .into_json()
+                .map_err(|e| format!("Errore parsing risposta Ollama: {}", e))?;
+
+            let text = resp["message"]["content"]
+                .as_str()
+                .ok_or_else(|| "Risposta Ollama vuota o non valida".to_string())?;
+
+            clean_and_parse_lessons_json(text)
+        }
+        _ => Err("Seleziona 'AI Locale' o un provider supportato nelle Impostazioni per analizzare il prompt dell'orario.".to_string()),
     }
 }
 
@@ -2154,5 +2372,65 @@ mod tests {
             })
             .unwrap();
         assert!(res_stats.reply_markdown.contains("12 CFU"));
+    }
+
+    #[test]
+    fn test_parse_lessons_json_multiple_stacked_per_day() {
+        let json_input = r#"{
+            "lessons": [
+                {
+                    "dayOfWeek": 3,
+                    "startTime": "08:15",
+                    "endTime": "10:15",
+                    "courseName": "Progettazione di Sistemi Meccanici",
+                    "classroom": "BL 28.2.1",
+                    "professor": "Filippini Mauro"
+                },
+                {
+                    "dayOfWeek": 3,
+                    "startTime": "10:15",
+                    "endTime": "12:15",
+                    "courseName": "Macchine e Sistemi Energetici",
+                    "classroom": "BL 28.2.1",
+                    "professor": "Della Torre Augusto"
+                },
+                {
+                    "dayOfWeek": 4,
+                    "startTime": "13:15",
+                    "endTime": "15:15",
+                    "courseName": "Macchine e Sistemi Energetici",
+                    "classroom": "B8 0.4",
+                    "professor": "Della Torre Augusto"
+                },
+                {
+                    "dayOfWeek": 5,
+                    "startTime": "08:15",
+                    "endTime": "10:15",
+                    "courseName": "Macchine e Sistemi Energetici",
+                    "classroom": "B8 1.1",
+                    "professor": "Della Torre Augusto"
+                },
+                {
+                    "dayOfWeek": 5,
+                    "startTime": "10:15",
+                    "endTime": "12:15",
+                    "courseName": "Progettazione di Sistemi Meccanici",
+                    "classroom": "B8 1.1",
+                    "professor": "Filippini Mauro"
+                }
+            ]
+        }"#;
+
+        let parsed = clean_and_parse_lessons_json(json_input).expect("Dovrebbe parsare tutte le 5 lezioni");
+        assert_eq!(parsed.len(), 5);
+        assert_eq!(parsed[0].day_of_week, 3);
+        assert_eq!(parsed[0].start_time, "08:15");
+        assert_eq!(parsed[0].end_time, "10:15");
+        assert_eq!(parsed[1].day_of_week, 3);
+        assert_eq!(parsed[1].start_time, "10:15");
+        assert_eq!(parsed[1].end_time, "12:15");
+        assert_eq!(parsed[2].day_of_week, 4);
+        assert_eq!(parsed[3].day_of_week, 5);
+        assert_eq!(parsed[4].day_of_week, 5);
     }
 }

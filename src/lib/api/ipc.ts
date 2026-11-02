@@ -148,6 +148,9 @@ export const ipc = {
   parseTimetableImage: (sessionId: string, imageBase64: string, mimeType: string) =>
     invoke<ExtractedLessonItem[]>("parse_timetable_image", { sessionId, imageBase64, mimeType }),
 
+  parseTimetablePrompt: (sessionId: string, prompt: string) =>
+    invoke<ExtractedLessonItem[]>("parse_timetable_prompt", { sessionId, prompt }),
+
   openFolderInExplorer: (path: string) =>
     invoke<void>("open_folder_in_explorer", { path }),
 

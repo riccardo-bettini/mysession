@@ -10,7 +10,7 @@ use db::DatabaseManager;
 use tauri::Manager;
 use win32::{apply_window_backdrop_and_theme, install_window_subclass};
 
-pub const APP_VERSION: &str = "1.0.46";
+pub const APP_VERSION: &str = "1.0.47";
 pub const APP_AUTHOR: &str = "Riccardo Bettini";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -87,6 +87,7 @@ pub fn run() {
             commands::delete_weekly_lesson,
             commands::project_lessons_to_calendar,
             commands::parse_timetable_image,
+            commands::parse_timetable_prompt,
             commands::open_folder_in_explorer,
             commands::relaunch_app,
             commands::get_system_hardware_info,

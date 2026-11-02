@@ -267,6 +267,12 @@ class SessionWorkspaceStore {
     return ipc.parseTimetableImage(sessionId, imageBase64, mimeType);
   }
 
+  async parseTimetablePrompt(prompt: string): Promise<ExtractedLessonItem[]> {
+    const sessionId = this.activeSession?.id;
+    if (!sessionId) throw new Error("Nessuna sessione attiva.");
+    return ipc.parseTimetablePrompt(sessionId, prompt);
+  }
+
   async executeAiCommand(prompt: string): Promise<AiAssistantResponse> {
     const sessionId = this.activeSession?.id;
     if (!sessionId) {

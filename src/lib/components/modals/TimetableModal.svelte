@@ -5,7 +5,21 @@
   import { UNIFIED_STANDARD_PALETTE, generateCourseColorTokens } from "../../utils/color";
   import { themeStore } from "../../stores/theme.svelte";
   import { ipc } from "../../api/ipc";
-  import { Sparkles, Calendar, Plus, Trash2, Edit2, Upload, Check, X, Clock, MapPin, User, ArrowRight } from "lucide-svelte";
+  import {
+    Sparkles,
+    Calendar,
+    Plus,
+    Trash2,
+    Edit2,
+    Upload,
+    Check,
+    X,
+    Clock,
+    MapPin,
+    User,
+    ArrowRight,
+    ArrowLeft
+  } from "lucide-svelte";
 
   interface Props {
     onClose?: () => void;
@@ -59,7 +73,15 @@
     colorHex: UNIFIED_STANDARD_PALETTE[0]
   });
 
-  // Stato Vision AI
+  // Stato Assistente AI (Vision + Prompt / Dettatura Vocale)
+  let aiModalTab = $state<"vision" | "prompt">("vision");
+  let promptText = $state("");
+  let isListening = $state(false);
+  let voiceSupported = $state(false);
+  let voiceError = $state<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let recognitionInstance: any = null;
+
   let aiImagePreview = $state<string | null>(null);
   let aiImageBase64 = $state<string | null>(null);
   let aiImageMime = $state<string>("image/png");
@@ -88,14 +110,17 @@
   });
 
   onMount(() => {
+    initSpeechRecognition();
     const handlePaste = (e: ClipboardEvent) => {
       if (!isAiVisionOpen) return;
+      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
       const items = e.clipboardData?.items;
       if (!items) return;
       for (let i = 0; i < items.length; i++) {
         if (items[i].type.startsWith("image/")) {
           const file = items[i].getAsFile();
           if (file) {
+            aiModalTab = "vision";
             handleFileSelected(file);
             break;
           }
@@ -103,8 +128,121 @@
       }
     };
     window.addEventListener("paste", handlePaste);
-    return () => window.removeEventListener("paste", handlePaste);
+    return () => {
+      window.removeEventListener("paste", handlePaste);
+      if (isListening) {
+        try {
+          recognitionInstance?.stop();
+        } catch {}
+      }
+    };
   });
+
+  function initSpeechRecognition() {
+    if (typeof window === "undefined") return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      voiceSupported = false;
+      return;
+    }
+
+    voiceSupported = true;
+    const rec = new SpeechRec();
+    rec.lang = "it-IT";
+    rec.continuous = false;
+    rec.interimResults = true;
+
+    rec.onstart = () => {
+      voiceError = null;
+      isListening = true;
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onresult = (event: any) => {
+      let transcript = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      if (transcript.trim()) {
+        if (!promptText || promptText.endsWith(". ") || promptText.endsWith("\n")) {
+          promptText += transcript.trim();
+        } else {
+          promptText += " " + transcript.trim();
+        }
+      }
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onerror = (event: any) => {
+      isListening = false;
+      if (event?.error && event.error !== "no-speech" && event.error !== "aborted") {
+        voiceError = `Dettatura vocale non disponibile (${event.error}). Puoi digitare o incollare il testo.`;
+      }
+    };
+
+    rec.onend = () => {
+      isListening = false;
+    };
+
+    recognitionInstance = rec;
+  }
+
+  function toggleVoiceDictation() {
+    voiceError = null;
+    if (!voiceSupported || !recognitionInstance) {
+      voiceError = "Dettatura vocale non supportata dal runtime di sistema. Puoi digitare o incollare il testo.";
+      return;
+    }
+
+    if (isListening) {
+      try {
+        recognitionInstance.stop();
+      } catch {}
+      isListening = false;
+    } else {
+      try {
+        recognitionInstance.start();
+      } catch {
+        isListening = false;
+      }
+    }
+  }
+
+  async function handleAnalyzePrompt() {
+    if (!promptText.trim()) {
+      aiError = "Inserisci o detta a voce l'orario delle tue lezioni prima di avviare l'analisi.";
+      return;
+    }
+    if (isListening) {
+      try {
+        recognitionInstance?.stop();
+      } catch {}
+      isListening = false;
+    }
+
+    const analysisId = ++currentAnalysisId;
+    isAiAnalyzing = true;
+    aiError = null;
+    extractedLessons = [];
+
+    try {
+      const items = await sessionStore.parseTimetablePrompt(promptText.trim());
+      if (currentAnalysisId !== analysisId) return;
+      if (!items || items.length === 0) {
+        aiError = "Nessuna lezione identificata nel testo fornito. Prova a specificare giorni, orari (es. 08:30-10:30) e nomi delle materie.";
+      } else {
+        extractedLessons = items;
+      }
+    } catch (e) {
+      if (currentAnalysisId !== analysisId) return;
+      aiError = e instanceof Error ? e.message : String(e);
+    } finally {
+      if (currentAnalysisId === analysisId) {
+        isAiAnalyzing = false;
+      }
+    }
+  }
 
   function getLessonsForDay(dayOfWeek: number): WeeklyLesson[] {
     return lessons
@@ -213,11 +351,18 @@
 
   function handleCancelVisionModal() {
     currentAnalysisId++;
+    if (isListening) {
+      try {
+        recognitionInstance?.stop();
+      } catch {}
+      isListening = false;
+    }
     isAiAnalyzing = false;
     isAiVisionOpen = false;
     aiImagePreview = null;
     aiImageBase64 = null;
     aiError = null;
+    voiceError = null;
     extractedLessons = [];
   }
 
@@ -425,15 +570,15 @@
           {showWeekend ? "Lun – Dom" : "Lun – Ven"}
         </button>
 
-        <!-- Vision AI CTA -->
+        <!-- AI Timetable Import CTA -->
         <button
           type="button"
           class="btn-ai pressable"
           onclick={openAiVisionModal}
-          title="Carica foto dell'orario e importalo con Vision AI"
+          title="Importa l'orario con Intelligenza Artificiale (da Foto, Screenshot, Testo o Dettatura Vocale)"
         >
           <Sparkles size={14} />
-          <span>Carica Foto con IA</span>
+          <span>Importa con IA (Foto / Voce)</span>
         </button>
 
         <!-- Proietta nel Calendario CTA -->
@@ -744,7 +889,7 @@
           <header class="submodal-header">
             <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
               <Sparkles size={18} color="#007AFF" />
-              <h3>Vision AI — Scansiona Foto Orario</h3>
+              <h3>Assistente Orario AI</h3>
               {#if themeStore.settings.aiProvider === "local"}
                 <span class="badge" style="background: rgba(52, 199, 89, 0.15); color: #34C759; font-size: 0.72rem; padding: 0.15rem 0.55rem; border-radius: 999px; font-weight: 700;">
                   ● AI Locale ({themeStore.settings.aiLocalModelId})
@@ -767,169 +912,339 @@
           </header>
 
           <div class="ai-vision-content">
-            {#if !aiImagePreview}
-              <!-- Drag and drop zone -->
-              <div
-                class="dropzone-area"
-                ondrop={handleFileDrop}
-                ondragover={(e) => e.preventDefault()}
-                role="region"
-                aria-label="Trascina foto dell'orario"
-              >
-                <div class="drop-icon-wrap">
-                  <Upload size={32} />
+            {#if extractedLessons.length > 0}
+              <!-- REVIEW DELLE LEZIONI ESTRATTE (SIA DA FOTO CHE DA PROMPT/VOCE) -->
+              <div class="extracted-table-container">
+                <div class="extracted-header">
+                  <div style="display: flex; align-items: center; gap: 0.65rem;">
+                    <button
+                      type="button"
+                      class="btn-back-to-input pressable"
+                      disabled={isSavingExtracted}
+                      onclick={() => { extractedLessons = []; aiError = null; }}
+                      title="Torna indietro per modificare l'immagine o il prompt"
+                    >
+                      <ArrowLeft size={13} />
+                      <span>Modifica input</span>
+                    </button>
+                    <h4>Lezioni Riconosciute ({extractedLessons.length})</h4>
+                  </div>
+                  <span class="extracted-hint">Modifica i campi se necessario prima di confermare:</span>
                 </div>
-                <h4>Trascina qui l'immagine del tuo orario</h4>
-                <p class="drop-hint">
-                  Oppure premi <kbd>Ctrl+V</kbd> per incollare uno screenshot dagli appunti (es. catturato con Win+Shift+S)
-                </p>
-                <label class="btn-file-select pressable">
-                  <input
-                    type="file"
-                    accept="image/png, image/jpeg, image/webp"
-                    onchange={handleFileInputChange}
-                    style="display: none;"
-                  />
-                  <span>Sfoglia immagine…</span>
-                </label>
+
+                <div class="extracted-rows-scroll">
+                  {#each extractedLessons as item, idx}
+                    <div class="extracted-item-row">
+                      <select bind:value={item.dayOfWeek} class="input-select-mini">
+                        {#each DAYS as d}
+                          <option value={d.id}>{d.short}</option>
+                        {/each}
+                      </select>
+                      <input
+                        type="time"
+                        bind:value={item.startTime}
+                        class="input-time-mini"
+                        title="Ora Inizio"
+                      />
+                      <span class="dash">–</span>
+                      <input
+                        type="time"
+                        bind:value={item.endTime}
+                        class="input-time-mini"
+                        title="Ora Fine"
+                      />
+                      <input
+                        type="text"
+                        bind:value={item.courseName}
+                        placeholder="Materia"
+                        class="input-text-mini"
+                        title="Materia"
+                      />
+                      <input
+                        type="text"
+                        bind:value={item.classroom}
+                        placeholder="Aula"
+                        class="input-text-mini room"
+                        title="Aula"
+                      />
+                      <input
+                        type="text"
+                        bind:value={item.professor}
+                        placeholder="Docente"
+                        class="input-text-mini prof"
+                        title="Docente"
+                      />
+                      <button
+                        type="button"
+                        class="btn-del-mini"
+                        title="Rimuovi riga"
+                        onclick={() => {
+                          extractedLessons = extractedLessons.filter((_, i) => i !== idx);
+                        }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  {/each}
+                </div>
+
+                <button
+                  type="button"
+                  class="btn-add-extracted-row pressable"
+                  onclick={() => {
+                    extractedLessons = [
+                      ...extractedLessons,
+                      {
+                        dayOfWeek: 1,
+                        startTime: "09:00",
+                        endTime: "11:00",
+                        courseName: "",
+                        classroom: "",
+                        professor: ""
+                      }
+                    ];
+                  }}
+                >
+                  + Aggiungi riga manuale
+                </button>
               </div>
             {:else}
-              <!-- Image preview & AI extraction result -->
-              <div class="vision-results-layout">
-                <div class="vision-preview-col">
-                  <div class="thumb-wrapper">
-                    <img src={aiImagePreview} alt="Orario caricato" class="vision-thumb" />
-                  </div>
+              <!-- SELETTORE MODALITÀ (FOTO / SCREENSHOT vs PROMPT & VOCE) -->
+              <div class="ai-tabs-container">
+                <div class="ai-mode-tabs">
                   <button
                     type="button"
-                    class="btn-change-image pressable"
-                    disabled={isSavingExtracted}
+                    class="ai-tab-btn"
+                    class:active={aiModalTab === "vision"}
+                    disabled={isAiAnalyzing}
                     onclick={() => {
-                      currentAnalysisId++;
-                      isAiAnalyzing = false;
-                      aiImagePreview = null;
-                      aiImageBase64 = null;
-                      extractedLessons = [];
+                      aiModalTab = "vision";
                       aiError = null;
                     }}
                   >
-                    Carica un'altra foto
+                    <Upload size={13} />
+                    <span>Foto / Screenshot</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="ai-tab-btn"
+                    class:active={aiModalTab === "prompt"}
+                    disabled={isAiAnalyzing}
+                    onclick={() => {
+                      aiModalTab = "prompt";
+                      aiError = null;
+                    }}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                      <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" stroke-width="1.8" />
+                      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                    </svg>
+                    <span>Prompt & Dettatura Vocale</span>
                   </button>
                 </div>
+              </div>
 
-                <div class="vision-extracted-col">
-                  {#if isAiAnalyzing}
-                    <div class="analyzing-state">
-                      <div class="ai-spinner"></div>
-                      <h4>L'Intelligenza Artificiale sta leggendo l'orario…</h4>
-                      <p>Riconoscimento automatico di giorni, materie, aule e docenti in corso.</p>
-                      <button
-                        type="button"
-                        class="btn-cancel-analyzing pressable"
-                        onclick={handleCancelVisionModal}
-                        style="margin-top: 0.85rem; background: rgba(255, 69, 58, 0.12); color: #FF453A; border: 1px solid rgba(255, 69, 58, 0.25); border-radius: 8px; padding: 0.4rem 0.9rem; font-size: 0.82rem; font-weight: 600; cursor: pointer;"
-                      >
-                        Interrompi analisi
-                      </button>
+              {#if aiModalTab === "vision"}
+                {#if !aiImagePreview}
+                  <!-- Drag and drop zone -->
+                  <div
+                    class="dropzone-area"
+                    ondrop={handleFileDrop}
+                    ondragover={(e) => e.preventDefault()}
+                    role="region"
+                    aria-label="Trascina foto dell'orario"
+                  >
+                    <div class="drop-icon-wrap">
+                      <Upload size={32} />
                     </div>
-                  {:else if aiError}
-                    <div class="ai-error-box">
-                      <p><strong>Errore analisi foto:</strong></p>
-                      <p>{aiError}</p>
+                    <h4>Trascina qui l'immagine del tuo orario</h4>
+                    <p class="drop-hint">
+                      Oppure premi <kbd>Ctrl+V</kbd> per incollare uno screenshot dagli appunti (es. catturato con Win+Shift+S)
+                    </p>
+                    <label class="btn-file-select pressable">
+                      <input
+                        type="file"
+                        accept="image/png, image/jpeg, image/webp"
+                        onchange={handleFileInputChange}
+                        style="display: none;"
+                      />
+                      <span>Sfoglia immagine…</span>
+                    </label>
+                  </div>
+                {:else}
+                  <!-- Image preview & AI extraction result -->
+                  <div class="vision-results-layout">
+                    <div class="vision-preview-col">
+                      <div class="thumb-wrapper">
+                        <img src={aiImagePreview} alt="Orario caricato" class="vision-thumb" />
+                      </div>
                       <button
                         type="button"
-                        class="btn-retry pressable"
-                        onclick={() => aiImageBase64 && runVisionAiAnalysis(aiImageBase64, aiImageMime)}
-                      >
-                        Riprova analisi
-                      </button>
-                    </div>
-                  {:else if extractedLessons.length > 0}
-                    <div class="extracted-table-container">
-                      <div class="extracted-header">
-                        <h4>Lezioni Riconosciute ({extractedLessons.length})</h4>
-                        <span class="extracted-hint">Modifica i campi se necessario prima di confermare:</span>
-                      </div>
-
-                      <div class="extracted-rows-scroll">
-                        {#each extractedLessons as item, idx}
-                          <div class="extracted-item-row">
-                            <select bind:value={item.dayOfWeek} class="input-select-mini">
-                              {#each DAYS as d}
-                                <option value={d.id}>{d.short}</option>
-                              {/each}
-                            </select>
-                            <input
-                              type="time"
-                              bind:value={item.startTime}
-                              class="input-time-mini"
-                              title="Ora Inizio"
-                            />
-                            <span class="dash">–</span>
-                            <input
-                              type="time"
-                              bind:value={item.endTime}
-                              class="input-time-mini"
-                              title="Ora Fine"
-                            />
-                            <input
-                              type="text"
-                              bind:value={item.courseName}
-                              placeholder="Materia"
-                              class="input-text-mini"
-                              title="Materia"
-                            />
-                            <input
-                              type="text"
-                              bind:value={item.classroom}
-                              placeholder="Aula"
-                              class="input-text-mini room"
-                              title="Aula"
-                            />
-                            <input
-                              type="text"
-                              bind:value={item.professor}
-                              placeholder="Docente"
-                              class="input-text-mini prof"
-                              title="Docente"
-                            />
-                            <button
-                              type="button"
-                              class="btn-del-mini"
-                              title="Rimuovi riga"
-                              onclick={() => {
-                                extractedLessons = extractedLessons.filter((_, i) => i !== idx);
-                              }}
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        {/each}
-                      </div>
-
-                      <button
-                        type="button"
-                        class="btn-add-extracted-row pressable"
+                        class="btn-change-image pressable"
+                        disabled={isSavingExtracted || isAiAnalyzing}
                         onclick={() => {
-                          extractedLessons = [
-                            ...extractedLessons,
-                            {
-                              dayOfWeek: 1,
-                              startTime: "09:00",
-                              endTime: "11:00",
-                              courseName: "",
-                              classroom: "",
-                              professor: ""
-                            }
-                          ];
+                          currentAnalysisId++;
+                          isAiAnalyzing = false;
+                          aiImagePreview = null;
+                          aiImageBase64 = null;
+                          extractedLessons = [];
+                          aiError = null;
                         }}
                       >
-                        + Aggiungi riga manuale
+                        Carica un'altra foto
                       </button>
                     </div>
-                  {/if}
+
+                    <div class="vision-extracted-col">
+                      {#if isAiAnalyzing}
+                        <div class="analyzing-state">
+                          <div class="ai-spinner"></div>
+                          <h4>L'Intelligenza Artificiale sta leggendo l'orario…</h4>
+                          <p>Riconoscimento automatico di giorni, materie, aule e docenti in corso.</p>
+                          <button
+                            type="button"
+                            class="btn-cancel-analyzing pressable"
+                            onclick={handleCancelVisionModal}
+                            style="margin-top: 0.85rem; background: rgba(255, 69, 58, 0.12); color: #FF453A; border: 1px solid rgba(255, 69, 58, 0.25); border-radius: 8px; padding: 0.4rem 0.9rem; font-size: 0.82rem; font-weight: 600; cursor: pointer;"
+                          >
+                            Interrompi analisi
+                          </button>
+                        </div>
+                      {:else if aiError}
+                        <div class="ai-error-box">
+                          <p><strong>Errore analisi foto:</strong></p>
+                          <p>{aiError}</p>
+                          <button
+                            type="button"
+                            class="btn-retry pressable"
+                            onclick={() => aiImageBase64 && runVisionAiAnalysis(aiImageBase64, aiImageMime)}
+                          >
+                            Riprova analisi
+                          </button>
+                        </div>
+                      {/if}
+                    </div>
+                  </div>
+                {/if}
+              {:else}
+                <!-- Prompt & Voice Area -->
+                <div class="ai-prompt-area">
+                  <div class="prompt-card">
+                    <div class="prompt-header-row">
+                      <span class="prompt-label">Descrivi a parole o detta a voce l'orario delle tue lezioni:</span>
+                      {#if isListening}
+                        <span class="listening-tag">
+                          <span class="pulse-dot"></span> In ascolto (parla ora in italiano)…
+                        </span>
+                      {/if}
+                    </div>
+
+                    <textarea
+                      class="prompt-textarea"
+                      bind:value={promptText}
+                      disabled={isAiAnalyzing}
+                      placeholder="Es: 'Il mercoledì ho Progettazione dalle 08:15 alle 10:15 in aula BL.28.2.1 e Macchine dalle 10:15 alle 12:15 in BL.28.2.1. Il giovedì ho Macchine dalle 13:15 alle 15:15 in aula B8 0.4. Il venerdì ho Macchine 08:15-10:15 e Progettazione 10:15-12:15 in aula B8 1.1'&#10;&#10;Oppure incolla direttamente l'elenco testuale delle lezioni dal tuo portale Esse3/PoliMi."
+                    ></textarea>
+
+                    {#if voiceError}
+                      <div class="voice-alert-box">
+                        <span>{voiceError}</span>
+                      </div>
+                    {/if}
+
+                    {#if aiError}
+                      <div class="ai-error-box" style="margin: 0.5rem 0 0 0;">
+                        <p><strong>Errore analisi prompt:</strong></p>
+                        <p>{aiError}</p>
+                      </div>
+                    {/if}
+
+                    {#if isAiAnalyzing}
+                      <div class="analyzing-state" style="padding: 1.25rem 0;">
+                        <div class="ai-spinner"></div>
+                        <h4>Elaborazione orario dal testo in corso…</h4>
+                        <p>Estrazione automatica dei corsi, giorni, aule e orari con Intelligenza Artificiale.</p>
+                        <button
+                          type="button"
+                          class="btn-cancel-analyzing pressable"
+                          onclick={handleCancelVisionModal}
+                          style="margin-top: 0.85rem; background: rgba(255, 69, 58, 0.12); color: #FF453A; border: 1px solid rgba(255, 69, 58, 0.25); border-radius: 8px; padding: 0.4rem 0.9rem; font-size: 0.82rem; font-weight: 600; cursor: pointer;"
+                        >
+                          Interrompi analisi
+                        </button>
+                      </div>
+                    {/if}
+
+                    <div class="prompt-actions-bar">
+                      <div class="prompt-voice-group">
+                        <button
+                          type="button"
+                          class="mic-trigger-btn"
+                          class:listening={isListening}
+                          onclick={toggleVoiceDictation}
+                          title={isListening ? "Interrompi ascolto vocale" : "Avvia dettatura vocale con microfono (it-IT)"}
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                            <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" stroke-width="1.8" />
+                            <path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                          </svg>
+                        </button>
+
+                        {#if isListening}
+                          <div class="voice-waveform" aria-label="Onda sonora dettatura attiva">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                          </div>
+                          <span class="listening-caption">Parla in italiano…</span>
+                        {:else}
+                          <span class="mic-hint-text">Premi il microfono per dettare a voce</span>
+                        {/if}
+                      </div>
+
+                      <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        {#if promptText}
+                          <button
+                            type="button"
+                            class="btn-clear-prompt pressable"
+                            disabled={isAiAnalyzing}
+                            onclick={() => { promptText = ""; aiError = null; }}
+                          >
+                            Cancella
+                          </button>
+                        {/if}
+                        <button
+                          type="button"
+                          class="btn-analyze-prompt pressable"
+                          disabled={isAiAnalyzing || !promptText.trim()}
+                          onclick={handleAnalyzePrompt}
+                        >
+                          <Sparkles size={14} />
+                          <span>{isAiAnalyzing ? "Analisi in corso…" : "Estrai Lezioni con IA"}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Quick Chips Section -->
+                  <div class="prompt-chips-section">
+                    <span class="chips-title">FORMATI RAPIDI & SUGGERIMENTI:</span>
+                    <div class="chips-list">
+                      <button
+                        type="button"
+                        class="chip-btn pressable"
+                        onclick={() => {
+                          promptText = "Mercoledì dalle 08:15 alle 10:15 in aula BL.28.2.1 ho Progettazione di Sistemi Meccanici, e dalle 10:15 alle 12:15 ho Macchine e Sistemi Energetici in aula BL.28.2.1.\nGiovedì dalle 13:15 alle 15:15 ho Macchine e Sistemi Energetici in aula B8 0.4.\nVenerdì dalle 08:15 alle 10:15 ho Macchine e Sistemi Energetici in aula B8 1.1, e dalle 10:15 alle 12:15 ho Progettazione di Sistemi Meccanici in aula B8 1.1.";
+                        }}
+                      >
+                        <span>📝 Inserisci esempio orario completo (5 lezioni)</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              {/if}
             {/if}
           </div>
 
@@ -1875,6 +2190,299 @@
   .project-note {
     font-size: 0.72rem;
     color: var(--text-tertiary, #888888);
+  }
+
+  /* Assistente AI Tabs & Prompt Area */
+  .ai-tabs-container {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 1.15rem;
+  }
+
+  .ai-mode-tabs {
+    display: inline-flex;
+    padding: 3px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 0.5px solid rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+    gap: 4px;
+  }
+
+  .ai-tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0.95rem;
+    border-radius: 999px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary, #aaaaaa);
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .ai-tab-btn:hover {
+    color: #ffffff;
+  }
+  .ai-tab-btn.active {
+    background: var(--surface-card, #2c2c2e);
+    color: #ffffff;
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  }
+
+  .btn-back-to-input {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.65rem;
+    background: rgba(255, 255, 255, 0.08);
+    border: 0.5px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    color: var(--text-secondary, #cccccc);
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-back-to-input:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .ai-prompt-area {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    width: 100%;
+  }
+
+  .prompt-card {
+    background: rgba(255, 255, 255, 0.035);
+    border: 0.5px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  .prompt-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .prompt-label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary, #ffffff);
+  }
+
+  .listening-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: rgba(239, 68, 68, 0.15);
+    border: 0.5px solid rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+
+  .pulse-dot {
+    width: 7px;
+    height: 7px;
+    background: #ef4444;
+    border-radius: 50%;
+    animation: pulse 1s infinite alternate;
+  }
+
+  @keyframes pulse {
+    0% { transform: scale(0.8); opacity: 0.5; }
+    100% { transform: scale(1.3); opacity: 1; }
+  }
+
+  .prompt-textarea {
+    width: 100%;
+    min-height: 135px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 0.5px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    padding: 0.85rem 1rem;
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  .prompt-textarea:focus {
+    border-color: #007aff;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .voice-alert-box {
+    background: rgba(255, 149, 0, 0.12);
+    border: 0.5px solid rgba(255, 149, 0, 0.25);
+    color: #ff9500;
+    padding: 0.45rem 0.75rem;
+    border-radius: 8px;
+    font-size: 0.76rem;
+  }
+
+  .prompt-actions-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    padding-top: 0.3rem;
+  }
+
+  .prompt-voice-group {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+  }
+
+  .mic-trigger-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 0.5px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary, #cccccc);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .mic-trigger-btn:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.15);
+  }
+  .mic-trigger-btn.listening {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #ef4444;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+  }
+
+  .voice-waveform {
+    display: flex;
+    align-items: center;
+    gap: 2.5px;
+    height: 18px;
+  }
+  .voice-waveform span {
+    width: 3px;
+    height: 100%;
+    background: #ef4444;
+    border-radius: 2px;
+    animation: soundWave 0.6s infinite ease-in-out alternate;
+  }
+  .voice-waveform span:nth-child(1) { animation-delay: 0s; }
+  .voice-waveform span:nth-child(2) { animation-delay: 0.12s; }
+  .voice-waveform span:nth-child(3) { animation-delay: 0.24s; }
+  .voice-waveform span:nth-child(4) { animation-delay: 0.36s; }
+  .voice-waveform span:nth-child(5) { animation-delay: 0.48s; }
+
+  @keyframes soundWave {
+    0% { transform: scaleY(0.25); }
+    100% { transform: scaleY(1); }
+  }
+
+  .listening-caption {
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: #ef4444;
+  }
+
+  .mic-hint-text {
+    font-size: 0.74rem;
+    color: var(--text-tertiary, #888888);
+  }
+
+  .btn-clear-prompt {
+    padding: 0.45rem 0.85rem;
+    background: rgba(255, 255, 255, 0.06);
+    border: 0.5px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    color: var(--text-secondary, #cccccc);
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .btn-clear-prompt:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .btn-analyze-prompt {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.45rem 1.15rem;
+    background: #007aff;
+    border: none;
+    border-radius: 8px;
+    color: #ffffff;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 122, 255, 0.3);
+    transition: background 0.15s ease;
+  }
+  .btn-analyze-prompt:hover:not(:disabled) {
+    background: #0066d6;
+  }
+  .btn-analyze-prompt:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .prompt-chips-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-top: 0.2rem;
+  }
+
+  .chips-title {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--text-tertiary, #888888);
+    letter-spacing: 0.5px;
+  }
+
+  .chips-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .chip-btn {
+    padding: 0.35rem 0.75rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 0.5px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: var(--text-secondary, #aaaaaa);
+    font-size: 0.74rem;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s ease;
+  }
+  .chip-btn:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(0, 122, 255, 0.4);
   }
 
   @keyframes scrim-in {
