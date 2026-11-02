@@ -1,5 +1,5 @@
 param(
-    [string]$Tag = "v1.0.45",
+    [string]$Tag = "v1.0.46",
     [string]$Token = $env:GITHUB_TOKEN
 )
 
@@ -27,12 +27,11 @@ if ($existing) {
 }
 
 $releaseNotes = @"
-### Novità e Migliorie di MySession v1.0.45
+### Novità e Migliorie di MySession v1.0.46
 
-- **Tasto Annulla Interattivo**: il tasto Annulla, il pulsante di chiusura e lo sfondo rimangono sempre reattivi e attivi durante l'analisi Vision AI, consentendo di interrompere istantaneamente l'elaborazione.
-- **Supporto Orari Testuali PoliMi / Esse3**: parsing intelligente per elenchi testuali con codici corso (es. '086472 - PROGETTAZIONE DI SISTEMI MECCANICI') ed ereditarietà automatica di materia e docente sui singoli slot orari.
-- **Scaling Automatico Ritagli a Bassa Risoluzione**: screenshot e ritagli bassi (sotto i 600px di altezza) vengono automaticamente scalati in alta risoluzione 2.5x prima del passaggio al VLM per eliminare artefatti OCR.
-- **Prompt Vision Dual-Mode**: riconoscimento ottimizzato sia per griglie calendario settimanali che per elenchi testuali strutturati ad albero.
+- **Risoluzione Definitiva Orari Vuoti e Strutture JSON Corrotte**: rimossi i parametri penalizzanti di presenza e frequenza (`frequency_penalty`, `presence_penalty`) e calibrata la `repeat_penalty` a 1.02, eliminando il bug che costringeva il modello Vision locale ad emettere campi orari vuoti o ad omettere il nome del corso.
+- **Supporto Avanzato Griglie Google Calendar / Outlook**: prompt con istruzioni mirate per ignorare indicatori orizzontali rossi dell'orario corrente (es. '10:42') e mappare con precisione colonne dei giorni e blocchi multipli sovrapposti.
+- **Meccanismo di Ripristino e Fallback Morbido**: sia il parser JSON che il decoder leniente recuperano automaticamente qualsiasi lezione con giorno valido anche in presenza di campi vuoti, pre-compilando la scheda per consentire la modifica immediata da interfaccia utente anziché bloccare l'utente con un messaggio di errore.
 "@
 
 $releasePayload = @{

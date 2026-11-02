@@ -1331,10 +1331,14 @@ pub fn fallback_extract_lessons_lenient(text: &str) -> Vec<ExtractedLessonItem> 
                     let professor = extract_lenient_val(block, &["professor", "docente", "teacher", "prof"]).unwrap_or_default();
 
                     let clean_title = sanitize_course_title(&course_name);
-                    let final_course = if clean_title.is_empty() {
+                    let final_course = if !clean_title.is_empty() {
+                        clean_title
+                    } else if !last_course.is_empty() {
                         last_course.clone()
+                    } else if !classroom.is_empty() || norm_start.is_some() || norm_end.is_some() || (1..=7).contains(&day) {
+                        "Lezione".to_string()
                     } else {
-                        clean_title.clone()
+                        String::new()
                     };
 
                     let final_prof = if professor.is_empty() {
@@ -1551,10 +1555,14 @@ pub fn clean_and_parse_lessons_json(text: &str) -> Result<Vec<ExtractedLessonIte
 
                         // Se la materia o il docente sono omessi nei punti elenco successivi, ereditali dal blocco corso
                         let clean_title = sanitize_course_title(&course_name);
-                        let final_course = if clean_title.is_empty() {
+                        let final_course = if !clean_title.is_empty() {
+                            clean_title
+                        } else if !last_course_name.is_empty() {
                             last_course_name.clone()
+                        } else if !classroom.is_empty() || norm_start.is_some() || norm_end.is_some() || (1..=7).contains(&day) {
+                            "Lezione".to_string()
                         } else {
-                            clean_title.clone()
+                            String::new()
                         };
 
                         let final_prof = if professor.is_empty() {
@@ -1656,21 +1664,24 @@ pub fn parse_timetable_image_with_ai(
         image_base64
     };
 
-    let prompt_text = "Sei un analizzatore OCR esperto per orari scolastici e universitari da screenshot, foto o portali studenti.\n\
-        Analizza l'immagine ed estrai TUTTE le lezioni settimanali presenti. L'immagine può presentarsi in due forme:\n\n\
-        FORMA 1 — ELENCO O LISTA TESTUALE (es. portali universitari tipo Esse3 o PoliMi):\n\
-        - Sono presenti titoli di corso come '086472 - PROGETTAZIONE DI SISTEMI MECCANICI (Docente: Filippini Mauro)' seguiti da punti elenco con i giorni e le ore:\n\
-          '▪ Mercoledì dalle 08:15 alle 10:15 in aula BL.28.2.1'\n\
-          '▪ Venerdì dalle 10:15 alle 12:15 in aula B8 1.1'\n\
-        - In questo caso ogni riga con giorno e orario è una lezione! Estrai: dayOfWeek (Mercoledì=3, Venerdì=5), startTime (es. '08:15'), endTime (es. '10:15'), classroom ('BL.28.2.1'), courseName (dal titolo del corso sopra: 'Progettazione di Sistemi Meccanici', omettendo il codice numerico iniziale) e professor (dal docente indicato nell'intestazione: 'Filippini Mauro').\n\n\
-        FORMA 2 — GRIGLIA O CALENDARIO SETTIMANALE A BLOCCHI (es. Google Calendar, Outlook o tabelle):\n\
-        - Colonne corrispondenti ai giorni (LUN, MAR, MER, GIO, VEN) e asse laterale delle ore.\n\
-        - Ciascun blocco colorato rappresenta una lezione: estrai dayOfWeek (dalla colonna), startTime ed endTime (dall'asse orario laterale o scritti nel blocco), courseName, classroom e professor.\n\n\
-        REGOLE TASSATIVE DI OUTPUT:\n\
-        1. dayOfWeek: numero intero da 1 a 7 (1=Lunedì, 2=Martedì, 3=Mercoledì, 4=Giovedì, 5=Venerdì, 6=Sabato, 7=Domenica).\n\
-        2. startTime ed endTime: SEMPRE in formato 24 ore 'HH:MM' con due cifre (es. '08:15', '10:15', '13:15', '15:15').\n\
-        3. courseName: DEVE contenere il nome del corso/materia (es. 'Progettazione di Sistemi Meccanici', 'Macchine e Sistemi Energetici'). Non lasciarlo mai vuoto se il nome è visibile!\n\
-        4. Inserisci ciascuna lezione visibile UNA SOLA VOLTA e chiudi il JSON. Non generare lezioni con campi vuoti o placeholder.\n\
+    let prompt_text = "Sei un analizzatore OCR per orari scolastici e accademici.\n\
+        Analizza con attenzione l'immagine ed estrai TUTTE le lezioni settimanali presenti in formato JSON.\n\n\
+        L'immagine può presentarsi in due forme:\n\n\
+        FORMA 1 — CALENDARIO SETTIMANALE O TABELLA A COLONNE (es. Google Calendar, Outlook o tabelle orario):\n\
+        - In alto compaiono le colonne dei giorni (LUN=1, MAR=2, MER=3, GIO=4, VEN=5, SAB=6, DOM=7).\n\
+        - L'asse orario a sinistra riporta le ore (es. 8, 9, 10, 11, 12, 13, 14, 15, 16).\n\
+        - NOTA BENE: Ignora eventuali linee o indicatori orizzontali rossi dell'orario corrente (es. '10:42'), non rappresentano lezioni!\n\
+        - Ciascun blocco/riquadro colorato posizionato dentro una colonna è una lezione.\n\
+        - Se una colonna contiene più blocchi (es. mattina e pomeriggio, o due blocchi consecutivi), estrai ciascun blocco assegnando il rispettivo dayOfWeek della colonna.\n\
+        - Per ogni lezione rileva: dayOfWeek (1..7), startTime ed endTime in formato 24 ore 'HH:MM', courseName (nome della materia scritto nel blocco), classroom (aula se indicata sotto la materia).\n\n\
+        FORMA 2 — ELENCO O LISTA TESTUALE (es. portali Esse3 o PoliMi):\n\
+        - Sono presenti intestazioni di corso (es. '086472 - PROGETTAZIONE DI SISTEMI MECCANICI') seguite da punti elenco (es. '▪ Mercoledì dalle 08:15 alle 10:15 in aula BL.28.2.1').\n\
+        - In questo caso ogni riga con giorno e orario è una lezione: estrai dayOfWeek (Mercoledì=3, Venerdì=5), startTime ('08:15'), endTime ('10:15'), classroom ('BL.28.2.1'), courseName (dal titolo del corso omettendo codici numerici) e professor (dal docente indicato).\n\n\
+        REGOLE GENERALI TASSATIVE:\n\
+        1. dayOfWeek DEVE essere un numero intero da 1 a 7 (1=Lunedì, 2=Martedì, 3=Mercoledì, 4=Giovedì, 5=Venerdì, 6=Sabato, 7=Domenica).\n\
+        2. startTime ed endTime DEVONO essere sempre stringhe nel formato 24 ore 'HH:MM' con due cifre (es. '08:15', '10:15', '13:15', '15:15'). Non lasciare mai campi vuoti!\n\
+        3. courseName DEVE essere sempre valorizzato con il nome del corso/materia.\n\
+        4. Inserisci ciascuna lezione visibile UNA SOLA VOLTA e chiudi il JSON.\n\
         5. Formato JSON rigoroso:\n\
         {\n\
           \"lessons\": [\n\
@@ -1680,7 +1691,7 @@ pub fn parse_timetable_image_with_ai(
               \"endTime\": \"10:15\",\n\
               \"courseName\": \"Progettazione di Sistemi Meccanici\",\n\
               \"classroom\": \"BL.28.2.1\",\n\
-              \"professor\": \"Filippini Mauro\"\n\
+              \"professor\": \"\"\n\
             }\n\
           ]\n\
         }";
@@ -1700,17 +1711,17 @@ pub fn parse_timetable_image_with_ai(
             let data_url = format!("data:{};base64,{}", clean_mime, clean_base64);
             let body = serde_json::json!({
                 "model": settings.ai_local_model_id,
-                "temperature": 0.0,
-                "top_p": 0.1,
-                "repeat_penalty": 1.25,
-                "frequency_penalty": 0.5,
-                "presence_penalty": 0.3,
+                "temperature": 0.1,
+                "top_p": 0.9,
+                "repeat_penalty": 1.02,
+                "frequency_penalty": 0.0,
+                "presence_penalty": 0.0,
                 "max_tokens": 2048,
                 "response_format": { "type": "json_object" },
                 "messages": [
                     {
                         "role": "system",
-                        "content": "Sei un analizzatore OCR per orari universitari. Genera ESCLUSIVAMENTE JSON conforme a RFC 8259 (tutte le chiavi e valori testuali tra doppi apici \"...\"). Non usare mai apici singoli né chiavi non virgolettate. Elenca ciascuna lezione visibile UNA SOLA VOLTA e chiudi immediatamente il JSON con ']}' senza mai ripetere."
+                        "content": "Sei un analizzatore OCR per orari universitari. Genera ESCLUSIVAMENTE JSON conforme a RFC 8259 (tutte le chiavi e valori testuali tra doppi apici \"...\"). Elenca ciascuna lezione visibile UNA SOLA VOLTA e chiudi immediatamente il JSON con ']}' senza mai ripetere."
                     },
                     {
                         "role": "user",
@@ -2054,6 +2065,23 @@ mod tests {
         assert_eq!(parsed[4].day_of_week, 5);
         assert_eq!(parsed[4].start_time, "08:15");
         assert_eq!(parsed[4].end_time, "10:15");
+    }
+
+    #[test]
+    fn test_parse_user_empty_fields_fallback_recovery() {
+        let raw_user_empty_screenshot = r#"{ "lessons": [ { "dayOfWeek": 3, "startTime": "", "endTime": "" }, { "dayOfWeek": 5, "startTime": "", "endTime": "" } ] }"#;
+        let parsed = clean_and_parse_lessons_json(raw_user_empty_screenshot)
+            .expect("Dovrebbe recuperare con successo le lezioni con giorno valido anche in caso di campi orario/materia vuoti");
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].day_of_week, 3);
+        assert_eq!(parsed[0].course_name, "Lezione");
+        assert_eq!(parsed[0].start_time, "09:00");
+        assert_eq!(parsed[0].end_time, "11:00");
+
+        assert_eq!(parsed[1].day_of_week, 5);
+        assert_eq!(parsed[1].course_name, "Lezione");
+        assert_eq!(parsed[1].start_time, "09:00");
+        assert_eq!(parsed[1].end_time, "11:00");
     }
 
     #[test]
