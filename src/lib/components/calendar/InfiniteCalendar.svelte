@@ -120,7 +120,7 @@
 
   export function scrollToIsoDate(isoDate: string) {
     if (!scrollContainerEl || !virtualizerInstance || monthsList.length === 0) return;
-    const { year, month } = parseIsoDate(isoDate);
+    const { year, month, day } = parseIsoDate(isoDate);
     const key = `${year}-${String(month).padStart(2, "0")}`;
     let idx = monthsList.findIndex((m) => m.key === key);
     if (idx < 0) {
@@ -129,9 +129,27 @@
       }
     }
     if (idx >= 0) {
-      const targetOffset = getEstimatedOffsetForIndex(idx);
+      const monthOffset = getEstimatedOffsetForIndex(idx);
+      const firstDayJs = new Date(year, month - 1, 1).getDay();
+      const leadingOffset = (firstDayJs - startDayOfWeek + 7) % 7;
+      const weekRowIdx = Math.floor((day - 1 + leadingOffset) / 7);
+      const scale = (themeStore.settings.uiScale || 100) / 100;
+      const rowHeight = 106 * scale;
+      const headerHeight = 70 * scale;
+      const weekCenterOffset = headerHeight + (weekRowIdx + 0.5) * rowHeight;
+      const containerH = scrollContainerEl.clientHeight || 700;
+      const targetOffset = Math.max(0, Math.round(monthOffset + weekCenterOffset - containerH / 2));
+
       scrollContainerEl.scrollTo({ top: targetOffset, behavior: "smooth" });
       clearVirtualizerScrollLock();
+
+      setTimeout(() => {
+        if (!scrollContainerEl) return;
+        const targetEl = scrollContainerEl.querySelector<HTMLElement>(`[data-calendar-day="${isoDate}"]`);
+        if (targetEl) {
+          targetEl.scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+      }, 150);
     }
   }
 
@@ -197,7 +215,18 @@
       0,
       monthsList.findIndex((m) => m.key === initialAnchorKey)
     );
-    const initialOffset = getEstimatedOffsetForIndex(initialIdx);
+    const monthOffset = getEstimatedOffsetForIndex(initialIdx);
+
+    // Calcolo posizione della riga della settimana corrente per centrarla verticalmente a metà schermo
+    const firstDayJs = new Date(baseAnchor.year, baseAnchor.month - 1, 1).getDay();
+    const leadingOffset = (firstDayJs - startDayOfWeek + 7) % 7;
+    const weekRowIdx = Math.floor((baseAnchor.day - 1 + leadingOffset) / 7);
+    const scale = (themeStore.settings.uiScale || 100) / 100;
+    const rowHeight = 106 * scale;
+    const headerHeight = 70 * scale;
+    const weekCenterOffset = headerHeight + (weekRowIdx + 0.5) * rowHeight;
+    const containerH = scrollContainerEl.clientHeight || 700;
+    const initialOffset = Math.max(0, Math.round(monthOffset + weekCenterOffset - containerH / 2));
 
     // Inizializza immediatamente il scrollTop nativo dell'elemento
     scrollContainerEl.scrollTop = initialOffset;
@@ -222,10 +251,15 @@
     virtualizerInstance._willUpdate();
     syncVirtualizerState();
 
-    // Riallinea dopo il primo ciclo di layout mantenendo lo scorrimento del tutto libero
+    // Riallinea dopo il primo ciclo di layout posizionando la settimana odierna esattamente al centro
     requestAnimationFrame(() => {
-      if (scrollContainerEl && Math.abs(scrollContainerEl.scrollTop - initialOffset) > 150) {
-        scrollContainerEl.scrollTop = initialOffset;
+      if (scrollContainerEl) {
+        const todayEl = scrollContainerEl.querySelector<HTMLElement>(`[data-calendar-day="${todayIso}"]`);
+        if (todayEl) {
+          todayEl.scrollIntoView({ block: "center", behavior: "instant" });
+        } else if (Math.abs(scrollContainerEl.scrollTop - initialOffset) > 150) {
+          scrollContainerEl.scrollTop = initialOffset;
+        }
       }
       clearVirtualizerScrollLock();
       syncVirtualizerState();

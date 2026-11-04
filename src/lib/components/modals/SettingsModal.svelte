@@ -1654,18 +1654,23 @@
   .field select {
     padding: 0.54rem 0.75rem;
     border-radius: var(--radius-md);
-    border: 0.5px solid var(--hairline-border);
-    background: var(--surface-input, rgba(128, 128, 128, 0.08));
+    border: 0.5px solid var(--hairline-border-strong);
+    background: var(--surface-card);
     color: var(--text-primary);
     font-size: 0.84rem;
     outline: none;
-    transition: border-color 140ms ease, box-shadow 140ms ease;
+    transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+  }
+
+  .field select option {
+    background: var(--popover-bg);
+    color: var(--text-primary);
   }
 
   .field input:focus-visible,
   .field select:focus-visible {
-    border-color: var(--accent, #007AFF);
-    box-shadow: 0 0 0 2.5px rgba(0, 122, 255, 0.25);
+    border-color: var(--accent-primary, #007AFF);
+    box-shadow: 0 0 0 2.5px var(--accent-soft);
   }
 
   .field-hint {

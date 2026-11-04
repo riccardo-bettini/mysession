@@ -421,7 +421,7 @@
             {selectedDate}
             {selectedCourseId}
             todayIso={sessionStore.todayIso}
-            anchorIso={sessionStore.activeSnapshot?.session.startDate ?? sessionStore.todayIso}
+            anchorIso={sessionStore.todayIso}
             sessionStartDate={sessionStore.activeSession?.startDate ?? null}
             sessionEndDate={sessionStore.activeSession?.endDate ?? null}
             lockToSession={sessionStore.isSessionLocked}

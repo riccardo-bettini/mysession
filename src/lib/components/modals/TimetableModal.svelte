@@ -1444,22 +1444,22 @@
     gap: 0.4rem;
     padding: 0.45rem 0.85rem;
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.08);
-    border: 0.5px solid rgba(255, 255, 255, 0.12);
-    color: var(--text-secondary, #cccccc);
+    background: var(--surface-card);
+    border: 0.5px solid var(--hairline-border-strong);
+    color: var(--text-primary);
     font-size: 0.82rem;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s ease;
   }
   .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.14);
-    color: #ffffff;
+    background: var(--surface-pill-hover);
+    color: var(--text-primary);
   }
   .btn-secondary.active {
-    background: rgba(0, 122, 255, 0.2);
-    border-color: rgba(0, 122, 255, 0.4);
-    color: #38bdf8;
+    background: var(--accent-soft);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
   }
 
   .btn-ai {
@@ -1845,24 +1845,24 @@
   .input-select {
     width: 100%;
     padding: 0.55rem 0.75rem;
-    background: rgba(255, 255, 255, 0.06);
-    border: 0.5px solid rgba(255, 255, 255, 0.12);
-    border-radius: 8px;
-    color: var(--text-primary, #ffffff);
+    background: var(--surface-card);
+    border: 0.5px solid var(--hairline-border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
     font-size: 0.84rem;
     outline: none;
-    transition: border-color 0.15s ease;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
   }
   .input-text:focus,
   .input-select:focus {
-    border-color: #007aff;
-    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--accent-primary);
+    background: var(--surface-elevated);
   }
 
   .label-palette {
     font-size: 0.74rem;
     font-weight: 600;
-    color: var(--text-secondary, #cccccc);
+    color: var(--text-secondary);
     margin-bottom: 0.4rem;
     display: block;
   }
@@ -2082,29 +2082,29 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    background: rgba(255, 255, 255, 0.035);
-    border: 0.5px solid rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
+    background: var(--surface-card);
+    border: 0.5px solid var(--hairline-border);
+    border-radius: var(--radius-sm);
     padding: 0.4rem 0.55rem;
   }
 
   .input-select-mini {
     width: 60px;
     padding: 0.25rem 0.35rem;
-    background: rgba(255, 255, 255, 0.08);
-    border: 0.5px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
-    color: #ffffff;
+    background: var(--surface-card);
+    border: 0.5px solid var(--hairline-border-strong);
+    border-radius: var(--radius-xs);
+    color: var(--text-primary);
     font-size: 0.74rem;
   }
 
   .input-time-mini {
     width: 68px;
     padding: 0.25rem 0.35rem;
-    background: rgba(255, 255, 255, 0.08);
-    border: 0.5px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
-    color: #ffffff;
+    background: var(--surface-card);
+    border: 0.5px solid var(--hairline-border-strong);
+    border-radius: var(--radius-xs);
+    color: var(--text-primary);
     font-size: 0.74rem;
   }
 

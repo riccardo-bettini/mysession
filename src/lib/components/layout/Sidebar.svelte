@@ -74,6 +74,18 @@
       console.error("Errore toggle visibilità corso:", err);
     }
   }
+  let shortcutsCollapsed = $state<boolean>(
+    typeof localStorage !== "undefined" && localStorage.getItem("mysession_shortcuts_collapsed") === "true"
+  );
+
+  function toggleShortcuts() {
+    shortcutsCollapsed = !shortcutsCollapsed;
+    try {
+      localStorage.setItem("mysession_shortcuts_collapsed", String(shortcutsCollapsed));
+    } catch (e) {
+      console.warn("Impossibile salvare stato scorciatoie:", e);
+    }
+  }
 </script>
 
 <aside class="app-sidebar" class:compact={isCompact} aria-label="Pannello Telemetria e Corsi">
@@ -81,8 +93,8 @@
   <div class="sidebar-top-row">
     {#if !isCompact}
       <div class="sidebar-session-meta">
-        <span class="meta-eyebrow">TELEMETRIA SESSIONE</span>
-        <h2 class="meta-title">{snapshot?.session.name ?? "Nessuna Sessione"}</h2>
+        <span class="meta-eyebrow">SESSIONE ATTIVA</span>
+        <h2 class="meta-title" title={snapshot?.session.name}>{snapshot?.session.name ?? "Nessuna Sessione"}</h2>
       </div>
     {/if}
     <button
@@ -100,7 +112,7 @@
   </div>
 
   {#if !isCompact}
-    <!-- 1. HERO CARD: PROSSIMO TARGET D'ESAME & COUNTDOWN -->
+    <!-- 1. HERO CARD COMPATTA: PROSSIMO TARGET D'ESAME & COUNTDOWN -->
     <div class="target-hero-card">
       {#if telemetry?.nextTargetExam && telemetry?.nextTargetCourse}
         {@const targetPalette = generateCourseColorTokens(telemetry.nextTargetCourse.colorHex, isDark)}
@@ -115,18 +127,18 @@
           title="Salta alla data del prossimo appello nel calendario"
         >
           <div class="target-top">
-            <span
-              class="target-sigla-badge"
-              style:background={targetPalette.solid}
-              style:color={targetPalette.badgeText}
-            >
-              {telemetry.nextTargetCourse.sigla}
-            </span>
+            <div class="target-left-group">
+              <span
+                class="target-sigla-badge"
+                style:background={targetPalette.solid}
+                style:color={targetPalette.badgeText}
+              >
+                {telemetry.nextTargetCourse.sigla}
+              </span>
+              <strong class="target-course-name">{telemetry.nextTargetCourse.name}</strong>
+            </div>
             <span class="target-date-pill">
               {formatItalianDateShort(telemetry.nextTargetExam.date)}
-              {#if telemetry.nextTargetExam.timeSlot}
-                · {telemetry.nextTargetExam.timeSlot}
-              {/if}
             </span>
           </div>
 
@@ -136,29 +148,26 @@
                 {telemetry.daysToNextTarget !== null ? Math.max(0, telemetry.daysToNextTarget) : "—"}
               </span>
               <span class="countdown-unit">
-                {telemetry.daysToNextTarget === 1 ? "giorno" : "giorni"}
+                {telemetry.daysToNextTarget === 1 ? "giorno" : "giorni"} all'appello
               </span>
             </div>
-            <div class="target-course-info">
-              <strong class="target-course-name">{telemetry.nextTargetCourse.name}</strong>
-              <span class="target-round-label">
-                {formatExamRoundLabel(telemetry.nextTargetExam.round)} · {telemetry.nextTargetCourse.cfu} CFU
-              </span>
-            </div>
+            <span class="target-round-label">
+              {formatExamRoundLabel(telemetry.nextTargetExam.round)} · {telemetry.nextTargetCourse.cfu} CFU
+            </span>
           </div>
         </button>
       {:else}
         <div class="target-empty-state">
           <span class="empty-title">Nessun appello imminente</span>
-          <span class="empty-sub">Pianifica un esame per attivare il countdown e il calcolo carico.</span>
+          <span class="empty-sub">Pianifica un esame per attivare il calcolo carico.</span>
         </div>
       {/if}
     </div>
 
-    <!-- 2. GRIGLIA TELEMETRIA DETERMINISTICA -->
+    <!-- 2. GRIGLIA TELEMETRIA DETERMINISTICA COMPATTA -->
     <div class="telemetry-kpi-grid">
       <div class="kpi-box">
-        <span class="kpi-label">CFU Totali</span>
+        <span class="kpi-label">CFU</span>
         <strong class="kpi-value">{telemetry?.totalCfu ?? 0}</strong>
         <span class="kpi-sub">{telemetry?.coursesCount ?? 0} materie</span>
       </div>
@@ -170,12 +179,12 @@
         </span>
       </div>
       <div class="kpi-box">
-        <span class="kpi-label">Carico Oggi</span>
+        <span class="kpi-label">Oggi</span>
         <strong class="kpi-value">{(telemetry?.recommendedHoursToday ?? 0).toFixed(1)}h</strong>
-        <span class="kpi-sub">studio consigliato</span>
+        <span class="kpi-sub">studio cons.</span>
       </div>
       <div class="kpi-box">
-        <span class="kpi-label">Avanzamento</span>
+        <span class="kpi-label">Progresso</span>
         <strong class="kpi-value">{Math.round(telemetry?.overallProgressPct ?? 0)}%</strong>
         <span class="kpi-sub">
           {telemetry?.completedUnitsTotal ?? 0}/{telemetry?.unitsTotal ?? 0} unità
@@ -348,37 +357,55 @@
     </div>
   {/if}
 
-  <!-- Sezione Scorciatoie da Tastiera per la Navigazione -->
+  <!-- Sezione Scorciatoie da Tastiera con Minimizzazione a Fisarmonica -->
   {#if !isCompact}
-    <div class="sidebar-shortcuts-card">
-      <div class="shortcuts-header">
-        <span class="shortcuts-title">SCORCIATOIE DA TASTIERA</span>
-      </div>
-      <div class="shortcuts-grid">
-        <div class="shortcut-item">
-          <kbd class="shortcut-kbd">T</kbd>
-          <span class="shortcut-label">Salta ad Oggi</span>
+    <div class="sidebar-shortcuts-card" class:collapsed={shortcutsCollapsed}>
+      <button
+        type="button"
+        class="shortcuts-header-btn pressable"
+        onclick={toggleShortcuts}
+        title={shortcutsCollapsed ? "Espandi scorciatoie da tastiera" : "Minimizza scorciatoie da tastiera"}
+        aria-expanded={!shortcutsCollapsed}
+      >
+        <div class="shortcuts-title-wrap">
+          <svg viewBox="0 0 16 16" fill="none" class="shortcuts-mini-icon">
+            <rect x="2" y="3.5" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.2" />
+            <path d="M4.5 6.5H5.5M7.5 6.5H8.5M10.5 6.5H11.5M4.5 9H11.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />
+          </svg>
+          <span class="shortcuts-title">SCORCIATOIE DA TASTIERA</span>
         </div>
-        <div class="shortcut-item">
-          <div class="kbd-combo">
-            <kbd class="shortcut-kbd">←</kbd>
-            <kbd class="shortcut-kbd">→</kbd>
+        <svg class="shortcuts-chevron" class:rotated={!shortcutsCollapsed} viewBox="0 0 16 16" fill="none">
+          <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+
+      {#if !shortcutsCollapsed}
+        <div class="shortcuts-grid">
+          <div class="shortcut-item">
+            <kbd class="shortcut-kbd">T</kbd>
+            <span class="shortcut-label">Salta ad Oggi</span>
           </div>
-          <span class="shortcut-label">Naviga Periodo</span>
-        </div>
-        <div class="shortcut-item">
-          <div class="kbd-combo">
-            <kbd class="shortcut-kbd">Spazio</kbd>
-            <span class="kbd-sep">/</span>
-            <kbd class="shortcut-kbd">Ctrl+K</kbd>
+          <div class="shortcut-item">
+            <div class="kbd-combo">
+              <kbd class="shortcut-kbd">←</kbd>
+              <kbd class="shortcut-kbd">→</kbd>
+            </div>
+            <span class="shortcut-label">Naviga Periodo</span>
           </div>
-          <span class="shortcut-label">Command Bar & AI</span>
+          <div class="shortcut-item">
+            <div class="kbd-combo">
+              <kbd class="shortcut-kbd">Spazio</kbd>
+              <span class="kbd-sep">/</span>
+              <kbd class="shortcut-kbd">Ctrl+K</kbd>
+            </div>
+            <span class="shortcut-label">Command Bar</span>
+          </div>
+          <div class="shortcut-item">
+            <kbd class="shortcut-kbd">Esc</kbd>
+            <span class="shortcut-label">Chiudi Pannelli</span>
+          </div>
         </div>
-        <div class="shortcut-item">
-          <kbd class="shortcut-kbd">Esc</kbd>
-          <span class="shortcut-label">Chiudi Pannelli</span>
-        </div>
-      </div>
+      {/if}
     </div>
   {:else}
     <div
@@ -486,9 +513,9 @@
     height: 0.92rem;
   }
 
-  /* Hero Target Card */
+  /* Hero Target Card Compatta Apple HIG */
   .target-hero-card {
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     background: var(--surface-elevated);
     border: 0.5px solid var(--hairline-border-strong);
     box-shadow: var(--shadow-pill);
@@ -497,7 +524,7 @@
 
   .target-hero-trigger {
     width: 100%;
-    padding: 0.75rem 0.85rem;
+    padding: 0.55rem 0.7rem;
     border: none;
     background: transparent;
     color: inherit;
@@ -505,7 +532,7 @@
     cursor: pointer;
     display: flex;
     flex-direction: column;
-    gap: 0.55rem;
+    gap: 0.4rem;
   }
 
   .target-top {
@@ -515,63 +542,65 @@
     gap: 0.4rem;
   }
 
+  .target-left-group {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    overflow: hidden;
+  }
+
   .target-sigla-badge {
-    font-size: 0.66rem;
+    font-size: 0.62rem;
     font-weight: 700;
-    padding: 0.14rem 0.45rem;
+    padding: 0.1rem 0.36rem;
     border-radius: var(--radius-xs);
     letter-spacing: var(--tracking-wide);
+    flex-shrink: 0;
   }
 
   .target-date-pill {
-    font-size: 0.68rem;
+    font-size: 0.65rem;
     font-weight: 600;
     color: var(--text-secondary);
+    flex-shrink: 0;
   }
 
   .target-countdown-row {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    justify-content: space-between;
+    gap: 0.4rem;
   }
 
   .countdown-number-wrap {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-width: 3.2rem;
-    padding: 0.32rem 0.48rem;
-    border-radius: var(--radius-sm);
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.28rem;
+    padding: 0.18rem 0.42rem;
+    border-radius: var(--radius-xs);
     background: var(--accent-soft);
     color: var(--accent-primary);
     border: 0.5px solid var(--hairline-border);
+    flex-shrink: 0;
   }
 
   .countdown-val {
-    font-size: 1.25rem;
+    font-size: 0.95rem;
     font-weight: 800;
     line-height: 1;
-    letter-spacing: var(--tracking-tight);
     font-variant-numeric: tabular-nums;
   }
 
   .countdown-unit {
     font-size: 0.6rem;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-caps);
-  }
-
-  .target-course-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.12rem;
-    min-width: 0;
+    text-transform: none;
+    letter-spacing: var(--tracking-normal);
   }
 
   .target-course-name {
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     font-weight: 700;
     letter-spacing: var(--tracking-normal);
     white-space: nowrap;
@@ -580,85 +609,96 @@
   }
 
   .target-round-label {
-    font-size: 0.68rem;
+    font-size: 0.65rem;
     color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .target-empty-state {
-    padding: 0.75rem 0.85rem;
+    padding: 0.55rem 0.7rem;
     display: flex;
     flex-direction: column;
-    gap: 0.2rem;
+    gap: 0.15rem;
   }
 
   .empty-title {
-    font-size: 0.76rem;
+    font-size: 0.74rem;
     font-weight: 600;
     color: var(--text-primary);
   }
 
   .empty-sub {
-    font-size: 0.68rem;
+    font-size: 0.65rem;
     color: var(--text-secondary);
     line-height: 1.35;
   }
 
-  /* Telemetry KPI Grid */
+  /* Telemetry KPI Grid Compatta */
   .telemetry-kpi-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.45rem;
+    gap: 0.35rem;
   }
 
   .kpi-box {
-    padding: 0.55rem 0.65rem;
-    border-radius: var(--radius-sm);
+    padding: 0.38rem 0.52rem;
+    border-radius: var(--radius-xs);
     background: var(--surface-card);
     border: 0.5px solid var(--hairline-border);
     box-shadow: var(--shadow-pill);
     display: flex;
     flex-direction: column;
-    gap: 0.1rem;
+    gap: 0.05rem;
   }
 
   .kpi-label {
-    font-size: 0.62rem;
-    font-weight: 600;
+    font-size: 0.58rem;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: var(--tracking-caps);
     color: var(--text-tertiary);
   }
 
   .kpi-value {
-    font-size: 0.98rem;
+    font-size: 0.88rem;
     font-weight: 700;
     letter-spacing: var(--tracking-tight);
     font-variant-numeric: tabular-nums;
+    line-height: 1.15;
   }
 
   .kpi-sub {
-    font-size: 0.64rem;
+    font-size: 0.6rem;
     color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* Quick Actions */
   .quick-actions-row {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.35rem;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.28rem;
   }
 
   .action-chip {
-    height: 1.95rem;
-    border-radius: var(--radius-sm);
+    height: 1.75rem;
+    padding: 0 0.2rem;
+    border-radius: var(--radius-xs);
     border: 0.5px solid var(--hairline-border);
     background: var(--surface-pill);
     box-shadow: var(--shadow-pill);
     color: var(--text-primary);
-    font-size: 0.74rem;
+    font-size: 0.68rem;
     font-weight: 600;
     letter-spacing: var(--tracking-normal);
     cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .action-chip:hover {
@@ -780,7 +820,7 @@
 
   .course-main-click {
     flex: 1;
-    padding: 0.55rem 0.6rem;
+    padding: 0.44rem 0.55rem;
     border: none;
     background: transparent;
     color: inherit;
@@ -788,28 +828,28 @@
     cursor: pointer;
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 0.26rem;
     min-width: 0;
   }
 
   .course-row-top {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.35rem;
   }
 
   .course-sigla-pill {
-    font-size: 0.64rem;
+    font-size: 0.62rem;
     font-weight: 700;
-    padding: 0.1rem 0.38rem;
-    border-radius: 0.3rem;
+    padding: 0.08rem 0.34rem;
+    border-radius: 0.25rem;
     flex-shrink: 0;
     letter-spacing: var(--tracking-wide);
   }
 
   .course-title {
     flex: 1;
-    font-size: 0.76rem;
+    font-size: 0.74rem;
     font-weight: 600;
     letter-spacing: var(--tracking-normal);
     white-space: nowrap;
@@ -818,7 +858,7 @@
   }
 
   .course-cfu-badge {
-    font-size: 0.64rem;
+    font-size: 0.62rem;
     font-weight: 600;
     color: var(--text-secondary);
     flex-shrink: 0;
@@ -826,7 +866,7 @@
 
   .course-progress-track {
     width: 100%;
-    height: 3.5px;
+    height: 2.5px;
     border-radius: var(--radius-pill);
     background: var(--surface-pill);
     overflow: hidden;
@@ -903,36 +943,78 @@
     cursor: pointer;
   }
 
-  /* Sezione Scorciatoie da Tastiera per la Navigazione */
+  /* Sezione Scorciatoie da Tastiera con Minimizzazione a Fisarmonica */
   .sidebar-shortcuts-card {
     margin-top: auto;
-    padding: 0.55rem 0.65rem;
-    border-radius: var(--radius-md);
-    background: rgba(128, 128, 128, 0.05);
+    border-radius: var(--radius-sm);
+    background: var(--surface-pill);
     border: 0.5px solid var(--hairline-border);
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
     flex-shrink: 0;
+    overflow: hidden;
+    transition: background 140ms ease, border-color 140ms ease;
   }
 
-  .shortcuts-header {
+  .sidebar-shortcuts-card.collapsed {
+    background: transparent;
+    border-color: transparent;
+  }
+
+  .shortcuts-header-btn {
+    width: 100%;
+    padding: 0.35rem 0.45rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    border-radius: var(--radius-xs);
+    color: var(--text-tertiary);
+    transition: color 140ms ease, background 140ms ease;
+  }
+
+  .shortcuts-header-btn:hover {
+    color: var(--text-primary);
+    background: var(--surface-pill-hover);
+  }
+
+  .shortcuts-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .shortcuts-mini-icon {
+    width: 0.85rem;
+    height: 0.85rem;
+    opacity: 0.7;
   }
 
   .shortcuts-title {
     font-size: 0.58rem;
     font-weight: 700;
-    letter-spacing: 0.06em;
-    color: var(--text-tertiary);
+    letter-spacing: var(--tracking-caps);
+  }
+
+  .shortcuts-chevron {
+    width: 0.82rem;
+    height: 0.82rem;
+    transition: transform 180ms var(--spring-snappy);
+    opacity: 0.7;
+  }
+
+  .shortcuts-chevron.rotated {
+    transform: rotate(180deg);
   }
 
   .shortcuts-grid {
+    padding: 0.1rem 0.5rem 0.45rem;
     display: flex;
     flex-direction: column;
-    gap: 0.28rem;
+    gap: 0.25rem;
+    animation: backdropFade 140ms ease;
   }
 
   .shortcut-item {

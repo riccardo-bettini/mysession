@@ -818,6 +818,12 @@
     font-size: 0.75rem;
   }
 
+  .todo-course-select option,
+  .unit-select option {
+    background: var(--popover-bg);
+    color: var(--text-primary);
+  }
+
   .todo-input,
   .unit-select {
     flex: 1;

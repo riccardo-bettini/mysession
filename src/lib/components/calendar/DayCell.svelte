@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { sessionStore } from "../../stores/session.svelte";
   import { themeStore } from "../../stores/theme.svelte";
   import type { Course, Exam } from "../../types/domain";
   import {
@@ -46,7 +45,16 @@
     return list.filter((u) => u.courseId === selectedCourseId);
   });
 
-  let visibleEvents = $derived(dayData?.genericEvents ?? []);
+  let visibleEvents = $derived.by(() => {
+    const list = dayData?.genericEvents ?? [];
+    return list.filter((ev) => {
+      if (ev.category === "lezione" && !themeStore.showLessonTimes) {
+        return false;
+      }
+      return true;
+    });
+  });
+
   let todos = $derived(dayData?.todos ?? []);
   let todosDone = $derived(todos.filter((t) => t.done).length);
   let conflicts = $derived(dayData?.conflicts ?? []);
@@ -54,10 +62,41 @@
   let hasNote = $derived(Boolean(dayData?.note));
   let workloadHours = $derived(dayData?.workloadHours ?? 0);
 
-  // Quota dinamica di visualizzazione diretta impegni e to-do nel calendario
+  // Riquadri colorati per ciascuna materia da fare nel giorno (derivata da unità didattiche e to-do di corso)
+  let daySubjectItems = $derived.by(() => {
+    const map = new Map<string, { course: Course; unitsCount: number; todosCount: number }>();
+
+    for (const u of visibleUnits) {
+      const c = courseById.get(u.courseId);
+      if (!c || c.isVisible === false) continue;
+      const existing = map.get(c.id);
+      if (existing) {
+        existing.unitsCount++;
+      } else {
+        map.set(c.id, { course: c, unitsCount: 1, todosCount: 0 });
+      }
+    }
+
+    for (const t of todos) {
+      if (!t.courseId) continue;
+      if (selectedCourseId && t.courseId !== selectedCourseId) continue;
+      const c = courseById.get(t.courseId);
+      if (!c || c.isVisible === false) continue;
+      const existing = map.get(c.id);
+      if (existing) {
+        existing.todosCount++;
+      } else {
+        map.set(c.id, { course: c, unitsCount: 0, todosCount: 1 });
+      }
+    }
+
+    return Array.from(map.values());
+  });
+
+  // Quota dinamica di visualizzazione diretta impegni e riquadri materie nel calendario
   let maxDisplayItems = $derived(compact ? 3 : 5);
   let totalItemsCount = $derived(
-    visibleExams.length + visibleEvents.length + todos.length + (visibleUnits.length > 0 ? 1 : 0)
+    visibleExams.length + visibleEvents.length + daySubjectItems.length
   );
 
   let displayedExams = $derived(visibleExams.slice(0, 3));
@@ -68,26 +107,14 @@
     Math.max(0, remainingQuotaAfterExams - displayedEvents.length)
   );
 
-  let displayedTodos = $derived(todos.slice(0, remainingQuotaAfterEvents));
+  let displayedSubjects = $derived(daySubjectItems.slice(0, remainingQuotaAfterEvents));
   let overflowCount = $derived(
     Math.max(
       0,
       totalItemsCount -
-        (displayedExams.length +
-          displayedEvents.length +
-          displayedTodos.length +
-          (visibleUnits.length > 0 ? 1 : 0))
+        (displayedExams.length + displayedEvents.length + displayedSubjects.length)
     )
   );
-
-  async function handleToggleTodo(todoId: string, e: MouseEvent) {
-    e.stopPropagation();
-    try {
-      await sessionStore.toggleTodo(todoId);
-    } catch (err) {
-      console.error("Errore toggle todo da cella calendario:", err);
-    }
-  }
 
   function getCategoryColor(cat: string): string {
     switch (cat) {
@@ -208,59 +235,41 @@
       </button>
     {/each}
 
-    <!-- 2. Impegni Giornalieri / Lezioni -->
+    <!-- 2. Impegni Giornalieri / Lezioni (orario completo se attivo, altrimenti nascoste) -->
     {#each displayedEvents as ev (ev.id)}
       {@const catColor = getCategoryColor(ev.category)}
-      {@const isLesson = ev.category === "lezione"}
       <div class="generic-event-chip" title="{ev.title} ({ev.category}){ev.timeSlot ? ` · ${ev.timeSlot}` : ''}">
         <span class="event-dot" style:background={catColor}></span>
-        {#if ev.timeSlot && (!isLesson || themeStore.showLessonTimes)}
+        {#if ev.timeSlot}
           <span class="event-time">{ev.timeSlot}</span>
         {/if}
         <span class="event-title">{ev.title}</span>
       </div>
     {/each}
 
-    <!-- 3. To-Do List Diretta nel Calendario -->
-    {#each displayedTodos as todo (todo.id)}
-      <button
-        type="button"
-        class="cell-todo-item"
-        class:done={todo.done}
-        onclick={(e) => handleToggleTodo(todo.id, e)}
-        title="{todo.done ? 'Completato' : 'Da completare'}: {todo.text}"
+    <!-- 3. Riquadri Colorati delle Materie del Giorno (Non cliccabili singolarmente) -->
+    {#each displayedSubjects as item (item.course.id)}
+      {@const palette = generateCourseColorTokens(item.course.colorHex, isDark)}
+      <div
+        class="subject-cell-card"
+        style:background={palette.bgTint}
+        style:border-color={palette.borderTint}
+        style:color={palette.textContrast}
+        title="Materia in programma: {item.course.name} ({item.course.sigla})"
       >
-        <span class="todo-check-circle" class:checked={todo.done}>
-          {#if todo.done}✓{/if}
+        <span class="subject-accent-bar" style:background={palette.solid}></span>
+        <span
+          class="subject-sigla"
+          style:background={palette.solid}
+          style:color={palette.badgeText}
+        >
+          {item.course.sigla}
         </span>
-        {#if todo.courseId && courseById.get(todo.courseId)}
-          {@const c = courseById.get(todo.courseId)}
-          <span class="todo-course-tag">{c?.sigla}</span>
-        {/if}
-        <span class="todo-text">{todo.text}</span>
-      </button>
+        <span class="subject-name">{item.course.name}</span>
+      </div>
     {/each}
 
-    <!-- 4. Unità Didattiche (se presenti e con spazio) -->
-    {#if visibleUnits.length > 0 && remainingQuotaAfterEvents > 0}
-      <div class="units-chip-row">
-        {#each visibleUnits.slice(0, 3) as u (u.id)}
-          {@const c = courseById.get(u.courseId)}
-          <span
-            class="unit-mini-tag"
-            class:completed={u.isCompleted}
-            title="{c?.sigla ?? ''} · Unità {u.unitNumber}: {u.title}"
-          >
-            {c?.sigla ?? "U"}#{u.unitNumber}
-          </span>
-        {/each}
-        {#if visibleUnits.length > 3}
-          <span class="unit-more">+{visibleUnits.length - 3}</span>
-        {/if}
-      </div>
-    {/if}
-
-    <!-- 5. Indicatore Overflow (+N altri impegni/to-do) -->
+    <!-- 4. Indicatore Overflow (+N altri elementi del giorno) -->
     {#if overflowCount > 0}
       <div class="items-overflow-badge" title="Clicca per aprire tutti gli impegni del giorno">
         +{overflowCount} altri
@@ -527,63 +536,44 @@
     white-space: nowrap;
   }
 
-  /* To-Do Item Direttamente nella Cella */
-  .cell-todo-item {
+  /* Riquadri Colorati delle Materie del Giorno (Non interattivi, click = click giorno) */
+  .subject-cell-card {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
-    padding: 0.12rem 0.35rem;
-    font-size: 0.63rem;
-    color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.03);
-    border: 0.5px solid rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
-    cursor: pointer;
-    text-align: left;
+    gap: 0.32rem;
+    padding: 0.16rem 0.36rem 0.16rem 0.25rem;
+    border-radius: var(--radius-xs);
+    border: 0.5px solid;
+    font-size: 0.64rem;
+    font-weight: 600;
+    line-height: 1.25;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    transition: background 0.12s ease;
-  }
-  .cell-todo-item:hover {
-    background: rgba(255, 255, 255, 0.08);
-  }
-  .cell-todo-item.done {
-    opacity: 0.5;
-  }
-  .cell-todo-item.done .todo-text {
-    text-decoration: line-through;
+    user-select: none;
+    pointer-events: none;
   }
 
-  .todo-check-circle {
-    width: 10px;
+  .subject-accent-bar {
+    width: 2.5px;
     height: 10px;
-    border-radius: 50%;
-    border: 1px solid var(--text-tertiary, #888888);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.5rem;
-    line-height: 1;
+    border-radius: 999px;
     flex-shrink: 0;
   }
-  .todo-check-circle.checked {
-    background: #34c759;
-    border-color: #34c759;
-    color: #ffffff;
-  }
 
-  .todo-course-tag {
-    font-size: 0.54rem;
-    font-weight: 700;
-    opacity: 0.85;
-    padding: 0.04rem 0.22rem;
+  .subject-sigla {
+    font-size: 0.56rem;
+    font-weight: 800;
+    padding: 0.04rem 0.26rem;
     border-radius: 3px;
-    background: rgba(255, 255, 255, 0.09);
     flex-shrink: 0;
+    line-height: 1;
+    letter-spacing: var(--tracking-wide);
   }
 
-  .todo-text {
+  .subject-name {
+    font-size: 0.63rem;
+    font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -598,37 +588,9 @@
     background: rgba(0, 122, 255, 0.1);
     align-self: flex-start;
     margin-top: 0.05rem;
-    cursor: pointer;
   }
   .items-overflow-badge:hover {
     background: rgba(0, 122, 255, 0.18);
-  }
-
-  .units-chip-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.2rem;
-    margin-top: 0.05rem;
-  }
-
-  .unit-mini-tag {
-    font-size: 0.58rem;
-    font-weight: 700;
-    padding: 0.06rem 0.3rem;
-    border-radius: 0.25rem;
-    background: var(--surface-pill);
-    border: 0.5px solid var(--hairline-border);
-    color: var(--text-secondary);
-  }
-
-  .unit-mini-tag.completed {
-    text-decoration: line-through;
-    opacity: 0.55;
-  }
-
-  .unit-more {
-    font-size: 0.58rem;
-    color: var(--text-tertiary);
   }
 
   .workload-bottom-bar {

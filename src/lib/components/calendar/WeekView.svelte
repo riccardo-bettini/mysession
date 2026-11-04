@@ -122,7 +122,7 @@
       {@const dayData = byDate.get(cell.isoDate) ?? null}
       {@const exams = (dayData?.exams ?? []).filter((e) => !selectedCourseId || e.courseId === selectedCourseId)}
       {@const units = (dayData?.studyUnits ?? []).filter((u) => !selectedCourseId || u.courseId === selectedCourseId)}
-      {@const events = dayData?.genericEvents ?? []}
+      {@const events = (dayData?.genericEvents ?? []).filter((ev) => ev.category !== "lezione" || themeStore.showLessonTimes)}
       {@const todos = dayData?.todos ?? []}
       {@const conflicts = dayData?.conflicts ?? []}
       <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -196,11 +196,10 @@
 
           <!-- Eventi Generici -->
           {#each events as ev (ev.id)}
-            {@const isLesson = ev.category === "lezione"}
             <div class="week-generic-card">
               <div class="wg-top">
                 <span class="wg-cat">{ev.category}</span>
-                {#if ev.timeSlot && (!isLesson || themeStore.showLessonTimes)}
+                {#if ev.timeSlot}
                   <span class="wg-time">{ev.timeSlot}</span>
                 {/if}
               </div>
