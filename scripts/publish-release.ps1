@@ -1,5 +1,5 @@
 param(
-    [string]$Tag = "v1.0.47",
+    [string]$Tag = "v1.0.49",
     [string]$Token = $env:GITHUB_TOKEN
 )
 
@@ -27,11 +27,13 @@ if ($existing) {
 }
 
 $releaseNotes = @"
-### Novità e Migliorie di MySession v1.0.47
+### Novità e Migliorie di MySession v1.0.49
 
-- **Inserimento Orario tramite Prompt & Dettatura Vocale**: nuova modalità interattiva "Prompt & Voce" nel modal Orario Lezioni. Permette di digitare liberamente, incollare il testo dal portale universitario (es. Esse3 o PoliMi) oppure dettare direttamente a voce con il microfono (`it-IT`). L'assistente AI (locale o cloud) estrae e compila automaticamente giorni, orari, aule e materie.
-- **Scansione Completa di Blocchi Multipli e Impilati su Griglia**: perfezionamento del prompt Vision OCR per analizzare l'intera colonna di ciascun giorno da inizio mattina a fine pomeriggio, garantendo l'estrazione di tutte le lezioni consecutive o pomeridiane senza fermarsi alla prima lezione della giornata.
-- **Pulsante di Navigazione Input**: aggiunto il tasto "← Modifica input" nella tabella di revisione lezioni per passare agevolmente tra testo/voce, immagine e dati estratti.
+- **Gestione Flessibile dei Conflitti**: introdotta l'opzione per ignorare singoli conflitti direttamente dalle schede del popup o tutti insieme tramite il pulsante "Ignora tutti".
+- **Schede Attivi & Ignorati**: segmented control Apple HIG nel popup conflitti per esaminare e ripristinare i conflitti silenziati in qualsiasi momento.
+- **Pillola Toolbar Intelligente**: quando tutti i conflitti attivi sono silenziati, la toolbar mostra una pillola neutra discreta ("0 Conflitti · X ignorati") per riaprire il pannello di controllo.
+- **Reset Dinamico di Sicurezza sulle Date**: se la data di un appello ignorato viene spostata generando una nuova collisione, l'allarme viene automaticamente riattivato per proteggere la pianificazione.
+- **Pulizia Visiva del Calendario**: i conflitti ignorati vengono rimossi da tutte le viste (celle giorno, mese, settimana, agenda e horizon ribbon).
 "@
 
 $releasePayload = @{
