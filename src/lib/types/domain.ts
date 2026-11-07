@@ -257,6 +257,7 @@ export interface SessionSnapshot {
   dailyNotes: DailyNote[];
   weeklyLessons?: WeeklyLesson[];
   conflicts: ConflictItem[];
+  ignoredConflicts?: ConflictItem[];
   telemetry: TelemetrySummary;
 }
 

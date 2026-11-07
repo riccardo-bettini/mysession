@@ -363,7 +363,8 @@
   <UnifiedToolbar
     sessions={sessionStore.sessions}
     activeSession={sessionStore.activeSession}
-    conflictCount={sessionStore.activeSnapshot?.conflicts.length ?? 0}
+    conflictCount={sessionStore.conflicts.length}
+    ignoredConflictCount={sessionStore.ignoredConflicts.length}
     {isVoiceListening}
     isSessionLocked={sessionStore.isSessionLocked}
     onToggleSessionLock={handleToggleSessionLock}
@@ -563,7 +564,40 @@
 
   {#if conflictsModalOpen}
     <ConflictPopover
-      conflicts={sessionStore.activeSnapshot?.conflicts ?? []}
+      conflicts={sessionStore.conflicts}
+      ignoredConflicts={sessionStore.ignoredConflicts}
+      onIgnoreConflict={async (id) => {
+        try {
+          await sessionStore.ignoreConflict(id);
+          showToast("Conflitto ignorato e rimosso dagli allarmi");
+        } catch {
+          showToast("Errore durante l'operazione");
+        }
+      }}
+      onRestoreConflict={async (id) => {
+        try {
+          await sessionStore.restoreConflict(id);
+          showToast("Conflitto ripristinato tra gli allarmi");
+        } catch {
+          showToast("Errore durante l'operazione");
+        }
+      }}
+      onIgnoreAll={async (ids) => {
+        try {
+          await sessionStore.ignoreAllConflicts(ids);
+          showToast(`${ids.length} ${ids.length === 1 ? "conflitto ignorato" : "conflitti ignorati"}`);
+        } catch {
+          showToast("Errore durante l'operazione");
+        }
+      }}
+      onRestoreAll={async () => {
+        try {
+          await sessionStore.restoreAllConflicts();
+          showToast("Tutti i conflitti sono stati ripristinati");
+        } catch {
+          showToast("Errore durante l'operazione");
+        }
+      }}
       onSelectDate={(iso) => handleJumpToDate(iso, true)}
       onClose={() => (conflictsModalOpen = false)}
     />

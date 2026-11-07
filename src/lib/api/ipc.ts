@@ -99,6 +99,18 @@ export const ipc = {
   saveDailyNote: (sessionId: string, date: string, contentMarkdown: string) =>
     invoke<SessionSnapshot>("save_daily_note", { sessionId, date, contentMarkdown }),
 
+  ignoreConflict: (sessionId: string, conflictKey: string) =>
+    invoke<SessionSnapshot>("ignore_conflict", { sessionId, conflictKey }),
+
+  restoreConflict: (sessionId: string, conflictKey: string) =>
+    invoke<SessionSnapshot>("restore_conflict", { sessionId, conflictKey }),
+
+  ignoreAllConflicts: (sessionId: string, conflictKeys: string[]) =>
+    invoke<SessionSnapshot>("ignore_all_conflicts", { sessionId, conflictKeys }),
+
+  restoreAllConflicts: (sessionId: string) =>
+    invoke<SessionSnapshot>("restore_all_conflicts", { sessionId }),
+
   getHolidaysRange: (startYear: number, endYear: number) =>
     invoke<HolidayInfo[]>("get_holidays_range", { startYear, endYear }),
 

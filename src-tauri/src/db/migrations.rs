@@ -230,6 +230,17 @@ ALTER TABLE app_settings ADD COLUMN ai_boot_strategy TEXT NOT NULL DEFAULT 'on_d
 ALTER TABLE app_settings ADD COLUMN ai_hardware_preference TEXT NOT NULL DEFAULT 'auto';
 "#;
 
+const MIGRATION_V6_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS ignored_conflicts (
+    session_id TEXT NOT NULL,
+    conflict_key TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (session_id, conflict_key),
+    FOREIGN KEY (session_id) REFERENCES academic_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_ignored_conflicts_session ON ignored_conflicts(session_id);
+"#;
+
 pub fn configure_connection_pragmas(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
@@ -313,6 +324,16 @@ pub fn run_migrations(conn: &mut Connection) -> Result<()> {
         tx.execute(
             "INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
             params![5, &now_iso],
+        )?;
+        tx.commit()?;
+    }
+
+    if current_version < 6 {
+        let tx = conn.transaction()?;
+        tx.execute_batch(MIGRATION_V6_SQL)?;
+        tx.execute(
+            "INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
+            params![6, &now_iso],
         )?;
         tx.commit()?;
     }

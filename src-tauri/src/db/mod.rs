@@ -9,6 +9,7 @@ use crate::models::{
 };
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -1239,6 +1240,78 @@ impl DatabaseManager {
     }
 
     // ========================================================================
+    // Ignored Conflicts Engine Storage
+    // ========================================================================
+
+    pub fn list_ignored_conflicts(
+        conn: &Connection,
+        session_id: &str,
+    ) -> DbResult<HashSet<String>> {
+        let mut stmt = conn.prepare(
+            "SELECT conflict_key FROM ignored_conflicts WHERE session_id = ?1",
+        )?;
+        let rows = stmt.query_map(params![session_id], |row| row.get::<_, String>(0))?;
+        let mut set = HashSet::new();
+        for r in rows {
+            set.insert(r?);
+        }
+        Ok(set)
+    }
+
+    pub fn ignore_conflict(
+        conn: &Connection,
+        session_id: &str,
+        conflict_key: &str,
+    ) -> DbResult<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT OR REPLACE INTO ignored_conflicts (session_id, conflict_key, created_at) VALUES (?1, ?2, ?3)",
+            params![session_id, conflict_key, &now],
+        )?;
+        Ok(())
+    }
+
+    pub fn restore_conflict(
+        conn: &Connection,
+        session_id: &str,
+        conflict_key: &str,
+    ) -> DbResult<()> {
+        conn.execute(
+            "DELETE FROM ignored_conflicts WHERE session_id = ?1 AND conflict_key = ?2",
+            params![session_id, conflict_key],
+        )?;
+        Ok(())
+    }
+
+    pub fn ignore_all_conflicts(
+        conn: &Connection,
+        session_id: &str,
+        conflict_keys: &[String],
+    ) -> DbResult<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let tx = conn.unchecked_transaction()?;
+        for key in conflict_keys {
+            tx.execute(
+                "INSERT OR REPLACE INTO ignored_conflicts (session_id, conflict_key, created_at) VALUES (?1, ?2, ?3)",
+                params![session_id, key, &now],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn restore_all_conflicts(
+        conn: &Connection,
+        session_id: &str,
+    ) -> DbResult<()> {
+        conn.execute(
+            "DELETE FROM ignored_conflicts WHERE session_id = ?1",
+            params![session_id],
+        )?;
+        Ok(())
+    }
+
+    // ========================================================================
     // Snapshot & Bootstrap Builder
     // ========================================================================
 
@@ -1256,13 +1329,25 @@ impl DatabaseManager {
         let daily_notes = Self::list_daily_notes(conn, session_id)?;
         let weekly_lessons = Self::list_weekly_lessons(conn, session_id)?;
 
-        let conflicts = detect_session_conflicts(&courses, &study_units, &exams);
+        let all_conflicts = detect_session_conflicts(&courses, &study_units, &exams);
+        let ignored_keys = Self::list_ignored_conflicts(conn, session_id).unwrap_or_default();
+        let mut active_conflicts = Vec::new();
+        let mut ignored_conflicts = Vec::new();
+
+        for cf in all_conflicts {
+            if ignored_keys.contains(&cf.id) {
+                ignored_conflicts.push(cf);
+            } else {
+                active_conflicts.push(cf);
+            }
+        }
+
         let telemetry = compute_session_telemetry(
             &session,
             &courses,
             &study_units,
             &exams,
-            &conflicts,
+            &active_conflicts,
             settings.study_hours_per_cfu,
             settings.weekly_holiday_day,
             None,
@@ -1277,7 +1362,8 @@ impl DatabaseManager {
             todos,
             daily_notes,
             weekly_lessons,
-            conflicts,
+            conflicts: active_conflicts,
+            ignored_conflicts,
             telemetry,
         })
     }

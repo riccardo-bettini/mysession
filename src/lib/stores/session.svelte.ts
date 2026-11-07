@@ -4,6 +4,7 @@ import type {
   AiAssistantResponse,
   BootstrapPayload,
   Course,
+  ConflictItem,
   CreateItinerePairInput,
   Exam,
   GenericEvent,
@@ -66,6 +67,8 @@ class SessionWorkspaceStore {
   exams = $derived<Exam[]>(this.activeSnapshot?.exams ?? []);
   genericEvents = $derived<GenericEvent[]>(this.activeSnapshot?.genericEvents ?? []);
   weeklyLessons = $derived<WeeklyLesson[]>(this.activeSnapshot?.weeklyLessons ?? []);
+  conflicts = $derived<ConflictItem[]>(this.activeSnapshot?.conflicts ?? []);
+  ignoredConflicts = $derived<ConflictItem[]>(this.activeSnapshot?.ignoredConflicts ?? []);
 
   toggleSessionLock(force?: boolean): boolean {
     this.isSessionLocked = force !== undefined ? force : !this.isSessionLocked;
@@ -235,6 +238,38 @@ class SessionWorkspaceStore {
     const sessionId = this.activeSession?.id;
     if (!sessionId) return null;
     const snap = await ipc.saveDailyNote(sessionId, date, contentMarkdown);
+    this.activeSnapshot = snap;
+    return snap;
+  }
+
+  async ignoreConflict(conflictKey: string): Promise<SessionSnapshot | null> {
+    const sessionId = this.activeSession?.id;
+    if (!sessionId) return null;
+    const snap = await ipc.ignoreConflict(sessionId, conflictKey);
+    this.activeSnapshot = snap;
+    return snap;
+  }
+
+  async restoreConflict(conflictKey: string): Promise<SessionSnapshot | null> {
+    const sessionId = this.activeSession?.id;
+    if (!sessionId) return null;
+    const snap = await ipc.restoreConflict(sessionId, conflictKey);
+    this.activeSnapshot = snap;
+    return snap;
+  }
+
+  async ignoreAllConflicts(conflictKeys: string[]): Promise<SessionSnapshot | null> {
+    const sessionId = this.activeSession?.id;
+    if (!sessionId) return null;
+    const snap = await ipc.ignoreAllConflicts(sessionId, conflictKeys);
+    this.activeSnapshot = snap;
+    return snap;
+  }
+
+  async restoreAllConflicts(): Promise<SessionSnapshot | null> {
+    const sessionId = this.activeSession?.id;
+    if (!sessionId) return null;
+    const snap = await ipc.restoreAllConflicts(sessionId);
     this.activeSnapshot = snap;
     return snap;
   }

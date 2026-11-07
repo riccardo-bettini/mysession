@@ -58,8 +58,12 @@ pub fn detect_session_conflicts(
                 })
                 .collect();
 
+            let mut sorted_exam_ids = exam_ids.clone();
+            sorted_exam_ids.sort();
+            let conflict_id = format!("conf_direct_{}_{}", date_str, sorted_exam_ids.join("_"));
+
             conflicts.push(ConflictItem {
-                id: format!("conf_direct_{}", date_str),
+                id: conflict_id,
                 kind: "direct_date_overlap".to_string(),
                 severity: "critical".to_string(),
                 date: (*date_str).to_string(),
@@ -140,8 +144,13 @@ pub fn detect_session_conflicts(
                     "warning"
                 };
 
+                let conflict_id = format!(
+                    "conf_buffer_{}_{}_{}_{}",
+                    ex_a.id, ex_a.date, ex_b.id, ex_b.date
+                );
+
                 conflicts.push(ConflictItem {
-                    id: format!("conf_buffer_{}_{}", ex_a.id, ex_b.id),
+                    id: conflict_id,
                     kind: "insufficient_cfu_buffer".to_string(),
                     severity: severity.to_string(),
                     date: ex_b.date.clone(),

@@ -343,6 +343,7 @@ pub struct SessionSnapshot {
     pub daily_notes: Vec<DailyNote>,
     pub weekly_lessons: Vec<WeeklyLesson>,
     pub conflicts: Vec<ConflictItem>,
+    pub ignored_conflicts: Vec<ConflictItem>,
     pub telemetry: TelemetrySummary,
 }
 

@@ -318,6 +318,61 @@ pub fn save_daily_note(
 }
 
 #[tauri::command]
+pub fn ignore_conflict(
+    db: State<'_, DatabaseManager>,
+    session_id: String,
+    conflict_key: String,
+) -> Result<SessionSnapshot, String> {
+    db.with_conn(|conn| {
+        DatabaseManager::ignore_conflict(conn, &session_id, &conflict_key)?;
+        let settings = DatabaseManager::get_settings(conn)?;
+        DatabaseManager::build_session_snapshot(conn, &session_id, &settings)
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn restore_conflict(
+    db: State<'_, DatabaseManager>,
+    session_id: String,
+    conflict_key: String,
+) -> Result<SessionSnapshot, String> {
+    db.with_conn(|conn| {
+        DatabaseManager::restore_conflict(conn, &session_id, &conflict_key)?;
+        let settings = DatabaseManager::get_settings(conn)?;
+        DatabaseManager::build_session_snapshot(conn, &session_id, &settings)
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn ignore_all_conflicts(
+    db: State<'_, DatabaseManager>,
+    session_id: String,
+    conflict_keys: Vec<String>,
+) -> Result<SessionSnapshot, String> {
+    db.with_conn(|conn| {
+        DatabaseManager::ignore_all_conflicts(conn, &session_id, &conflict_keys)?;
+        let settings = DatabaseManager::get_settings(conn)?;
+        DatabaseManager::build_session_snapshot(conn, &session_id, &settings)
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn restore_all_conflicts(
+    db: State<'_, DatabaseManager>,
+    session_id: String,
+) -> Result<SessionSnapshot, String> {
+    db.with_conn(|conn| {
+        DatabaseManager::restore_all_conflicts(conn, &session_id)?;
+        let settings = DatabaseManager::get_settings(conn)?;
+        DatabaseManager::build_session_snapshot(conn, &session_id, &settings)
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn get_holidays_range(start_year: i32, end_year: i32) -> Result<Vec<HolidayInfo>, String> {
     let clean_start = start_year.clamp(1970, 2100);
     let clean_end = end_year.clamp(clean_start, 2100);
@@ -833,5 +888,162 @@ mod tests {
 
         let after_import = db.build_bootstrap_payload(APP_VERSION).unwrap();
         assert_eq!(after_import.sessions.len(), 2);
+    }
+
+    #[test]
+    fn test_ignored_conflicts_flow() {
+        let db = DatabaseManager::init_in_memory().expect("In-memory SQLite init failed");
+        let sess_id = "test_sess";
+
+        // Setup session, 2 courses, 2 exams with buffer collision
+        db.with_conn(|conn| {
+            DatabaseManager::upsert_session(
+                conn,
+                &UpsertSessionInput {
+                    id: Some(sess_id.to_string()),
+                    name: "Sessione Invernale".to_string(),
+                    subtitle: "".to_string(),
+                    session_type: "invernale".to_string(),
+                    academic_year: "2026/2027".to_string(),
+                    start_date: "2027-01-01".to_string(),
+                    end_date: "2027-02-28".to_string(),
+                    notes: None,
+                    plan_id: None,
+                },
+            )?;
+
+            let c1 = DatabaseManager::upsert_course(
+                conn,
+                &UpsertCourseInput {
+                    id: Some("c1".to_string()),
+                    session_id: sess_id.to_string(),
+                    sigla: "MAM".to_string(),
+                    name: "Meccanica".to_string(),
+                    code: "MAM".to_string(),
+                    cfu: 10,
+                    professor: "Rossi".to_string(),
+                    color_hex: "#0284C7".to_string(),
+                    difficulty_weight: Some(1.0),
+                    target_hours_override: None,
+                    notes: None,
+                    units: None,
+                    plan_course_id: None,
+                    is_visible: Some(true),
+                },
+            )?;
+
+            let c2 = DatabaseManager::upsert_course(
+                conn,
+                &UpsertCourseInput {
+                    id: Some("c2".to_string()),
+                    session_id: sess_id.to_string(),
+                    sigla: "TM".to_string(),
+                    name: "Tecnologie".to_string(),
+                    code: "TM".to_string(),
+                    cfu: 10,
+                    professor: "Bianchi".to_string(),
+                    color_hex: "#F59E0B".to_string(),
+                    difficulty_weight: Some(1.3),
+                    target_hours_override: None,
+                    notes: None,
+                    units: None,
+                    plan_course_id: None,
+                    is_visible: Some(true),
+                },
+            )?;
+
+            // Exam 1: Jan 08
+            DatabaseManager::upsert_exam(
+                conn,
+                &UpsertExamInput {
+                    id: Some("ex1".to_string()),
+                    session_id: sess_id.to_string(),
+                    course_id: c1.id.clone(),
+                    date: "2027-01-08".to_string(),
+                    time_slot: Some("09:00".to_string()),
+                    duration_minutes: Some(120),
+                    round: "1".to_string(),
+                    exam_type: Some("scritto".to_string()),
+                    classroom: None,
+                    weight_fraction: Some(1.0),
+                    pair_id: None,
+                    title: Some("1° Appello MAM".to_string()),
+                    details: None,
+                    status: Some("planned".to_string()),
+                    grade: None,
+                },
+            )?;
+
+            // Exam 2: Jan 13 (only 5 days gap for 10 CFU -> buffer conflict)
+            DatabaseManager::upsert_exam(
+                conn,
+                &UpsertExamInput {
+                    id: Some("ex2".to_string()),
+                    session_id: sess_id.to_string(),
+                    course_id: c2.id.clone(),
+                    date: "2027-01-13".to_string(),
+                    time_slot: Some("09:00".to_string()),
+                    duration_minutes: Some(120),
+                    round: "1".to_string(),
+                    exam_type: Some("scritto".to_string()),
+                    classroom: None,
+                    weight_fraction: Some(1.0),
+                    pair_id: None,
+                    title: Some("1° Appello TM".to_string()),
+                    details: None,
+                    status: Some("planned".to_string()),
+                    grade: None,
+                },
+            )?;
+
+            let settings = DatabaseManager::get_settings(conn)?;
+            let snap = DatabaseManager::build_session_snapshot(conn, sess_id, &settings)?;
+            assert_eq!(snap.conflicts.len(), 1);
+            assert_eq!(snap.ignored_conflicts.len(), 0);
+            let conf_id = snap.conflicts[0].id.clone();
+
+            // Ignore the conflict
+            DatabaseManager::ignore_conflict(conn, sess_id, &conf_id)?;
+            let snap_ignored = DatabaseManager::build_session_snapshot(conn, sess_id, &settings)?;
+            assert_eq!(snap_ignored.conflicts.len(), 0);
+            assert_eq!(snap_ignored.ignored_conflicts.len(), 1);
+            assert_eq!(snap_ignored.ignored_conflicts[0].id, conf_id);
+
+            // Restore the conflict
+            DatabaseManager::restore_conflict(conn, sess_id, &conf_id)?;
+            let snap_restored = DatabaseManager::build_session_snapshot(conn, sess_id, &settings)?;
+            assert_eq!(snap_restored.conflicts.len(), 1);
+            assert_eq!(snap_restored.ignored_conflicts.len(), 0);
+
+            // Re-ignore, then move exam date to Jan 12 (different date => resets ignore)
+            DatabaseManager::ignore_conflict(conn, sess_id, &conf_id)?;
+            DatabaseManager::upsert_exam(
+                conn,
+                &UpsertExamInput {
+                    id: Some("ex2".to_string()),
+                    session_id: sess_id.to_string(),
+                    course_id: c2.id.clone(),
+                    date: "2027-01-12".to_string(),
+                    time_slot: Some("09:00".to_string()),
+                    duration_minutes: Some(120),
+                    round: "1".to_string(),
+                    exam_type: Some("scritto".to_string()),
+                    classroom: None,
+                    weight_fraction: Some(1.0),
+                    pair_id: None,
+                    title: Some("1° Appello TM".to_string()),
+                    details: None,
+                    status: Some("planned".to_string()),
+                    grade: None,
+                },
+            )?;
+            let snap_moved = DatabaseManager::build_session_snapshot(conn, sess_id, &settings)?;
+            // Because the date changed, the conflict id changed and is now active again!
+            assert_eq!(snap_moved.conflicts.len(), 1);
+            assert_eq!(snap_moved.ignored_conflicts.len(), 0);
+
+            Ok(())
+        })
+        .unwrap();
     }
 }

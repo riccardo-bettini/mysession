@@ -13,6 +13,7 @@
     sessions?: AcademicSession[];
     activeSession?: AcademicSession | null;
     conflictCount?: number;
+    ignoredConflictCount?: number;
     isVoiceListening?: boolean;
     isSessionLocked?: boolean;
     onSelectSession?: (sessionId: string) => void;
@@ -32,6 +33,7 @@
     sessions = [],
     activeSession = null,
     conflictCount = 0,
+    ignoredConflictCount = 0,
     isSessionLocked = false,
     onSelectSession,
     onNewSession,
@@ -321,11 +323,21 @@
       <button
         type="button"
         class="conflict-pill-indicator pressable"
-        title="Ispeziona {conflictCount} conflitti o buffer critici rilevati"
+        title="Ispeziona {conflictCount} {conflictCount === 1 ? 'conflitto attivo' : 'conflitti attivi'} rilevati"
         onclick={() => onOpenConflicts?.()}
       >
         <span class="conflict-pulse"></span>
         <span>{conflictCount} {conflictCount === 1 ? "Conflitto" : "Conflitti"}</span>
+      </button>
+    {:else if ignoredConflictCount > 0}
+      <button
+        type="button"
+        class="conflict-pill-indicator ignored-pill pressable"
+        title="Nessun conflitto attivo ({ignoredConflictCount} {ignoredConflictCount === 1 ? 'conflitto ignorato' : 'conflitti ignorati'}). Clicca per visualizzare o ripristinare."
+        onclick={() => onOpenConflicts?.()}
+      >
+        <span class="ignored-icon">🙈</span>
+        <span>0 Conflitti · {ignoredConflictCount} {ignoredConflictCount === 1 ? "ignorato" : "ignorati"}</span>
       </button>
     {/if}
 
@@ -903,6 +915,22 @@
     height: 6px;
     border-radius: var(--radius-pill);
     background: #ef4444;
+  }
+
+  .conflict-pill-indicator.ignored-pill {
+    background: var(--surface-card);
+    border-color: var(--hairline-border);
+    color: var(--text-secondary);
+  }
+
+  .conflict-pill-indicator.ignored-pill:hover {
+    background: var(--surface-pill);
+    color: var(--text-primary);
+  }
+
+  .conflict-pill-indicator.ignored-pill .ignored-icon {
+    font-size: 0.76rem;
+    line-height: 1;
   }
 
   /* ==========================================================================
