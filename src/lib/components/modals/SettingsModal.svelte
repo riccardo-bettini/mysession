@@ -21,6 +21,40 @@
     AiModelDownloadProgress
   } from "../../types/domain";
   import ColorPickerField from "../common/ColorPickerField.svelte";
+  import CustomSelect, { type SelectOption } from "../common/CustomSelect.svelte";
+
+  const startDayOptions: SelectOption<number>[] = [
+    { value: 1, label: "Lunedì", description: "Standard Europeo ISO 8601" },
+    { value: 0, label: "Domenica", description: "Standard Anglosassone" }
+  ];
+
+  const holidayOptions: SelectOption<number>[] = [
+    { value: 0, label: "Domenica", description: "Festivo tradizionale" },
+    { value: 6, label: "Sabato", description: "Weekend lungo" },
+    { value: -1, label: "Nessuno", description: "Mostra tutti i giorni uguali" }
+  ];
+
+  const idleTimeoutOptions: SelectOption<number>[] = [
+    { value: 1, label: "Dopo 1 minuto", description: "Massimo risparmio energetico" },
+    { value: 3, label: "Dopo 3 minuti" },
+    { value: 5, label: "Dopo 5 minuti", badge: "Consigliato" },
+    { value: 10, label: "Dopo 10 minuti" },
+    { value: 15, label: "Dopo 15 minuti" },
+    { value: 30, label: "Dopo 30 minuti" },
+    { value: 0, label: "Mai (Sempre attivo)", description: "Modello mantenuto costantemente in memoria" }
+  ];
+
+  const bootStrategyOptions: SelectOption<"on_demand" | "on_app_start" | "contextual">[] = [
+    { value: "on_demand", label: "Su richiesta", badge: "Default", description: "Zero RAM all'avvio dell'app" },
+    { value: "on_app_start", label: "Precarica all'avvio", description: "Risposta istantanea alla prima richiesta" },
+    { value: "contextual", label: "Contestuale", description: "All'apertura orario o chat assistente" }
+  ];
+
+  const hardwarePreferenceOptions: SelectOption<"auto" | "gpu" | "cpu">[] = [
+    { value: "auto", label: "Automatico", badge: "Raccomandato", description: "GPU Vulkan/DirectML con fallback CPU" },
+    { value: "gpu", label: "Forza GPU", description: "Massime prestazioni di inferenza" },
+    { value: "cpu", label: "Forza solo CPU", description: "Preserva VRAM per altri compiti" }
+  ];
 
   export type SettingsTab =
     | "appearance"
@@ -381,7 +415,14 @@
             class:active={activeTab === "appearance"}
             onclick={() => (activeTab = "appearance")}
           >
-            <span class="nav-icon">🎨</span>
+            <span class="nav-icon">
+              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
+                <rect x="2" y="2.5" width="12" height="11" rx="2" stroke="currentColor" stroke-width="1.3" />
+                <line x1="2" y1="5.5" x2="14" y2="5.5" stroke="currentColor" stroke-width="1.3" />
+                <circle cx="4" cy="4" r="0.6" fill="currentColor" />
+                <circle cx="6" cy="4" r="0.6" fill="currentColor" />
+              </svg>
+            </span>
             <span>Aspetto & Finestra</span>
           </button>
           <button
@@ -390,7 +431,13 @@
             class:active={activeTab === "colors"}
             onclick={() => (activeTab = "colors")}
           >
-            <span class="nav-icon">🌈</span>
+            <span class="nav-icon">
+              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
+                <circle cx="8" cy="8" r="5.75" stroke="currentColor" stroke-width="1.3" />
+                <path d="M8 2.25A5.75 5.75 0 0 1 13.75 8H8z" fill="currentColor" fill-opacity="0.25" />
+                <circle cx="8" cy="8" r="1.5" fill="currentColor" />
+              </svg>
+            </span>
             <span>Palette & Colori</span>
           </button>
 
@@ -401,7 +448,14 @@
             class:active={activeTab === "calendar"}
             onclick={() => (activeTab = "calendar")}
           >
-            <span class="nav-icon">📅</span>
+            <span class="nav-icon">
+              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
+                <rect x="2" y="2.75" width="12" height="10.5" rx="2" stroke="currentColor" stroke-width="1.3" />
+                <line x1="2" y1="6" x2="14" y2="6" stroke="currentColor" stroke-width="1.3" />
+                <line x1="5.25" y1="1.75" x2="5.25" y2="3.75" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+                <line x1="10.75" y1="1.75" x2="10.75" y2="3.75" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+              </svg>
+            </span>
             <span>Calendario & Viste</span>
           </button>
           <button
@@ -410,7 +464,11 @@
             class:active={activeTab === "workload"}
             onclick={() => (activeTab = "workload")}
           >
-            <span class="nav-icon">⚡</span>
+            <span class="nav-icon">
+              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
+                <path d="M8.75 1.75L3.25 9.25H8L7.25 14.25L12.75 6.75H8L8.75 1.75Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </span>
             <span>Algoritmo CFU & Carico</span>
           </button>
           <button
@@ -419,7 +477,11 @@
             class:active={activeTab === "plan"}
             onclick={() => (activeTab = "plan")}
           >
-            <span class="nav-icon">📁</span>
+            <span class="nav-icon">
+              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
+                <path d="M2.5 3.5C2.5 2.67 3.17 2 4 2H6.5C6.9 2 7.28 2.16 7.56 2.44L8.56 3.44C8.84 3.72 9.22 3.88 9.62 3.88H12C12.83 3.88 13.5 4.55 13.5 5.38V12C13.5 12.83 12.83 13.5 12 13.5H4C3.17 13.5 2.5 12.83 2.5 12V3.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+              </svg>
+            </span>
             <span>Piani di Studio & Builder</span>
           </button>
 
@@ -430,7 +492,12 @@
             class:active={activeTab === "ai"}
             onclick={() => (activeTab = "ai")}
           >
-            <span class="nav-icon">✨</span>
+            <span class="nav-icon">
+              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
+                <path d="M8 1.5L9.2 5.3L13 6.5L9.2 7.7L8 11.5L6.8 7.7L3 6.5L6.8 5.3L8 1.5Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round" />
+                <path d="M12.5 10.5L13.1 12.4L15 13L13.1 13.6L12.5 15.5L11.9 13.6L10 13L11.9 12.4L12.5 10.5Z" stroke="currentColor" stroke-width="1" stroke-linejoin="round" />
+              </svg>
+            </span>
             <span>Assistente AI & NLP</span>
           </button>
           <button
@@ -439,7 +506,13 @@
             class:active={activeTab === "profile"}
             onclick={() => (activeTab = "profile")}
           >
-            <span class="nav-icon">🎓</span>
+            <span class="nav-icon">
+              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
+                <path d="M8 2.25L1.75 5.5L8 8.75L14.25 5.5L8 2.25Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M3.75 7V10.25C3.75 11.8 5.65 13 8 13C10.35 13 12.25 11.8 12.25 10.25V7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+                <path d="M14.25 5.5V10.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+              </svg>
+            </span>
             <span>Profilo Accademico</span>
           </button>
           <button
@@ -448,7 +521,13 @@
             class:active={activeTab === "backup"}
             onclick={() => (activeTab = "backup")}
           >
-            <span class="nav-icon">💾</span>
+            <span class="nav-icon">
+              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
+                <ellipse cx="8" cy="4" rx="5.5" ry="2" stroke="currentColor" stroke-width="1.3" />
+                <path d="M2.5 4V8C2.5 9.1 4.96 10 8 10C11.04 10 13.5 9.1 13.5 8V4" stroke="currentColor" stroke-width="1.3" />
+                <path d="M2.5 8V12C2.5 13.1 4.96 14 8 14C11.04 14 13.5 13.1 13.5 12V8" stroke="currentColor" stroke-width="1.3" />
+              </svg>
+            </span>
             <span>Dati & Backup JSON</span>
           </button>
           <button
@@ -457,7 +536,12 @@
             class:active={activeTab === "updates"}
             onclick={() => (activeTab = "updates")}
           >
-            <span class="nav-icon">🚀</span>
+            <span class="nav-icon">
+              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
+                <path d="M10 2.5C8 2 5.5 3.5 4 5C2.5 6.5 2 9 2.5 11L4 9.5C4 8 5.5 7 6.5 7L9 9.5C9 10.5 8 12 6.5 12L5 13.5C7 14 9.5 13.5 11 12C12.5 10.5 14 8 13.5 6L10 2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+                <circle cx="9.5" cy="6.5" r="1" fill="currentColor" />
+              </svg>
+            </span>
             <span>Aggiornamenti</span>
             {#if updaterStore.status === "available"}
               <span class="nav-update-dot"></span>
@@ -480,8 +564,10 @@
 
       <!-- Contenuto della Sezione Attiva -->
       <div class="settings-content">
-        <!-- 1. ASPETTO & FINESTRA -->
-        {#if activeTab === "appearance"}
+        {#key activeTab}
+          <div class="tab-pane">
+            <!-- 1. ASPETTO & FINESTRA -->
+            {#if activeTab === "appearance"}
           <div class="panel-group">
             <h3 class="group-title">Tema di Sistema (Sincronizzazione Windows 11)</h3>
             <p class="field-hint">Adatta automaticamente la palette al tema Chiaro/Scuro di Windows oppure forza una modalità fissa.</p>
@@ -655,22 +741,23 @@
           <div class="panel-group">
             <h3 class="group-title">Configurazione Settimanale & Riposo</h3>
             <div class="form-grid-2">
-              <label class="field">
+              <div class="field">
                 <span>Primo giorno della settimana</span>
-                <select bind:value={startDayOfWeek}>
-                  <option value={1}>Lunedì (Standard Europeo ISO 8601)</option>
-                  <option value={0}>Domenica (Standard Anglosassone)</option>
-                </select>
-              </label>
+                <CustomSelect
+                  bind:value={startDayOfWeek}
+                  options={startDayOptions}
+                  ariaLabel="Primo giorno della settimana"
+                />
+              </div>
 
-              <label class="field">
+              <div class="field">
                 <span>Giorno di riposo settimanale evidenziato</span>
-                <select bind:value={weeklyHolidayDay}>
-                  <option value={0}>Domenica</option>
-                  <option value={6}>Sabato</option>
-                  <option value={-1}>Nessuno (Mostra tutti i giorni uguali)</option>
-                </select>
-              </label>
+                <CustomSelect
+                  bind:value={weeklyHolidayDay}
+                  options={holidayOptions}
+                  ariaLabel="Giorno di riposo settimanale evidenziato"
+                />
+              </div>
             </div>
           </div>
 
@@ -919,36 +1006,32 @@
                 </div>
 
                 <div class="form-grid-3" style="margin-top: 1rem;">
-                  <label class="field">
+                  <div class="field">
                     <span>Spegnimento per Inattività</span>
-                    <select bind:value={aiIdleTimeoutMinutes}>
-                      <option value={1}>Dopo 1 minuto</option>
-                      <option value={3}>Dopo 3 minuti</option>
-                      <option value={5}>Dopo 5 minuti (Consigliato)</option>
-                      <option value={10}>Dopo 10 minuti</option>
-                      <option value={15}>Dopo 15 minuti</option>
-                      <option value={30}>Dopo 30 minuti</option>
-                      <option value={0}>Mai (Sempre attivo)</option>
-                    </select>
-                  </label>
+                    <CustomSelect
+                      bind:value={aiIdleTimeoutMinutes}
+                      options={idleTimeoutOptions}
+                      ariaLabel="Spegnimento per inattività"
+                    />
+                  </div>
 
-                  <label class="field">
+                  <div class="field">
                     <span>Strategia di Avvio</span>
-                    <select bind:value={aiBootStrategy}>
-                      <option value="on_demand">Su richiesta (Zero RAM all'avvio)</option>
-                      <option value="on_app_start">Precarica all'avvio dell'app</option>
-                      <option value="contextual">Contestuale (All'apertura orario)</option>
-                    </select>
-                  </label>
+                    <CustomSelect
+                      bind:value={aiBootStrategy}
+                      options={bootStrategyOptions}
+                      ariaLabel="Strategia di avvio"
+                    />
+                  </div>
 
-                  <label class="field">
+                  <div class="field">
                     <span>Accelerazione Hardware</span>
-                    <select bind:value={aiHardwarePreference}>
-                      <option value="auto">Automatico (GPU raccomandata)</option>
-                      <option value="gpu">Forza GPU (Vulkan / DirectML)</option>
-                      <option value="cpu">Forza solo CPU (Preserva VRAM)</option>
-                    </select>
-                  </label>
+                    <CustomSelect
+                      bind:value={aiHardwarePreference}
+                      options={hardwarePreferenceOptions}
+                      ariaLabel="Accelerazione hardware"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -1291,6 +1374,8 @@
             {/if}
           </div>
         {/if}
+          </div>
+        {/key}
       </div>
     </div>
 
@@ -1442,10 +1527,17 @@
   }
 
   .nav-icon {
-    font-size: 0.98rem;
     width: 1.3rem;
+    height: 1.3rem;
     display: inline-flex;
+    align-items: center;
     justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .nav-svg {
+    width: 1.15rem;
+    height: 1.15rem;
   }
 
   .nav-item:active {
@@ -1521,9 +1613,27 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 1.4rem;
     scrollbar-width: thin;
     scrollbar-color: var(--hairline-border-strong) transparent;
+  }
+
+  .tab-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 1.4rem;
+    width: 100%;
+    animation: tabEnter 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes tabEnter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .panel-group {
@@ -1547,6 +1657,7 @@
     border-radius: var(--radius-md);
     background: rgba(128, 128, 128, 0.1);
     border: 0.5px solid var(--hairline-border);
+    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
   }
 
   .seg-option {
@@ -1577,6 +1688,7 @@
     border-radius: var(--radius-md);
     border: 0.5px solid var(--hairline-border);
     background: rgba(128, 128, 128, 0.05);
+    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
@@ -1650,8 +1762,7 @@
     color: var(--text-secondary);
   }
 
-  .field input,
-  .field select {
+  .field input {
     padding: 0.54rem 0.75rem;
     border-radius: var(--radius-md);
     border: 0.5px solid var(--hairline-border-strong);
@@ -1662,13 +1773,7 @@
     transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
   }
 
-  .field select option {
-    background: var(--popover-bg);
-    color: var(--text-primary);
-  }
-
-  .field input:focus-visible,
-  .field select:focus-visible {
+  .field input:focus-visible {
     border-color: var(--accent-primary, #007AFF);
     box-shadow: 0 0 0 2.5px var(--accent-soft);
   }
@@ -1685,6 +1790,7 @@
     border-radius: var(--radius-md);
     border: 0.5px solid var(--hairline-border);
     background: rgba(128, 128, 128, 0.06);
+    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
     font-size: 0.8rem;
     line-height: 1.5;
     display: flex;
@@ -1719,6 +1825,7 @@
     border-radius: var(--radius-lg);
     border: 0.5px solid var(--hairline-border-strong);
     background: rgba(128, 128, 128, 0.07);
+    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
     text-align: left;
     display: flex;
     flex-direction: column;
@@ -1802,6 +1909,7 @@
     border-radius: var(--radius-md);
     background: var(--surface-card);
     border: 0.5px solid var(--hairline-border);
+    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.08), var(--shadow-sm);
   }
 
   .uh-icon-col {

@@ -693,6 +693,7 @@
     align-items: center;
     gap: 0.5rem;
     min-width: 0;
+    transition: gap 240ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .toolbar-left {
@@ -701,7 +702,7 @@
 
   .toolbar-right {
     justify-content: flex-end;
-    flex-shrink: 0;
+    flex-shrink: 1;
   }
 
   .toolbar-center {
@@ -801,8 +802,11 @@
   .session-dropdown-anchor,
   .appearance-dropdown-anchor {
     position: relative;
+    display: inline-flex;
     min-width: 0;
+    max-width: 15rem;
     flex-shrink: 1;
+    transition: max-width 240ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .session-selector-pill {
@@ -820,9 +824,17 @@
     font-weight: 600;
     letter-spacing: var(--tracking-normal);
     cursor: pointer;
+    width: 100%;
     max-width: 15rem;
     min-width: 0;
     flex-shrink: 1;
+    overflow: hidden;
+    transition:
+      max-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      padding 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      background-color 130ms ease,
+      border-color 130ms ease,
+      box-shadow 130ms ease;
   }
 
   .session-selector-pill:hover {
@@ -880,6 +892,15 @@
     color: var(--text-secondary);
     opacity: 0.85;
     flex-shrink: 0;
+    display: inline-block;
+    max-width: 5.5rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: clip;
+    transition:
+      max-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 200ms ease,
+      margin 240ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .chevron-icon {
@@ -999,13 +1020,27 @@
   }
 
   .conflict-full-text {
-    display: inline;
+    display: inline-block;
+    max-width: 14rem;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 1;
+    transition:
+      max-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 200ms ease;
   }
 
   .conflict-compact-badge {
-    display: none;
+    display: inline-block;
+    max-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 0;
     font-size: 0.72rem;
     font-weight: 700;
+    transition:
+      max-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 200ms ease;
   }
 
   /* ==========================================================================
@@ -1028,11 +1063,13 @@
     cursor: pointer;
     user-select: none;
     flex-shrink: 0;
-    transition: background 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-                border-color 0.2s ease,
-                color 0.2s ease,
-                box-shadow 0.2s ease,
-                transform 0.12s ease;
+    transition:
+      padding 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      background 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 0.2s ease,
+      color 0.2s ease,
+      box-shadow 0.2s ease,
+      transform 0.12s ease;
   }
 
   .session-lock-toggle:hover:not(:disabled) {
@@ -1048,6 +1085,19 @@
   .session-lock-toggle:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+
+  .lock-status-badge {
+    display: inline-block;
+    max-width: 9rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: clip;
+    opacity: 1;
+    transition:
+      max-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 200ms ease,
+      margin 240ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .lock-icon-container {
@@ -1126,6 +1176,15 @@
     font-weight: 500;
     letter-spacing: var(--tracking-normal);
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    transition:
+      padding 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      min-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      background-color 110ms ease,
+      color 110ms ease;
   }
 
   .segment-btn:hover {
@@ -1140,14 +1199,29 @@
   }
 
   .view-label-text {
-    display: inline;
+    display: inline-block;
+    max-width: 6rem;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 1;
+    transition:
+      max-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 200ms ease;
   }
 
   .view-icon {
-    display: none;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     line-height: 1;
+    max-width: 0;
+    overflow: hidden;
+    opacity: 0;
+    transform: scale(0.85);
+    transition:
+      max-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 200ms ease,
+      transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .view-icon svg {
@@ -1156,14 +1230,20 @@
   }
 
   /* ==========================================================================
-     Responsive Compaction (Container Queries with Media Query Fallbacks)
+     Responsive Compaction (Spring Transitions 240ms)
      ========================================================================== */
-  @container toolbar (max-width: 1260px) {
+  @container toolbar (max-width: 1280px) {
     .session-year {
-      display: none;
+      max-width: 0;
+      opacity: 0;
+      margin: 0;
+      pointer-events: none;
     }
     .lock-status-badge {
-      display: none;
+      max-width: 0;
+      opacity: 0;
+      margin: 0;
+      pointer-events: none;
     }
     .session-lock-toggle {
       padding: 0 0.45rem;
@@ -1172,19 +1252,28 @@
 
   @container toolbar (max-width: 1140px) {
     .conflict-full-text {
-      display: none;
+      max-width: 0;
+      opacity: 0;
+      margin: 0;
+      pointer-events: none;
     }
     .conflict-compact-badge {
-      display: inline;
+      max-width: 2.5rem;
+      opacity: 1;
     }
     .conflict-pill-indicator {
       padding: 0 0.45rem;
     }
     .view-label-text {
-      display: none;
+      max-width: 0;
+      opacity: 0;
+      margin: 0;
+      pointer-events: none;
     }
     .view-icon {
-      display: inline-flex;
+      max-width: 1.5rem;
+      opacity: 1;
+      transform: scale(1);
     }
     .segment-btn {
       padding: 0 0.45rem;
@@ -1210,12 +1299,18 @@
   }
 
   /* Fallback Media Queries */
-  @media (max-width: 1260px) {
+  @media (max-width: 1280px) {
     .session-year {
-      display: none;
+      max-width: 0;
+      opacity: 0;
+      margin: 0;
+      pointer-events: none;
     }
     .lock-status-badge {
-      display: none;
+      max-width: 0;
+      opacity: 0;
+      margin: 0;
+      pointer-events: none;
     }
     .session-lock-toggle {
       padding: 0 0.45rem;
@@ -1224,19 +1319,28 @@
 
   @media (max-width: 1140px) {
     .conflict-full-text {
-      display: none;
+      max-width: 0;
+      opacity: 0;
+      margin: 0;
+      pointer-events: none;
     }
     .conflict-compact-badge {
-      display: inline;
+      max-width: 2.5rem;
+      opacity: 1;
     }
     .conflict-pill-indicator {
       padding: 0 0.45rem;
     }
     .view-label-text {
-      display: none;
+      max-width: 0;
+      opacity: 0;
+      margin: 0;
+      pointer-events: none;
     }
     .view-icon {
-      display: inline-flex;
+      max-width: 1.5rem;
+      opacity: 1;
+      transform: scale(1);
     }
     .segment-btn {
       padding: 0 0.45rem;
@@ -1244,6 +1348,20 @@
     }
     .session-selector-pill {
       max-width: 11rem;
+    }
+  }
+
+  @media (max-width: 980px) {
+    .toolbar-left,
+    .toolbar-right {
+      gap: 0.35rem;
+    }
+    .session-selector-pill {
+      max-width: 8.5rem;
+      padding: 0 0.5rem;
+    }
+    .toolbar-center {
+      min-width: 40px;
     }
   }
 
