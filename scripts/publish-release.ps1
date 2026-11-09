@@ -1,7 +1,13 @@
 param(
-    [string]$Tag = "v1.0.49",
+    [string]$Tag = "v1.0.50",
     [string]$Token = $env:GITHUB_TOKEN
 )
+
+if (-not $Token) {
+    try {
+        $Token = (gh auth token 2>$null)
+    } catch {}
+}
 
 if (-not $Token) {
     Write-Error "Fornisci il token GitHub tramite parametro -Token o impostando `$env:GITHUB_TOKEN."
@@ -27,13 +33,16 @@ if ($existing) {
 }
 
 $releaseNotes = @"
-### Novità e Migliorie di MySession v1.0.49
+### Novità e Migliorie di MySession v1.0.50
 
-- **Gestione Flessibile dei Conflitti**: introdotta l'opzione per ignorare singoli conflitti direttamente dalle schede del popup o tutti insieme tramite il pulsante "Ignora tutti".
-- **Schede Attivi & Ignorati**: segmented control Apple HIG nel popup conflitti per esaminare e ripristinare i conflitti silenziati in qualsiasi momento.
-- **Pillola Toolbar Intelligente**: quando tutti i conflitti attivi sono silenziati, la toolbar mostra una pillola neutra discreta ("0 Conflitti · X ignorati") per riaprire il pannello di controllo.
-- **Reset Dinamico di Sicurezza sulle Date**: se la data di un appello ignorato viene spostata generando una nuova collisione, l'allarme viene automaticamente riattivato per proteggere la pianificazione.
-- **Pulizia Visiva del Calendario**: i conflitti ignorati vengono rimossi da tutte le viste (celle giorno, mese, settimana, agenda e horizon ribbon).
+- **Ristrutturazione Toolbar Superiore**: rimosso dalla barra il pulsante modale dell'orario per massima pulizia visiva (l'orario settimanale resta sempre accessibile dal menu a tendina della sessione). Preservato il comodo toggle rapido dell'orologio nel calendario.
+- **Compattazione Dinamica Responsive**:
+  - **Tasto Conflitti**: passa automaticamente a pillola compatta con badge numerico (🔴 N / 🙈 N) e tooltip informativo esteso su hover quando lo spazio si riduce.
+  - **Blocco Sessione**: nasconde l'etichetta testuale mantenendo l'icona del lucchetto animato con fisica Apple HIG a molla e indicatore cromatico.
+  - **Selettore Viste Calendario**: passa a 4 icone dedicate ad alta definizione SVG (Infinito ∞, Mese, Settimana, Agenda) con tooltip dedicato su ciascuna vista.
+- **Scorrimento Ciclico con Rotella del Mouse**: posizionando il cursore sopra il selettore di sessione, la rotella del mouse permette di scorrere istantaneamente e ciclicamente tra tutte le sessioni configurate (con throttling a 150ms anti-scatto).
+- **Ridimensionamento Fluido del Selettore di Sessione**: il titolo della sessione si adatta con troncamento intelligente (...), nascondendo prima l'anno accademico in schermi ridotti.
+- **Area di Drag Nativa Garantita**: riservati sempre almeno 48px di spazio libero centrale con `data-tauri-drag-region`, permettendo il trascinamento fluido della finestra a qualsiasi risoluzione.
 "@
 
 $releasePayload = @{
