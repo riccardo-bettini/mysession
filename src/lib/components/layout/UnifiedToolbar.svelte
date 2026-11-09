@@ -693,40 +693,37 @@
     align-items: center;
     gap: 0.5rem;
     min-width: 0;
-    transition: gap 240ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .toolbar-left {
-    flex-shrink: 1;
+    flex-shrink: 0;
   }
 
   .toolbar-right {
     justify-content: flex-end;
-    flex-shrink: 1;
+    flex-shrink: 0;
   }
 
   .toolbar-center {
     display: flex;
     justify-content: center;
     align-items: center;
-    min-width: 48px;
+    min-width: 32px;
     flex: 1 1 auto;
     height: 100%;
   }
 
   /* Micro-interazioni a molla istantanee Apple HIG (Emil Kowalski feedback) */
   .pressable {
-    will-change: transform;
     transition:
-      transform 120ms var(--spring-press),
-      background-color 130ms ease,
-      border-color 130ms ease,
-      box-shadow 130ms ease,
-      color 130ms ease;
+      background-color 120ms ease,
+      border-color 120ms ease,
+      color 120ms ease,
+      transform 100ms ease;
   }
 
   .pressable:active {
-    transform: scale(0.97);
+    transform: scale(0.98);
   }
 
   /* Focus ring rifinito macOS per accessibilità WCAG */
@@ -803,10 +800,8 @@
     position: relative;
     display: inline-flex;
     min-width: 0;
-    max-width: 15rem;
-    flex-shrink: 1;
-    overflow: hidden;
-    transition: max-width 240ms cubic-bezier(0.16, 1, 0.3, 1);
+    max-width: 32rem;
+    flex-shrink: 0;
   }
 
   .appearance-dropdown-anchor {
@@ -818,33 +813,31 @@
   .session-selector-pill {
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
+    gap: 0.5rem;
     height: 2.05rem;
-    padding: 0 0.75rem;
+    padding: 0 0.8rem;
     border-radius: var(--radius-sm);
-    background: var(--surface-pill);
+    background: var(--surface-card);
     border: 0.5px solid var(--hairline-border);
-    box-shadow: var(--shadow-pill);
+    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
     color: var(--text-primary);
     font-size: 0.8125rem;
     font-weight: 600;
     letter-spacing: var(--tracking-normal);
     cursor: pointer;
-    width: 100%;
-    max-width: 15rem;
+    width: auto;
+    max-width: 32rem;
     min-width: 0;
-    flex-shrink: 1;
+    flex-shrink: 0;
     overflow: hidden;
     transition:
-      max-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
-      padding 240ms cubic-bezier(0.16, 1, 0.3, 1),
       background-color 130ms ease,
       border-color 130ms ease,
-      box-shadow 130ms ease;
+      color 130ms ease;
   }
 
   .session-selector-pill:hover {
-    background: var(--surface-pill-hover);
+    background: var(--surface-elevated);
     border-color: var(--hairline-border-strong);
   }
 
@@ -875,14 +868,12 @@
   }
 
   .session-title-wrap {
-    display: flex;
+    display: inline-flex;
     align-items: baseline;
-    gap: 0.35rem;
+    gap: 0.4rem;
     overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
-    flex-shrink: 1;
   }
 
   .session-name {
@@ -893,20 +884,13 @@
   }
 
   .session-year {
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     font-weight: 500;
-    color: var(--text-secondary);
-    opacity: 0.85;
+    color: var(--text-tertiary);
     flex-shrink: 0;
     display: inline-block;
-    max-width: 5.5rem;
     overflow: hidden;
     white-space: nowrap;
-    text-overflow: clip;
-    transition:
-      max-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
-      opacity 200ms ease,
-      margin 240ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .chevron-icon {
@@ -924,9 +908,9 @@
   .temporal-nav-group {
     display: inline-flex;
     align-items: center;
-    background: var(--surface-pill);
+    background: var(--surface-card);
     border: 0.5px solid var(--hairline-border);
-    box-shadow: var(--shadow-pill);
+    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
     border-radius: var(--radius-sm);
     padding: 0.12rem;
     gap: 0.1rem;
@@ -944,15 +928,16 @@
     color: var(--text-secondary);
     border-radius: var(--radius-xs);
     cursor: pointer;
+    transition: background-color 110ms ease, color 110ms ease;
   }
 
   .nav-icon-btn:hover {
-    background: var(--surface-pill-hover);
+    background: var(--surface-elevated);
     color: var(--text-primary);
   }
 
   .nav-icon-btn:active {
-    transform: scale(0.94);
+    transform: scale(0.96);
   }
 
   .nav-icon-btn svg {
@@ -971,10 +956,11 @@
     letter-spacing: var(--tracking-wide);
     border-radius: var(--radius-xs);
     cursor: pointer;
+    transition: background-color 110ms ease;
   }
 
   .nav-today-btn:hover {
-    background: var(--surface-pill-hover);
+    background: var(--surface-elevated);
   }
 
   .nav-today-btn:active {
@@ -993,8 +979,9 @@
     height: 1.95rem;
     padding: 0 0.65rem;
     border-radius: var(--radius-pill);
-    background: rgba(239, 68, 68, 0.12);
-    border: 0.5px solid rgba(239, 68, 68, 0.35);
+    background: rgba(239, 68, 68, 0.14);
+    border: 0.5px solid rgba(239, 68, 68, 0.38);
+    box-shadow: none;
     color: #f87171;
     font-size: 0.73rem;
     font-weight: 600;
@@ -1011,12 +998,13 @@
 
   .conflict-pill-indicator.ignored-pill {
     background: var(--surface-card);
-    border-color: var(--hairline-border);
+    border: 0.5px solid var(--hairline-border);
+    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
     color: var(--text-secondary);
   }
 
   .conflict-pill-indicator.ignored-pill:hover {
-    background: var(--surface-pill);
+    background: var(--surface-elevated);
     color: var(--text-primary);
   }
 
@@ -1031,9 +1019,6 @@
     overflow: hidden;
     white-space: nowrap;
     opacity: 1;
-    transition:
-      max-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
-      opacity 200ms ease;
   }
 
   .conflict-compact-badge {
@@ -1044,13 +1029,10 @@
     opacity: 0;
     font-size: 0.72rem;
     font-weight: 700;
-    transition:
-      max-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
-      opacity 200ms ease;
   }
 
   /* ==========================================================================
-     Session Lock Toggle (Lucchetto Animato Apple HIG & Transizioni a Molla)
+     Session Lock Toggle (Solido, stile Apple HIG)
      ========================================================================== */
   .session-lock-toggle {
     display: inline-flex;
@@ -1059,9 +1041,9 @@
     height: 1.95rem;
     padding: 0 0.65rem;
     border-radius: var(--radius-sm);
-    background: var(--surface-glass);
+    background: var(--surface-card);
     border: 0.5px solid var(--hairline-border);
-    box-shadow: var(--shadow-sm);
+    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
     color: var(--text-secondary);
     font-size: 0.73rem;
     font-weight: 500;
@@ -1070,22 +1052,19 @@
     user-select: none;
     flex-shrink: 0;
     transition:
-      padding 240ms cubic-bezier(0.16, 1, 0.3, 1),
-      background 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-      border-color 0.2s ease,
-      color 0.2s ease,
-      box-shadow 0.2s ease,
-      transform 0.12s ease;
+      background-color 120ms ease,
+      border-color 120ms ease,
+      color 120ms ease;
   }
 
   .session-lock-toggle:hover:not(:disabled) {
-    background: var(--hover-glass);
+    background: var(--surface-elevated);
     color: var(--text-primary);
-    border-color: rgba(255, 255, 255, 0.22);
+    border-color: var(--hairline-border-strong);
   }
 
   .session-lock-toggle:active:not(:disabled) {
-    transform: scale(0.97);
+    transform: scale(0.98);
   }
 
   .session-lock-toggle:disabled {
@@ -1100,10 +1079,6 @@
     white-space: nowrap;
     text-overflow: clip;
     opacity: 1;
-    transition:
-      max-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
-      opacity 200ms ease,
-      margin 240ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .lock-icon-container {
@@ -1124,7 +1099,7 @@
 
   .lock-shackle {
     transform-origin: 4.75px 6.5px;
-    transition: transform 0.34s cubic-bezier(0.34, 1.56, 0.64, 1),
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
                 stroke 0.2s ease;
   }
 
@@ -1134,15 +1109,15 @@
 
   /* STATO ATTIVO: Lucchetto chiuso (Blocco periodo sessione) */
   .session-lock-toggle.is-locked {
-    background: rgba(0, 122, 255, 0.12);
-    border-color: rgba(0, 122, 255, 0.38);
+    background: rgba(0, 122, 255, 0.16);
+    border-color: rgba(0, 122, 255, 0.45);
+    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.08);
     color: var(--accent, #007AFF);
-    box-shadow: 0 1px 4px rgba(0, 122, 255, 0.12);
   }
 
   .session-lock-toggle.is-locked:hover:not(:disabled) {
-    background: rgba(0, 122, 255, 0.18);
-    border-color: rgba(0, 122, 255, 0.5);
+    background: rgba(0, 122, 255, 0.22);
+    border-color: rgba(0, 122, 255, 0.6);
   }
 
   .session-lock-toggle.is-locked .lock-shackle {
@@ -1162,9 +1137,9 @@
   .view-segmented-control {
     display: inline-flex;
     align-items: center;
-    background: var(--surface-pill);
+    background: var(--surface-card);
     border: 0.5px solid var(--hairline-border);
-    box-shadow: var(--shadow-pill);
+    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
     border-radius: var(--radius-sm);
     padding: 0.15rem;
     gap: 0.12rem;
@@ -1187,8 +1162,6 @@
     justify-content: center;
     min-width: 0;
     transition:
-      padding 240ms cubic-bezier(0.16, 1, 0.3, 1),
-      min-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
       background-color 110ms ease,
       color 110ms ease;
   }
@@ -1198,10 +1171,10 @@
   }
 
   .segment-btn.active {
-    background: var(--segment-active-bg);
+    background: var(--surface-elevated);
     color: var(--text-primary);
     font-weight: 600;
-    box-shadow: var(--shadow-segment-active);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
   }
 
   .view-label-text {
@@ -1210,9 +1183,6 @@
     overflow: hidden;
     white-space: nowrap;
     opacity: 1;
-    transition:
-      max-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
-      opacity 200ms ease;
   }
 
   .view-icon {
@@ -1224,10 +1194,6 @@
     overflow: hidden;
     opacity: 0;
     transform: scale(0.85);
-    transition:
-      max-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
-      opacity 200ms ease,
-      transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .view-icon svg {
@@ -1236,32 +1202,17 @@
   }
 
   /* ==========================================================================
-     Responsive Compaction (Spring Transitions 240ms)
+     Responsive Compaction per Schermi Ristretti
      ========================================================================== */
-  @container toolbar (max-width: 1280px) {
+  @container toolbar (max-width: 1200px) {
     .session-year {
-      max-width: 0;
-      opacity: 0;
-      margin: 0;
-      pointer-events: none;
-    }
-    .lock-status-badge {
-      max-width: 0;
-      opacity: 0;
-      margin: 0;
-      pointer-events: none;
-    }
-    .session-lock-toggle {
-      padding: 0 0.45rem;
+      display: none;
     }
   }
 
-  @container toolbar (max-width: 1140px) {
+  @container toolbar (max-width: 1040px) {
     .conflict-full-text {
-      max-width: 0;
-      opacity: 0;
-      margin: 0;
-      pointer-events: none;
+      display: none;
     }
     .conflict-compact-badge {
       max-width: 2.5rem;
@@ -1271,10 +1222,7 @@
       padding: 0 0.45rem;
     }
     .view-label-text {
-      max-width: 0;
-      opacity: 0;
-      margin: 0;
-      pointer-events: none;
+      display: none;
     }
     .view-icon {
       max-width: 1.5rem;
@@ -1285,28 +1233,24 @@
       padding: 0 0.45rem;
       min-width: 1.85rem;
     }
-    .session-selector-pill {
-      max-width: 11rem;
+    .lock-status-badge {
+      display: none;
+    }
+    .session-lock-toggle {
+      padding: 0 0.45rem;
     }
   }
 
-  @container toolbar (max-width: 980px) {
+  @container toolbar (max-width: 900px) {
     .toolbar-left,
     .toolbar-right {
       gap: 0.35rem;
     }
-    .session-selector-pill {
-      max-width: 8.5rem;
-      padding: 0 0.5rem;
-    }
     .toolbar-center {
-      min-width: 40px;
+      min-width: 24px;
     }
     .scale-readout {
-      max-width: 0;
-      opacity: 0;
-      margin: 0;
-      pointer-events: none;
+      display: none;
     }
     .toolbar-utility-btn {
       width: 2.05rem;
@@ -1315,30 +1259,15 @@
   }
 
   /* Fallback Media Queries */
-  @media (max-width: 1280px) {
+  @media (max-width: 1200px) {
     .session-year {
-      max-width: 0;
-      opacity: 0;
-      margin: 0;
-      pointer-events: none;
-    }
-    .lock-status-badge {
-      max-width: 0;
-      opacity: 0;
-      margin: 0;
-      pointer-events: none;
-    }
-    .session-lock-toggle {
-      padding: 0 0.45rem;
+      display: none;
     }
   }
 
-  @media (max-width: 1140px) {
+  @media (max-width: 1040px) {
     .conflict-full-text {
-      max-width: 0;
-      opacity: 0;
-      margin: 0;
-      pointer-events: none;
+      display: none;
     }
     .conflict-compact-badge {
       max-width: 2.5rem;
@@ -1348,10 +1277,7 @@
       padding: 0 0.45rem;
     }
     .view-label-text {
-      max-width: 0;
-      opacity: 0;
-      margin: 0;
-      pointer-events: none;
+      display: none;
     }
     .view-icon {
       max-width: 1.5rem;
@@ -1362,28 +1288,24 @@
       padding: 0 0.45rem;
       min-width: 1.85rem;
     }
-    .session-selector-pill {
-      max-width: 11rem;
+    .lock-status-badge {
+      display: none;
+    }
+    .session-lock-toggle {
+      padding: 0 0.45rem;
     }
   }
 
-  @media (max-width: 980px) {
+  @media (max-width: 900px) {
     .toolbar-left,
     .toolbar-right {
       gap: 0.35rem;
     }
-    .session-selector-pill {
-      max-width: 8.5rem;
-      padding: 0 0.5rem;
-    }
     .toolbar-center {
-      min-width: 40px;
+      min-width: 24px;
     }
     .scale-readout {
-      max-width: 0;
-      opacity: 0;
-      margin: 0;
-      pointer-events: none;
+      display: none;
     }
     .toolbar-utility-btn {
       width: 2.05rem;
@@ -1400,9 +1322,9 @@
     gap: 0.35rem;
     padding: 0 0.65rem;
     border-radius: var(--radius-sm);
-    background: var(--surface-pill);
+    background: var(--surface-card);
     border: 0.5px solid var(--hairline-border);
-    box-shadow: var(--shadow-pill);
+    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
     color: var(--text-secondary);
     font-size: 0.73rem;
     font-weight: 600;
@@ -1410,12 +1332,9 @@
     cursor: pointer;
     flex-shrink: 0;
     transition:
-      width 240ms cubic-bezier(0.16, 1, 0.3, 1),
-      padding 240ms cubic-bezier(0.16, 1, 0.3, 1),
-      background-color 130ms ease,
-      border-color 130ms ease,
-      box-shadow 130ms ease,
-      color 130ms ease;
+      background-color 120ms ease,
+      border-color 120ms ease,
+      color 120ms ease;
   }
 
   .toolbar-icon-only-btn {
@@ -1426,13 +1345,13 @@
   .toolbar-utility-btn:hover,
   .toolbar-utility-btn.active,
   .toolbar-icon-only-btn:hover {
-    background: var(--surface-pill-hover);
+    background: var(--surface-elevated);
     color: var(--text-primary);
     border-color: var(--hairline-border-strong);
   }
 
   .toolbar-icon-only-btn.active {
-    background: var(--surface-pill-hover);
+    background: var(--surface-elevated);
     color: var(--accent-primary, #007AFF);
     border-color: var(--accent-primary, #007AFF);
   }
@@ -1445,15 +1364,10 @@
 
   .scale-readout {
     display: inline-block;
-    max-width: 3.5rem;
     overflow: hidden;
     white-space: nowrap;
     opacity: 1;
     font-variant-numeric: tabular-nums;
-    transition:
-      max-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
-      opacity 200ms ease,
-      margin 240ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   /* ==========================================================================
