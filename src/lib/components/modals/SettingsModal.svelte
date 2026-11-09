@@ -826,19 +826,24 @@
               Indica la directory in cui il Builder genera e aggiorna i file JSON dei piani di studio.
               MySession monitora questa cartella in background ed estrae automaticamente modifiche, nuovi corsi e to-do.
             </p>
-            <div style="display: flex; gap: 0.5rem; align-items: center; margin-top: 0.5rem;">
+            <div class="folder-input-row">
               <input
                 type="text"
+                class="folder-path-input"
                 readonly
                 value={planStore.planFolder || "Nessuna cartella configurata"}
-                style="flex: 1; opacity: {planStore.planFolder ? 1 : 0.6};"
+                title={planStore.planFolder || "Nessuna cartella configurata"}
               />
               <button
                 type="button"
                 class="btn-action pressable"
                 onclick={() => planStore.browseFolder()}
+                title="Sfoglia cartelle nel computer"
               >
-                Sfoglia...
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1.75 3.75C1.75 2.65 2.65 1.75 3.75 1.75H6.25L8 3.75H12.25C13.35 3.75 14.25 4.65 14.25 5.75V12.25C14.25 13.35 13.35 14.25 12.25 14.25H3.75C2.65 14.25 1.75 13.35 1.75 12.25V3.75Z" />
+                </svg>
+                <span>Sfoglia…</span>
               </button>
               <button
                 type="button"
@@ -847,15 +852,26 @@
                 title="Apri la cartella in Esplora Risorse di Windows"
                 onclick={() => planStore.openPlanFolder()}
               >
-                📁 Apri Cartella
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1.75 4C1.75 3 2.5 2.25 3.5 2.25H6L7.5 4H12.5C13.5 4 14.25 4.75 14.25 5.75V6.25H3L1.75 12.75V4Z" />
+                  <path d="M3 6.25L1.5 13.75H13L14.5 6.25H3Z" />
+                </svg>
+                <span>Apri Cartella</span>
               </button>
               <button
                 type="button"
                 class="btn-action pressable"
                 disabled={planStore.isScanning || !planStore.planFolder}
+                title="Scansiona la cartella per rilevare nuovi piani"
                 onclick={() => planStore.scan()}
               >
-                {planStore.isScanning ? "Scansione..." : "Verifica Ora"}
+                <svg class:spin={planStore.isScanning} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M2.5 8C2.5 4.96 4.96 2.5 8 2.5C10.5 2.5 12.63 4.17 13.28 6.5" />
+                  <path d="M13.5 8C13.5 11.04 11.04 13.5 8 13.5C5.5 13.5 3.37 11.83 2.72 9.5" />
+                  <path d="M14 3.5V6.5H11" />
+                  <path d="M2 12.5V9.5H5" />
+                </svg>
+                <span>{planStore.isScanning ? "Scansione…" : "Verifica Ora"}</span>
               </button>
             </div>
           </div>
@@ -1295,11 +1311,7 @@
 
           <div class="panel-group">
             <h3 class="group-title">Controllo e Download Aggiornamenti</h3>
-            {#if updaterStore.status === "checking"}
-              <div class="info-card">
-                <p>⏳ Verifica della disponibilità di nuove release su GitHub in corso...</p>
-              </div>
-            {:else if updaterStore.status === "available"}
+            {#if updaterStore.status === "available"}
               <div class="update-available-card">
                 <div class="uac-header">
                   <div>
@@ -1351,18 +1363,28 @@
                 </button>
               </div>
             {:else}
-              <div style="display: flex; gap: 0.75rem; align-items: center;">
+              <div class="update-action-row">
                 <button
                   type="button"
                   class="btn-action pressable"
+                  disabled={updaterStore.status === "checking"}
                   onclick={() => updaterStore.checkForUpdates(false)}
                 >
-                  🔄 Verifica Aggiornamenti Ora
+                  <svg class:spin={updaterStore.status === "checking"} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2.5 8C2.5 4.96 4.96 2.5 8 2.5C10.5 2.5 12.63 4.17 13.28 6.5" />
+                    <path d="M13.5 8C13.5 11.04 11.04 13.5 8 13.5C5.5 13.5 3.37 11.83 2.72 9.5" />
+                    <path d="M14 3.5V6.5H11" />
+                    <path d="M2 12.5V9.5H5" />
+                  </svg>
+                  <span>{updaterStore.status === "checking" ? "Verifica in corso…" : "Verifica Aggiornamenti Ora"}</span>
                 </button>
                 {#if updaterStore.status === "up-to-date"}
-                  <span style="font-size: 0.8rem; color: #30D158; font-weight: 600;">
-                    ✓ Stai utilizzando l'ultima versione disponibile.
-                  </span>
+                  <div class="update-status-badge success">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M3.5 8.5L6.5 11.5L12.5 4.5" />
+                    </svg>
+                    <span>Stai utilizzando l'ultima versione disponibile.</span>
+                  </div>
                 {/if}
               </div>
               {#if updaterStore.errorMessage}
@@ -1890,6 +1912,116 @@
     font-size: 0.84rem;
     font-weight: 600;
     cursor: pointer;
+  }
+
+  .btn-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    height: 2.15rem;
+    padding: 0 0.85rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface-pill);
+    border: 0.5px solid var(--hairline-border);
+    box-shadow: var(--shadow-pill);
+    color: var(--text-primary);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: var(--tracking-normal);
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+      background-color 130ms ease,
+      border-color 130ms ease,
+      box-shadow 130ms ease,
+      color 130ms ease,
+      transform 120ms var(--spring-press);
+  }
+
+  .btn-action:hover:not(:disabled) {
+    background: var(--surface-pill-hover);
+    border-color: var(--hairline-border-strong);
+    color: var(--text-primary);
+  }
+
+  .btn-action:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .btn-action:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .btn-action svg {
+    width: 0.95rem;
+    height: 0.95rem;
+    flex-shrink: 0;
+  }
+
+  .folder-input-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.65rem;
+  }
+
+  .folder-path-input {
+    flex: 1;
+    min-width: 0;
+    height: 2.15rem;
+    padding: 0 0.85rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface-card);
+    border: 0.5px solid var(--hairline-border);
+    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    font-size: 0.8125rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    letter-spacing: var(--tracking-normal);
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+    user-select: all;
+  }
+
+  .update-action-row {
+    display: flex;
+    gap: 0.85rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .update-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+
+  .update-status-badge.success {
+    background: rgba(48, 209, 88, 0.12);
+    border: 0.5px solid rgba(48, 209, 88, 0.35);
+    color: #30D158;
+  }
+
+  .update-status-badge svg {
+    width: 0.85rem;
+    height: 0.85rem;
+    flex-shrink: 0;
+  }
+
+  @keyframes spinClockwise {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .spin {
+    animation: spinClockwise 850ms linear infinite;
   }
 
   /* Scheda Aggiornamenti */

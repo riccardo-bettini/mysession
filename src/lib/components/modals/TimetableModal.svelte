@@ -20,6 +20,7 @@
     ArrowRight,
     ArrowLeft
   } from "lucide-svelte";
+  import CustomSelect, { type SelectOption } from "../common/CustomSelect.svelte";
 
   interface Props {
     onClose?: () => void;
@@ -42,6 +43,21 @@
     { id: 6, name: "Sabato", short: "Sab" },
     { id: 7, name: "Domenica", short: "Dom" }
   ];
+
+  const daySelectOptions: SelectOption<number>[] = DAYS.map((d) => ({
+    value: d.id,
+    label: d.name
+  }));
+
+  const courseSelectOptions = $derived<SelectOption<string>[]>([
+    { value: "", label: "-- Materia personalizzata / non in elenco --" },
+    ...courses.map((c) => ({
+      value: c.id,
+      label: `${c.sigla} — ${c.name}`,
+      description: c.professor ? `Prof. ${c.professor}` : undefined,
+      badge: `${c.cfu} CFU`
+    }))
+  ]);
 
   let showWeekend = $state(false);
   let visibleDays = $derived(showWeekend ? DAYS : DAYS.slice(0, 5));
@@ -753,29 +769,26 @@
           >
             <!-- Giorno della settimana -->
             <div class="form-row">
-              <label for="lesson-day">Giorno della settimana</label>
-              <select id="lesson-day" bind:value={lessonEditingState.dayOfWeek} class="input-select">
-                {#each DAYS as d}
-                  <option value={d.id}>{d.name}</option>
-                {/each}
-              </select>
+              <span class="field-label">Giorno della settimana</span>
+              <CustomSelect
+                bind:value={lessonEditingState.dayOfWeek}
+                options={daySelectOptions}
+                ariaLabel="Giorno della settimana"
+              />
             </div>
 
             <!-- Materia (da corsi esistenti o testo libero) -->
             <div class="form-row">
-              <label for="lesson-course">Materia</label>
+              <span class="field-label">Materia</span>
               {#if courses.length > 0}
-                <select
-                  id="lesson-course-select"
-                  value={lessonEditingState.courseId}
-                  onchange={(e) => handleCourseSelect((e.currentTarget as HTMLSelectElement).value)}
-                  class="input-select"
-                >
-                  <option value="">-- Materia personalizzata / non in elenco --</option>
-                  {#each courses as c}
-                    <option value={c.id}>{c.sigla} — {c.name}</option>
-                  {/each}
-                </select>
+                <div class="course-select-wrap">
+                  <CustomSelect
+                    value={lessonEditingState.courseId || ""}
+                    options={courseSelectOptions}
+                    onchange={(val) => handleCourseSelect(val)}
+                    ariaLabel="Seleziona materia tra i corsi configurati"
+                  />
+                </div>
               {/if}
               <input
                 id="lesson-course"
@@ -1770,7 +1783,7 @@
     border: 0.5px solid var(--border-subtle, rgba(255, 255, 255, 0.15));
     border-radius: 16px;
     box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6);
-    overflow: hidden;
+    overflow: visible;
     animation: sheet-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
@@ -1779,6 +1792,7 @@
     max-height: 85vh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
 
   .submodal-header {
@@ -1822,11 +1836,15 @@
     gap: 0.4rem;
   }
 
-  .form-row label,
-  .form-col label {
+  .form-col label,
+  .field-label {
     font-size: 0.74rem;
     font-weight: 600;
     color: var(--text-secondary, #cccccc);
+  }
+
+  .course-select-wrap {
+    margin-bottom: 0.45rem;
   }
 
   .form-row-dual {
@@ -1841,8 +1859,7 @@
     gap: 0.4rem;
   }
 
-  .input-text,
-  .input-select {
+  .input-text {
     width: 100%;
     padding: 0.55rem 0.75rem;
     background: var(--surface-card);
@@ -1853,8 +1870,7 @@
     outline: none;
     transition: border-color 0.15s ease, background-color 0.15s ease;
   }
-  .input-text:focus,
-  .input-select:focus {
+  .input-text:focus {
     border-color: var(--accent-primary);
     background: var(--surface-elevated);
   }
@@ -2089,13 +2105,22 @@
   }
 
   .input-select-mini {
-    width: 60px;
-    padding: 0.25rem 0.35rem;
+    width: 68px;
+    padding: 0.25rem 0.45rem;
     background: var(--surface-card);
     border: 0.5px solid var(--hairline-border-strong);
     border-radius: var(--radius-xs);
     color: var(--text-primary);
     font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+
+  .input-select-mini:focus {
+    border-color: var(--accent-primary);
+    background: var(--surface-elevated);
   }
 
   .input-time-mini {
