@@ -799,14 +799,20 @@
   /* ==========================================================================
      2. Session Selector & Temporal Navigation
      ========================================================================== */
-  .session-dropdown-anchor,
-  .appearance-dropdown-anchor {
+  .session-dropdown-anchor {
     position: relative;
     display: inline-flex;
     min-width: 0;
     max-width: 15rem;
     flex-shrink: 1;
+    overflow: hidden;
     transition: max-width 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .appearance-dropdown-anchor {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
   }
 
   .session-selector-pill {
@@ -1296,6 +1302,16 @@
     .toolbar-center {
       min-width: 40px;
     }
+    .scale-readout {
+      max-width: 0;
+      opacity: 0;
+      margin: 0;
+      pointer-events: none;
+    }
+    .toolbar-utility-btn {
+      width: 2.05rem;
+      padding: 0;
+    }
   }
 
   /* Fallback Media Queries */
@@ -1363,19 +1379,15 @@
     .toolbar-center {
       min-width: 40px;
     }
-  }
-
-  @media (max-width: 980px) {
-    .toolbar-left,
-    .toolbar-right {
-      gap: 0.35rem;
+    .scale-readout {
+      max-width: 0;
+      opacity: 0;
+      margin: 0;
+      pointer-events: none;
     }
-    .session-selector-pill {
-      max-width: 8.5rem;
-      padding: 0 0.5rem;
-    }
-    .toolbar-center {
-      min-width: 40px;
+    .toolbar-utility-btn {
+      width: 2.05rem;
+      padding: 0;
     }
   }
 
@@ -1397,6 +1409,13 @@
     letter-spacing: var(--tracking-normal);
     cursor: pointer;
     flex-shrink: 0;
+    transition:
+      width 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      padding 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      background-color 130ms ease,
+      border-color 130ms ease,
+      box-shadow 130ms ease,
+      color 130ms ease;
   }
 
   .toolbar-icon-only-btn {
@@ -1425,7 +1444,16 @@
   }
 
   .scale-readout {
+    display: inline-block;
+    max-width: 3.5rem;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 1;
     font-variant-numeric: tabular-nums;
+    transition:
+      max-width 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 200ms ease,
+      margin 240ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   /* ==========================================================================
