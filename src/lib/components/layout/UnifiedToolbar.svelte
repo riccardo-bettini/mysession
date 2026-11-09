@@ -129,6 +129,31 @@
   function handleControlStyleChange(style: WindowControlsStyle) {
     themeStore.setWindowControlsStyle(style);
   }
+
+  let lastWheelTime = 0;
+  const WHEEL_THROTTLE_MS = 150;
+
+  function handleSessionWheel(e: WheelEvent) {
+    if (sessions.length <= 1) return;
+    e.preventDefault();
+
+    const now = performance.now();
+    if (now - lastWheelTime < WHEEL_THROTTLE_MS) return;
+    lastWheelTime = now;
+
+    const currentIndex = sessions.findIndex((s) => s.id === activeSession?.id);
+    const total = sessions.length;
+
+    if (e.deltaY > 0) {
+      // Rotella in giù -> sessione successiva (ciclica)
+      const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % total;
+      onSelectSession?.(sessions[nextIndex].id);
+    } else if (e.deltaY < 0) {
+      // Rotella in su -> sessione precedente (ciclica)
+      const prevIndex = currentIndex === -1 ? 0 : (currentIndex - 1 + total) % total;
+      onSelectSession?.(sessions[prevIndex].id);
+    }
+  }
 </script>
 
 <header
@@ -191,8 +216,9 @@
         type="button"
         class="session-selector-pill pressable"
         onclick={() => (sessionMenuOpen = !sessionMenuOpen)}
+        onwheel={handleSessionWheel}
         aria-expanded={sessionMenuOpen}
-        title="Cambia Sessione Accademica attiva"
+        title="Cambia Sessione Accademica attiva (scorri con la rotella del mouse per passare rapidamente da una sessione all'altra)"
       >
         <span class="session-dot" class:has-conflict={conflictCount > 0}></span>
         <span class="session-title-wrap">
@@ -327,7 +353,8 @@
         onclick={() => onOpenConflicts?.()}
       >
         <span class="conflict-pulse"></span>
-        <span>{conflictCount} {conflictCount === 1 ? "Conflitto" : "Conflitti"}</span>
+        <span class="conflict-full-text">{conflictCount} {conflictCount === 1 ? "Conflitto" : "Conflitti"}</span>
+        <span class="conflict-compact-badge">{conflictCount}</span>
       </button>
     {:else if ignoredConflictCount > 0}
       <button
@@ -337,7 +364,8 @@
         onclick={() => onOpenConflicts?.()}
       >
         <span class="ignored-icon">🙈</span>
-        <span>0 Conflitti · {ignoredConflictCount} {ignoredConflictCount === 1 ? "ignorato" : "ignorati"}</span>
+        <span class="conflict-full-text">0 Conflitti · {ignoredConflictCount} {ignoredConflictCount === 1 ? "ignorato" : "ignorati"}</span>
+        <span class="conflict-compact-badge">{ignoredConflictCount}</span>
       </button>
     {/if}
 
@@ -396,9 +424,44 @@
           aria-selected={themeStore.settings.defaultView === v.id}
           class="segment-btn pressable"
           class:active={themeStore.settings.defaultView === v.id}
+          title={`Vista ${v.label}`}
           onclick={() => handleViewChange(v.id)}
         >
-          {v.label}
+          <span class="view-label-text">{v.label}</span>
+          <span class="view-icon" aria-hidden="true">
+            {#if v.id === "continuous"}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18.178 8c5.096 0 5.096 8 0 8-2.695 0-4.73-2.617-6.178-4.667C10.552 9.283 8.517 8 5.822 8c-5.096 0-5.096 8 0 8 2.695 0 4.73-2.617 6.178-4.667 1.448 2.05 3.483 3.333 6.178 3.333z" />
+              </svg>
+            {:else if v.id === "month"}
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2.5" width="12" height="11" rx="2" />
+                <line x1="2" y1="6" x2="14" y2="6" />
+                <circle cx="5" cy="8.5" r="0.75" fill="currentColor" />
+                <circle cx="8" cy="8.5" r="0.75" fill="currentColor" />
+                <circle cx="11" cy="8.5" r="0.75" fill="currentColor" />
+                <circle cx="5" cy="11" r="0.75" fill="currentColor" />
+                <circle cx="8" cy="11" r="0.75" fill="currentColor" />
+                <circle cx="11" cy="11" r="0.75" fill="currentColor" />
+              </svg>
+            {:else if v.id === "week"}
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2.5" width="12" height="11" rx="2" />
+                <line x1="6" y1="2.5" x2="6" y2="13.5" />
+                <line x1="10" y1="2.5" x2="10" y2="13.5" />
+                <line x1="2" y1="6" x2="14" y2="6" />
+              </svg>
+            {:else if v.id === "agenda"}
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="4.5" x2="13.5" y2="4.5" />
+                <line x1="6" y1="8" x2="13.5" y2="8" />
+                <line x1="6" y1="11.5" x2="13.5" y2="11.5" />
+                <circle cx="3.2" cy="4.5" r="0.8" fill="currentColor" />
+                <circle cx="3.2" cy="8" r="0.8" fill="currentColor" />
+                <circle cx="3.2" cy="11.5" r="0.8" fill="currentColor" />
+              </svg>
+            {/if}
+          </span>
         </button>
       {/each}
     </div>
@@ -536,22 +599,6 @@
       </svg>
     </button>
 
-    <!-- Pulsante Orario Lezioni -->
-    <button
-      type="button"
-      class="toolbar-icon-only-btn pressable"
-      title="Orario Settimanale delle Lezioni"
-      aria-label="Apri orario lezioni"
-      onclick={() => onOpenTimetable?.()}
-    >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-        <line x1="16" y1="2" x2="16" y2="6" />
-        <line x1="8" y1="2" x2="8" y2="6" />
-        <line x1="3" y1="10" x2="21" y2="10" />
-      </svg>
-    </button>
-
     <!-- Pulsante Impostazioni Complete (Icona Ingranaggio / Gear) -->
     <button
       type="button"
@@ -632,6 +679,8 @@
     box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.08);
     user-select: none;
     -webkit-user-select: none;
+    container-type: inline-size;
+    container-name: toolbar;
   }
 
   :global([data-controls="win11-right"]) .unified-toolbar {
@@ -646,15 +695,22 @@
     min-width: 0;
   }
 
+  .toolbar-left {
+    flex-shrink: 1;
+  }
+
   .toolbar-right {
     justify-content: flex-end;
+    flex-shrink: 0;
   }
 
   .toolbar-center {
     display: flex;
     justify-content: center;
     align-items: center;
-    min-width: 0;
+    min-width: 48px;
+    flex: 1 1 auto;
+    height: 100%;
   }
 
   /* Micro-interazioni a molla istantanee Apple HIG (Emil Kowalski feedback) */
@@ -745,6 +801,8 @@
   .session-dropdown-anchor,
   .appearance-dropdown-anchor {
     position: relative;
+    min-width: 0;
+    flex-shrink: 1;
   }
 
   .session-selector-pill {
@@ -763,6 +821,8 @@
     letter-spacing: var(--tracking-normal);
     cursor: pointer;
     max-width: 15rem;
+    min-width: 0;
+    flex-shrink: 1;
   }
 
   .session-selector-pill:hover {
@@ -803,11 +863,15 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
+    flex-shrink: 1;
   }
 
   .session-name {
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
 
   .session-year {
@@ -815,6 +879,7 @@
     font-weight: 500;
     color: var(--text-secondary);
     opacity: 0.85;
+    flex-shrink: 0;
   }
 
   .chevron-icon {
@@ -933,6 +998,16 @@
     line-height: 1;
   }
 
+  .conflict-full-text {
+    display: inline;
+  }
+
+  .conflict-compact-badge {
+    display: none;
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
   /* ==========================================================================
      Session Lock Toggle (Lucchetto Animato Apple HIG & Transizioni a Molla)
      ========================================================================== */
@@ -1028,15 +1103,6 @@
     transform: translateY(-2.4px) rotate(-35deg);
   }
 
-  @media (max-width: 1120px) {
-    .lock-status-badge {
-      display: none;
-    }
-    .session-lock-toggle {
-      padding: 0 0.45rem;
-    }
-  }
-
   .view-segmented-control {
     display: inline-flex;
     align-items: center;
@@ -1071,6 +1137,128 @@
     color: var(--text-primary);
     font-weight: 600;
     box-shadow: var(--shadow-segment-active);
+  }
+
+  .view-label-text {
+    display: inline;
+  }
+
+  .view-icon {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+
+  .view-icon svg {
+    width: 0.95rem;
+    height: 0.95rem;
+  }
+
+  /* ==========================================================================
+     Responsive Compaction (Container Queries with Media Query Fallbacks)
+     ========================================================================== */
+  @container toolbar (max-width: 1260px) {
+    .session-year {
+      display: none;
+    }
+    .lock-status-badge {
+      display: none;
+    }
+    .session-lock-toggle {
+      padding: 0 0.45rem;
+    }
+  }
+
+  @container toolbar (max-width: 1140px) {
+    .conflict-full-text {
+      display: none;
+    }
+    .conflict-compact-badge {
+      display: inline;
+    }
+    .conflict-pill-indicator {
+      padding: 0 0.45rem;
+    }
+    .view-label-text {
+      display: none;
+    }
+    .view-icon {
+      display: inline-flex;
+    }
+    .segment-btn {
+      padding: 0 0.45rem;
+      min-width: 1.85rem;
+    }
+    .session-selector-pill {
+      max-width: 11rem;
+    }
+  }
+
+  @container toolbar (max-width: 980px) {
+    .toolbar-left,
+    .toolbar-right {
+      gap: 0.35rem;
+    }
+    .session-selector-pill {
+      max-width: 8.5rem;
+      padding: 0 0.5rem;
+    }
+    .toolbar-center {
+      min-width: 40px;
+    }
+  }
+
+  /* Fallback Media Queries */
+  @media (max-width: 1260px) {
+    .session-year {
+      display: none;
+    }
+    .lock-status-badge {
+      display: none;
+    }
+    .session-lock-toggle {
+      padding: 0 0.45rem;
+    }
+  }
+
+  @media (max-width: 1140px) {
+    .conflict-full-text {
+      display: none;
+    }
+    .conflict-compact-badge {
+      display: inline;
+    }
+    .conflict-pill-indicator {
+      padding: 0 0.45rem;
+    }
+    .view-label-text {
+      display: none;
+    }
+    .view-icon {
+      display: inline-flex;
+    }
+    .segment-btn {
+      padding: 0 0.45rem;
+      min-width: 1.85rem;
+    }
+    .session-selector-pill {
+      max-width: 11rem;
+    }
+  }
+
+  @media (max-width: 980px) {
+    .toolbar-left,
+    .toolbar-right {
+      gap: 0.35rem;
+    }
+    .session-selector-pill {
+      max-width: 8.5rem;
+      padding: 0 0.5rem;
+    }
+    .toolbar-center {
+      min-width: 40px;
+    }
   }
 
   .toolbar-utility-btn,
