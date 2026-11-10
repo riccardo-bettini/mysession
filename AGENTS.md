@@ -6,13 +6,13 @@ Questo documento stabilisce le regole operative, architetturali e di design per 
 
 ## 1. Regola di Versionamento Incrementale (Obbligatoria)
 
-- **Numero di Versione di Partenza**: `1.0.00` (Attuale: `1.0.49`).
+- **Numero di Versione di Partenza**: `1.0.00` (Attuale: `1.0.56`).
 - **Incremento di +0.0.01 per ogni modifica**: Ad ogni iterazione, fase, correzione di bug, rifattorizzazione o aggiunta di funzionalità, la versione deve essere incrementata di **0.0.01** (es. `1.0.04` → `1.0.05` → `1.0.06`...).
 - **Sincronizzazione Multi-file**: Ogni incremento di versione deve essere sincronizzato contestualmente in:
-  1. **[package.json](file:///C:/Users/Riccardo/Personal/Antigravity/app_programmazione_sessione/package.json)**: Nel campo `"version"`.
-  2. **[src-tauri/Cargo.toml](file:///C:/Users/Riccardo/Personal/Antigravity/app_programmazione_sessione/src-tauri/Cargo.toml)**: Nel campo `version` del package Rust (formato SemVer compatibile `1.0.X`).
-  3. **[src-tauri/tauri.conf.json](file:///C:/Users/Riccardo/Personal/Antigravity/app_programmazione_sessione/src-tauri/tauri.conf.json)**: Nel campo `"version"`.
-  4. **[src/lib/constants/version.ts](file:///C:/Users/Riccardo/Personal/Antigravity/app_programmazione_sessione/src/lib/constants/version.ts)**: Nella costante `APP_VERSION = "1.0.XX"`.
+  1. **[package.json](file:///C:/Users/Riccardo/Personal/App/MySession/package.json)**: Nel campo `"version"`.
+  2. **[src-tauri/Cargo.toml](file:///C:/Users/Riccardo/Personal/App/MySession/src-tauri/Cargo.toml)**: Nel campo `version` del package Rust (formato SemVer compatibile `1.0.X`).
+  3. **[src-tauri/tauri.conf.json](file:///C:/Users/Riccardo/Personal/App/MySession/src-tauri/tauri.conf.json)**: Nel campo `"version"`.
+  4. **[src/lib/constants/version.ts](file:///C:/Users/Riccardo/Personal/App/MySession/src/lib/constants/version.ts)**: Nella costante `APP_VERSION = "1.0.XX"`.
 - **Autore Ufficiale del Software**: **Riccardo Bettini** (`APP_AUTHOR = "Riccardo Bettini"`).
 
 ---
@@ -20,7 +20,7 @@ Questo documento stabilisce le regole operative, architetturali e di design per 
 ## 2. Directory di Lavoro & Integrità del Workspace (Zero-Legacy & Zero-Hardcoding)
 
 - **Percorso Assoluto di Progetto**:
-  `C:\Users\Riccardo\Personal\Antigravity\app_programmazione_sessione`
+  `C:\Users\Riccardo\Personal\App\MySession`
 - **Struttura Pulita Tauri v2 + Svelte 5**:
   - `src-tauri/`: Core backend Rust (SQLite WAL, DWM Win32 Mica/Acrylic, Conflict Engine, Workload Engine, AI Tool Calling).
   - `src/`: Frontend Svelte 5 (Runes) + TypeScript strict + Design System Apple HIG.
@@ -29,7 +29,7 @@ Questo documento stabilisce le regole operative, architetturali e di design per 
 - **Esecuzione Comandi PowerShell**:
   Ogni comando PowerShell deve posizionarsi esplicitamente nella cartella corretta:
   ```powershell
-  Set-Location "C:\Users\Riccardo\Personal\Antigravity\app_programmazione_sessione"
+  Set-Location "C:\Users\Riccardo\Personal\App\MySession"
   ```
 
 ---
@@ -63,7 +63,7 @@ Questo documento stabilisce le regole operative, architetturali e di design per 
 ## 6. Stile di Risposta e Comunicazione dell'Agente
 
 - Rispondere in modo sintetico, chiaro e professionale in lingua italiana.
-- Includere sempre link cliccabili a tutti i file e simboli modificati con schema `file:///` (es. `[App.svelte](file:///C:/Users/Riccardo/Personal/Antigravity/app_programmazione_sessione/src/App.svelte)`).
+- Includere sempre link cliccabili a tutti i file e simboli modificati con schema `file:///` (es. `[App.svelte](file:///C:/Users/Riccardo/Personal/App/MySession/src/App.svelte)`).
 
 ---
 
@@ -72,7 +72,7 @@ Questo documento stabilisce le regole operative, architetturali e di design per 
 - **Generazione Pipeline di Release**:
   Ad ogni iterazione, modifica o rilascio di versione, è **obbligatorio** aggiornare la cartella `release/` eseguendo lo script di packaging automatizzato:
   ```powershell
-  Set-Location "C:\Users\Riccardo\Personal\Antigravity\app_programmazione_sessione"
+  Set-Location "C:\Users\Riccardo\Personal\App\MySession"
   npm run release
   ```
 - **Artefatti Generati nella cartella `release/`**:
@@ -80,4 +80,3 @@ Questo documento stabilisce le regole operative, architetturali e di design per 
   - Firma di sicurezza auto-updater (`MySession_<version>_x64-setup.exe.sig`)
   - Manifest GitHub Releases (`latest.json`)
   - Tabella Checksum SHA256 (`SHA256SUMS-<version>.txt`)
-
