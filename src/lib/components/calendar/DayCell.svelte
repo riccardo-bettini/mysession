@@ -62,9 +62,19 @@
   let hasNote = $derived(Boolean(dayData?.note));
   let workloadHours = $derived(dayData?.workloadHours ?? 0);
 
-  // Riquadri colorati per ciascuna materia da fare nel giorno (derivata da unità didattiche e to-do di corso)
+  // Riquadri compatti per ciascuna materia da fare nel giorno (derivata da unità didattiche e to-do di corso)
   let daySubjectItems = $derived.by(() => {
-    const map = new Map<string, { course: Course; unitsCount: number; todosCount: number }>();
+    const map = new Map<
+      string,
+      {
+        course: Course;
+        unitsCount: number;
+        unitsDoneCount: number;
+        todosCount: number;
+        todosDoneCount: number;
+        isAllDone: boolean;
+      }
+    >();
 
     for (const u of visibleUnits) {
       const c = courseById.get(u.courseId);
@@ -72,8 +82,16 @@
       const existing = map.get(c.id);
       if (existing) {
         existing.unitsCount++;
+        if (u.isCompleted) existing.unitsDoneCount++;
       } else {
-        map.set(c.id, { course: c, unitsCount: 1, todosCount: 0 });
+        map.set(c.id, {
+          course: c,
+          unitsCount: 1,
+          unitsDoneCount: u.isCompleted ? 1 : 0,
+          todosCount: 0,
+          todosDoneCount: 0,
+          isAllDone: false
+        });
       }
     }
 
@@ -85,35 +103,42 @@
       const existing = map.get(c.id);
       if (existing) {
         existing.todosCount++;
+        if (t.done) existing.todosDoneCount++;
       } else {
-        map.set(c.id, { course: c, unitsCount: 0, todosCount: 1 });
+        map.set(c.id, {
+          course: c,
+          unitsCount: 0,
+          unitsDoneCount: 0,
+          todosCount: 1,
+          todosDoneCount: t.done ? 1 : 0,
+          isAllDone: false
+        });
       }
     }
 
-    return Array.from(map.values());
+    const res = Array.from(map.values());
+    for (const item of res) {
+      const total = item.unitsCount + item.todosCount;
+      const done = item.unitsDoneCount + item.todosDoneCount;
+      item.isAllDone = total > 0 && done === total;
+    }
+    return res;
   });
 
-  // Quota dinamica di visualizzazione diretta impegni e riquadri materie nel calendario
-  let maxDisplayItems = $derived(compact ? 3 : 5);
-  let totalItemsCount = $derived(
-    visibleExams.length + visibleEvents.length + daySubjectItems.length
-  );
+  // Quota dinamica: esami ed eventi usano la quota verticale; i chip materie hanno una riga compatta dedicata
+  let maxDisplayItems = $derived(compact ? 3 : 4);
 
   let displayedExams = $derived(visibleExams.slice(0, 3));
   let remainingQuotaAfterExams = $derived(Math.max(0, maxDisplayItems - displayedExams.length));
-
   let displayedEvents = $derived(visibleEvents.slice(0, remainingQuotaAfterExams));
-  let remainingQuotaAfterEvents = $derived(
-    Math.max(0, remainingQuotaAfterExams - displayedEvents.length)
-  );
 
-  let displayedSubjects = $derived(daySubjectItems.slice(0, remainingQuotaAfterEvents));
+  let maxSubjectChips = $derived(compact ? 4 : 6);
+  let displayedSubjects = $derived(daySubjectItems.slice(0, maxSubjectChips));
+
   let overflowCount = $derived(
-    Math.max(
-      0,
-      totalItemsCount -
-        (displayedExams.length + displayedEvents.length + displayedSubjects.length)
-    )
+    Math.max(0, visibleExams.length - displayedExams.length) +
+      Math.max(0, visibleEvents.length - displayedEvents.length) +
+      Math.max(0, daySubjectItems.length - displayedSubjects.length)
   );
 
   function getCategoryColor(cat: string): string {
@@ -247,27 +272,28 @@
       </div>
     {/each}
 
-    <!-- 3. Riquadri Colorati delle Materie del Giorno (Non cliccabili singolarmente) -->
-    {#each displayedSubjects as item (item.course.id)}
-      {@const palette = generateCourseColorTokens(item.course.colorHex, isDark)}
-      <div
-        class="subject-cell-card"
-        style:background={palette.bgTint}
-        style:border-color={palette.borderTint}
-        style:color={palette.textContrast}
-        title="Materia in programma: {item.course.name} ({item.course.sigla})"
-      >
-        <span class="subject-accent-bar" style:background={palette.solid}></span>
-        <span
-          class="subject-sigla"
-          style:background={palette.solid}
-          style:color={palette.badgeText}
-        >
-          {item.course.sigla}
-        </span>
-        <span class="subject-name">{item.course.name}</span>
+    <!-- 3. Riquadri Compatti delle Materie del Giorno (Sigla + stato completamento) -->
+    {#if displayedSubjects.length > 0}
+      <div class="subject-chips-row">
+        {#each displayedSubjects as item (item.course.id)}
+          {@const palette = generateCourseColorTokens(item.course.colorHex, isDark)}
+          <div
+            class="subject-chip-pill"
+            class:all-done={item.isAllDone}
+            style:background={palette.bgTint}
+            style:border-color={palette.borderTint}
+            style:color={palette.textContrast}
+            title="{item.course.name} ({item.course.sigla}){item.todosCount > 0 ? ` — ${item.todosDoneCount}/${item.todosCount} task` : ''}"
+          >
+            <span class="subject-chip-dot" style:background={palette.solid}></span>
+            <span class="subject-chip-sigla">{item.course.sigla}</span>
+            {#if item.isAllDone}
+              <span class="subject-chip-check">✓</span>
+            {/if}
+          </div>
+        {/each}
       </div>
-    {/each}
+    {/if}
 
     <!-- 4. Indicatore Overflow (+N altri elementi del giorno) -->
     {#if overflowCount > 0}
@@ -536,47 +562,50 @@
     white-space: nowrap;
   }
 
-  /* Riquadri Colorati delle Materie del Giorno (Non interattivi, click = click giorno) */
-  .subject-cell-card {
+  /* Riquadri Compatti delle Materie del Giorno (affiancati in riga con flex-wrap) */
+  .subject-chips-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 0.32rem;
-    padding: 0.16rem 0.36rem 0.16rem 0.25rem;
-    border-radius: var(--radius-xs);
-    border: 0.5px solid;
-    font-size: 0.64rem;
-    font-weight: 600;
-    line-height: 1.25;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    user-select: none;
-    pointer-events: none;
+    gap: 0.24rem;
+    margin-top: 0.04rem;
   }
 
-  .subject-accent-bar {
-    width: 2.5px;
-    height: 10px;
+  .subject-chip-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.22rem;
+    padding: 0.14rem 0.34rem;
+    border-radius: var(--radius-xs);
+    border: 0.5px solid;
+    font-size: 0.62rem;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: var(--tracking-wide);
+    user-select: none;
+    pointer-events: none;
+    transition: opacity 160ms ease;
+  }
+
+  .subject-chip-pill.all-done {
+    opacity: 0.68;
+  }
+
+  .subject-chip-dot {
+    width: 5px;
+    height: 5px;
     border-radius: 999px;
     flex-shrink: 0;
   }
 
-  .subject-sigla {
-    font-size: 0.56rem;
-    font-weight: 800;
-    padding: 0.04rem 0.26rem;
-    border-radius: 3px;
-    flex-shrink: 0;
-    line-height: 1;
-    letter-spacing: var(--tracking-wide);
+  .subject-chip-sigla {
+    white-space: nowrap;
   }
 
-  .subject-name {
-    font-size: 0.63rem;
-    font-weight: 600;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .subject-chip-check {
+    font-size: 0.56rem;
+    font-weight: 900;
+    line-height: 1;
   }
 
   .items-overflow-badge {
