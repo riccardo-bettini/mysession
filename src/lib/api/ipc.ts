@@ -11,6 +11,7 @@ import type {
   UpsertProfileInput,
   UpsertSessionInput,
   UpsertTodoInput,
+  UpsertTodoSubItemInput,
   UserProfile,
   BackdropMaterial,
   ThemeChoice,
@@ -95,6 +96,15 @@ export const ipc = {
 
   deleteTodo: (sessionId: string, todoId: string) =>
     invoke<SessionSnapshot>("delete_todo", { sessionId, todoId }),
+
+  upsertTodoSubItem: (sessionId: string, input: UpsertTodoSubItemInput) =>
+    invoke<SessionSnapshot>("upsert_todo_subitem", { sessionId, input }),
+
+  toggleTodoSubItem: (sessionId: string, subitemId: string) =>
+    invoke<SessionSnapshot>("toggle_todo_subitem", { sessionId, subitemId }),
+
+  deleteTodoSubItem: (sessionId: string, subitemId: string) =>
+    invoke<SessionSnapshot>("delete_todo_subitem", { sessionId, subitemId }),
 
   saveDailyNote: (sessionId: string, date: string, contentMarkdown: string) =>
     invoke<SessionSnapshot>("save_daily_note", { sessionId, date, contentMarkdown }),

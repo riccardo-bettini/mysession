@@ -4,12 +4,13 @@ use crate::engine::{conflicts::detect_session_conflicts, workload::compute_sessi
 use crate::models::{
     AcademicSession, AppSettings, BootstrapPayload, Course, CreateItinerePairInput, DailyNote,
     Exam, FullWorkspaceBackup, GenericEvent, SessionSnapshot, StudyUnit, StudyUnitDraft, TodoItem,
-    UpsertCourseInput, UpsertExamInput, UpsertGenericEventInput, UpsertProfileInput,
-    UpsertSessionInput, UpsertTodoInput, UpsertWeeklyLessonInput, UserProfile, WeeklyLesson,
+    TodoSubItem, UpsertCourseInput, UpsertExamInput, UpsertGenericEventInput, UpsertProfileInput,
+    UpsertSessionInput, UpsertTodoInput, UpsertTodoSubItemInput, UpsertWeeklyLessonInput, UserProfile,
+    WeeklyLesson,
 };
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -927,12 +928,47 @@ impl DatabaseManager {
                 plan_task_id: row.get(8)?,
                 planned_hours: row.get(9)?,
                 kind: row.get(10)?,
+                subtasks: Vec::new(),
             })
         })?;
         let mut out = Vec::new();
         for r in rows {
             out.push(r?);
         }
+
+        if !out.is_empty() {
+            let mut sub_stmt = conn.prepare(
+                r#"
+                SELECT s.id, s.todo_id, s.text, s.done, s.sort_order, s.created_at, s.plan_subtask_id
+                FROM todo_subitems s
+                INNER JOIN todos t ON t.id = s.todo_id
+                WHERE t.session_id = ?1
+                ORDER BY s.sort_order ASC, s.created_at ASC
+                "#,
+            )?;
+            let sub_rows = sub_stmt.query_map(params![session_id], |row| {
+                Ok(TodoSubItem {
+                    id: row.get(0)?,
+                    todo_id: row.get(1)?,
+                    text: row.get(2)?,
+                    done: row.get::<_, i32>(3)? != 0,
+                    sort_order: row.get(4)?,
+                    created_at: row.get(5)?,
+                    plan_subtask_id: row.get(6)?,
+                })
+            })?;
+            let mut subs_by_todo: HashMap<String, Vec<TodoSubItem>> = HashMap::new();
+            for sr in sub_rows {
+                let sub = sr?;
+                subs_by_todo.entry(sub.todo_id.clone()).or_default().push(sub);
+            }
+            for todo in &mut out {
+                if let Some(subs) = subs_by_todo.remove(&todo.id) {
+                    todo.subtasks = subs;
+                }
+            }
+        }
+
         Ok(out)
     }
 
@@ -981,15 +1017,153 @@ impl DatabaseManager {
     }
 
     pub fn toggle_todo(conn: &Connection, todo_id: &str) -> DbResult<()> {
-        conn.execute(
-            "UPDATE todos SET done = CASE WHEN done = 0 THEN 1 ELSE 0 END WHERE id = ?1",
-            params![todo_id],
-        )?;
+        let current_done: Option<i32> = conn
+            .query_row(
+                "SELECT done FROM todos WHERE id = ?1",
+                params![todo_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+
+        if let Some(done_val) = current_done {
+            let new_done = if done_val == 0 { 1 } else { 0 };
+            conn.execute(
+                "UPDATE todos SET done = ?1 WHERE id = ?2",
+                params![new_done, todo_id],
+            )?;
+            // Cascata: imposta tutti i sotto-elementi allo stesso stato
+            conn.execute(
+                "UPDATE todo_subitems SET done = ?1 WHERE todo_id = ?2",
+                params![new_done, todo_id],
+            )?;
+        }
         Ok(())
     }
 
     pub fn delete_todo(conn: &Connection, todo_id: &str) -> DbResult<()> {
         conn.execute("DELETE FROM todos WHERE id = ?1", params![todo_id])?;
+        Ok(())
+    }
+
+    pub fn upsert_todo_subitem(conn: &Connection, input: &UpsertTodoSubItemInput) -> DbResult<TodoSubItem> {
+        let id = input
+            .id
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| format!("sub_{}", Uuid::new_v4().simple()));
+        let now_iso = Utc::now().to_rfc3339();
+
+        let sort_order: i32 = match input.sort_order {
+            Some(so) => so,
+            None => conn
+                .query_row(
+                    "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM todo_subitems WHERE todo_id = ?1",
+                    params![&input.todo_id],
+                    |r| r.get(0),
+                )
+                .unwrap_or(0),
+        };
+
+        conn.execute(
+            r#"
+            INSERT INTO todo_subitems (
+                id, todo_id, text, done, sort_order, created_at, plan_subtask_id
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            ON CONFLICT(id) DO UPDATE SET
+                text = excluded.text,
+                done = COALESCE(excluded.done, todo_subitems.done),
+                sort_order = COALESCE(excluded.sort_order, todo_subitems.sort_order),
+                plan_subtask_id = COALESCE(excluded.plan_subtask_id, todo_subitems.plan_subtask_id)
+            "#,
+            params![
+                &id,
+                &input.todo_id,
+                input.text.trim(),
+                if input.done.unwrap_or(false) { 1 } else { 0 },
+                sort_order,
+                now_iso,
+                input.plan_subtask_id.as_deref().map(str::trim),
+            ],
+        )?;
+
+        Self::sync_todo_parent_completion(conn, &input.todo_id)?;
+
+        conn.query_row(
+            r#"
+            SELECT id, todo_id, text, done, sort_order, created_at, plan_subtask_id
+            FROM todo_subitems WHERE id = ?1
+            "#,
+            params![&id],
+            |r| {
+                Ok(TodoSubItem {
+                    id: r.get(0)?,
+                    todo_id: r.get(1)?,
+                    text: r.get(2)?,
+                    done: r.get::<_, i32>(3)? != 0,
+                    sort_order: r.get(4)?,
+                    created_at: r.get(5)?,
+                    plan_subtask_id: r.get(6)?,
+                })
+            },
+        )
+        .map_err(DbError::Sqlite)
+    }
+
+    pub fn toggle_todo_subitem(conn: &Connection, subitem_id: &str) -> DbResult<String> {
+        let (todo_id, current_done): (String, i32) = conn
+            .query_row(
+                "SELECT todo_id, done FROM todo_subitems WHERE id = ?1",
+                params![subitem_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(DbError::Sqlite)?;
+
+        let new_done = if current_done == 0 { 1 } else { 0 };
+        conn.execute(
+            "UPDATE todo_subitems SET done = ?1 WHERE id = ?2",
+            params![new_done, subitem_id],
+        )?;
+
+        Self::sync_todo_parent_completion(conn, &todo_id)?;
+
+        Ok(todo_id)
+    }
+
+    pub fn delete_todo_subitem(conn: &Connection, subitem_id: &str) -> DbResult<String> {
+        let todo_id: String = conn
+            .query_row(
+                "SELECT todo_id FROM todo_subitems WHERE id = ?1",
+                params![subitem_id],
+                |r| r.get(0),
+            )
+            .map_err(DbError::Sqlite)?;
+
+        conn.execute("DELETE FROM todo_subitems WHERE id = ?1", params![subitem_id])?;
+
+        Self::sync_todo_parent_completion(conn, &todo_id)?;
+
+        Ok(todo_id)
+    }
+
+    fn sync_todo_parent_completion(conn: &Connection, todo_id: &str) -> DbResult<()> {
+        let counts: (i32, i32) = conn
+            .query_row(
+                r#"
+                SELECT COUNT(*), SUM(CASE WHEN done = 1 THEN 1 ELSE 0 END)
+                FROM todo_subitems WHERE todo_id = ?1
+                "#,
+                params![todo_id],
+                |r| Ok((r.get(0)?, r.get::<_, Option<i32>>(1)?.unwrap_or(0))),
+            )
+            .unwrap_or((0, 0));
+
+        if counts.0 > 0 {
+            let should_be_done = if counts.0 == counts.1 { 1 } else { 0 };
+            conn.execute(
+                "UPDATE todos SET done = ?1 WHERE id = ?2",
+                params![should_be_done, todo_id],
+            )?;
+        }
         Ok(())
     }
 

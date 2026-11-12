@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use chrono::NaiveDate;
-use crate::plan::model::{PlanPayload, SUPPORTED_SCHEMA_VERSION};
+use crate::plan::model::PlanPayload;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ValidationError {
@@ -11,10 +11,10 @@ pub enum ValidationError {
 pub fn validate_plan(plan: &PlanPayload) -> Result<(), Vec<String>> {
     let mut errors = Vec::new();
 
-    if plan.schema_version != SUPPORTED_SCHEMA_VERSION {
+    if plan.schema_version != 1 && plan.schema_version != 2 {
         errors.push(format!(
-            "Versione schema non supportata: {}. Versione supportata: {}",
-            plan.schema_version, SUPPORTED_SCHEMA_VERSION
+            "Versione schema non supportata: {}. Versioni supportate: 1, 2",
+            plan.schema_version
         ));
     }
 

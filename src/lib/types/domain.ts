@@ -138,6 +138,16 @@ export interface GenericEvent {
   details: string;
 }
 
+export interface TodoSubItem {
+  id: string;
+  todoId: string;
+  text: string;
+  done: boolean;
+  sortOrder: number;
+  createdAt: string;
+  planSubtaskId?: string | null;
+}
+
 export interface TodoItem {
   id: string;
   sessionId: string;
@@ -150,6 +160,7 @@ export interface TodoItem {
   planTaskId?: string | null;
   plannedHours?: number | null;
   kind?: string | null;
+  subtasks?: TodoSubItem[];
 }
 
 export interface PlanState {
@@ -373,6 +384,15 @@ export interface UpsertTodoInput {
   planTaskId?: string | null;
   plannedHours?: number | null;
   kind?: string | null;
+}
+
+export interface UpsertTodoSubItemInput {
+  id?: string | null;
+  todoId: string;
+  text: string;
+  done?: boolean | null;
+  sortOrder?: number | null;
+  planSubtaskId?: string | null;
 }
 
 export interface UpsertWeeklyLessonInput {

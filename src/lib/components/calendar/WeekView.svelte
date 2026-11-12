@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sessionStore } from "../../stores/session.svelte";
   import { themeStore } from "../../stores/theme.svelte";
   import type { Course, Exam } from "../../types/domain";
   import {
@@ -226,9 +227,27 @@
             <div class="week-section-block">
               <span class="ws-title">TO-DO ({todos.filter((t) => t.done).length}/{todos.length})</span>
               {#each todos as td (td.id)}
+                {@const subCount = td.subtasks?.length ?? 0}
+                {@const subDoneCount = td.subtasks?.filter((s) => s.done).length ?? 0}
                 <div class="week-todo-row" class:done={td.done}>
-                  <span>{td.done ? "✓" : "○"}</span>
-                  <span>{td.text}</span>
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
+                  <span
+                    role="button"
+                    tabindex="0"
+                    class="week-todo-check"
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      sessionStore.toggleTodo(td.id);
+                    }}
+                  >
+                    {td.done ? "✓" : "○"}
+                  </span>
+                  <span class="week-todo-text">{td.text}</span>
+                  {#if subCount > 0}
+                    <span class="week-todo-sub-fraction" class:all-done={subDoneCount === subCount}>
+                      {subDoneCount}/{subCount}
+                    </span>
+                  {/if}
                 </div>
               {/each}
             </div>
@@ -498,6 +517,41 @@
     gap: 0.35rem;
     font-size: 0.68rem;
     color: var(--text-secondary);
+  }
+
+  .week-todo-check {
+    cursor: pointer;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    user-select: none;
+  }
+
+  .week-todo-check:hover {
+    color: var(--accent-primary);
+  }
+
+  .week-todo-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .week-todo-sub-fraction {
+    font-size: 0.6rem;
+    font-weight: 700;
+    padding: 0.05rem 0.3rem;
+    border-radius: var(--radius-pill);
+    background: var(--surface-pill);
+    color: var(--text-tertiary);
+    border: 0.5px solid var(--hairline-border);
+    flex-shrink: 0;
+  }
+
+  .week-todo-sub-fraction.all-done {
+    background: rgba(52, 199, 89, 0.16);
+    color: #34c759;
   }
 
   .week-unit-row.done,

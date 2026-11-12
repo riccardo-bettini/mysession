@@ -368,7 +368,7 @@ pub fn apply_study_plan(
                 None => (day.date.clone(), task.text.clone(), false),
             };
 
-            match existing {
+            let effective_todo_id = match existing {
                 Some(ext) => {
                     tx.execute(
                         r#"
@@ -395,6 +395,7 @@ pub fn apply_study_plan(
                             &ext.id
                         ],
                     )?;
+                    ext.id.clone()
                 }
                 None => {
                     let new_todo_id = format!("todo_{}", Uuid::new_v4().simple());
@@ -418,6 +419,113 @@ pub fn apply_study_plan(
                             task.planned_hours,
                             &task.kind
                         ],
+                    )?;
+                    new_todo_id
+                }
+            };
+
+            // Sync Subtasks
+            struct ExistingSubItem {
+                id: String,
+                done: bool,
+            }
+            let mut existing_subitems: HashMap<String, ExistingSubItem> = HashMap::new();
+            {
+                let mut sstmt = tx.prepare(
+                    "SELECT id, plan_subtask_id, done FROM todo_subitems WHERE todo_id = ?1 AND plan_subtask_id IS NOT NULL",
+                )?;
+                let srows = sstmt.query_map(params![&effective_todo_id], |row| {
+                    Ok((
+                        row.get::<_, String>(1)?,
+                        ExistingSubItem {
+                            id: row.get(0)?,
+                            done: row.get::<_, i32>(2)? != 0,
+                        },
+                    ))
+                })?;
+                for sr in srows {
+                    let (psid, item) = sr?;
+                    existing_subitems.insert(psid, item);
+                }
+            }
+
+            let mut touched_plan_subtask_ids: HashSet<String> = HashSet::new();
+
+            for (idx, sub) in task.subtasks.iter().enumerate() {
+                touched_plan_subtask_ids.insert(sub.id.clone());
+                let existing_sub = existing_subitems.get(&sub.id).or_else(|| {
+                    sub.aliases.iter().find_map(|a| existing_subitems.get(a))
+                });
+
+                match existing_sub {
+                    Some(ext_sub) => {
+                        tx.execute(
+                            r#"
+                            UPDATE todo_subitems
+                            SET plan_subtask_id = ?1,
+                                text = ?2,
+                                sort_order = ?3
+                            WHERE id = ?4
+                            "#,
+                            params![&sub.id, &sub.text, idx as i32, &ext_sub.id],
+                        )?;
+                    }
+                    None => {
+                        let new_sub_id = format!("sub_{}", Uuid::new_v4().simple());
+                        tx.execute(
+                            r#"
+                            INSERT INTO todo_subitems (
+                                id, todo_id, text, done, sort_order, created_at, plan_subtask_id
+                            ) VALUES (?1, ?2, ?3, 0, ?4, ?5, ?6)
+                            "#,
+                            params![
+                                &new_sub_id,
+                                &effective_todo_id,
+                                &sub.text,
+                                idx as i32,
+                                &now_iso,
+                                &sub.id
+                            ],
+                        )?;
+                    }
+                }
+            }
+
+            // Clean up plan subtasks that are no longer in the plan
+            for (psid, ext_sub) in existing_subitems {
+                if !touched_plan_subtask_ids.contains(&psid) {
+                    if ext_sub.done {
+                        tx.execute(
+                            "UPDATE todo_subitems SET plan_subtask_id = NULL WHERE id = ?1",
+                            params![&ext_sub.id],
+                        )?;
+                    } else {
+                        tx.execute(
+                            "DELETE FROM todo_subitems WHERE id = ?1",
+                            params![&ext_sub.id],
+                        )?;
+                    }
+                }
+            }
+
+            // Update parent done status if task has subtasks
+            if !task.subtasks.is_empty() {
+                let sub_counts: (i32, i32) = tx
+                    .query_row(
+                        r#"
+                        SELECT COUNT(*), SUM(CASE WHEN done = 1 THEN 1 ELSE 0 END)
+                        FROM todo_subitems WHERE todo_id = ?1
+                        "#,
+                        params![&effective_todo_id],
+                        |r| Ok((r.get(0)?, r.get::<_, Option<i32>>(1)?.unwrap_or(0))),
+                    )
+                    .unwrap_or((0, 0));
+
+                if sub_counts.0 > 0 {
+                    let all_done = sub_counts.0 == sub_counts.1;
+                    tx.execute(
+                        "UPDATE todos SET done = ?1 WHERE id = ?2",
+                        params![if all_done { 1 } else { 0 }, &effective_todo_id],
                     )?;
                 }
             }

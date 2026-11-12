@@ -3,7 +3,7 @@
   import { marked } from "marked";
   import { sessionStore } from "../../stores/session.svelte";
   import { themeStore } from "../../stores/theme.svelte";
-  import type { Course, Exam, GenericEvent, StudyUnit } from "../../types/domain";
+  import type { Course, Exam, GenericEvent, StudyUnit, TodoItem, TodoSubItem } from "../../types/domain";
   import {
     formatExamRoundLabel,
     formatItalianDateLong,
@@ -45,6 +45,92 @@
   let noteSavedStatus = $state<string>("");
   let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
+  // Stato Sotto-elementi e raggruppamento
+  let expandedTodoIds = $state<Set<string>>(new Set());
+  let newSubText = $state<Record<string, string>>({});
+  let editingSubId = $state<string | null>(null);
+  let editingSubText = $state<string>("");
+  let newCourseTodoText = $state<Record<string, string>>({});
+
+  function isTodoExpanded(id: string): boolean {
+    return expandedTodoIds.has(id);
+  }
+
+  function toggleExpandTodo(id: string) {
+    const next = new Set(expandedTodoIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    expandedTodoIds = next;
+  }
+
+  async function handleAddSubtask(todoId: string, e?: Event) {
+    if (e) e.preventDefault();
+    const text = (newSubText[todoId] || "").trim();
+    if (!text) return;
+
+    newSubText[todoId] = "";
+    const next = new Set(expandedTodoIds);
+    next.add(todoId);
+    expandedTodoIds = next;
+
+    await sessionStore.upsertTodoSubItem({
+      todoId,
+      text,
+      done: false
+    });
+  }
+
+  async function handleToggleSubtask(subId: string) {
+    await sessionStore.toggleTodoSubItem(subId);
+  }
+
+  async function handleDeleteSubtask(subId: string) {
+    await sessionStore.deleteTodoSubItem(subId);
+  }
+
+  function startEditSubtask(sub: TodoSubItem) {
+    editingSubId = sub.id;
+    editingSubText = sub.text;
+  }
+
+  async function saveEditSubtask(todoId: string, subId: string) {
+    const text = editingSubText.trim();
+    if (text && text !== "") {
+      await sessionStore.upsertTodoSubItem({
+        id: subId,
+        todoId,
+        text
+      });
+    }
+    editingSubId = null;
+    editingSubText = "";
+  }
+
+  function cancelEditSubtask() {
+    editingSubId = null;
+    editingSubText = "";
+  }
+
+  async function handleAddTodoForCourse(courseId: string | null, e?: Event) {
+    if (e) e.preventDefault();
+    const key = courseId || "general";
+    const text = (newCourseTodoText[key] || "").trim();
+    const sessionId = sessionStore.activeSession?.id;
+    if (!text || !sessionId) return;
+
+    newCourseTodoText[key] = "";
+    await sessionStore.upsertTodo({
+      sessionId,
+      courseId: courseId || null,
+      date: isoDate,
+      text,
+      priority: 1
+    });
+  }
+
   // Sincronizza la bozza della nota quando cambia la data selezionata
   $effect(() => {
     const _date = isoDate;
@@ -60,6 +146,47 @@
   let assignedUnits = $derived(dayData?.studyUnits ?? []);
   let todos = $derived(dayData?.todos ?? []);
   let todosDoneCount = $derived(todos.filter((t) => t.done).length);
+
+  interface CourseTodoGroup {
+    courseId: string | null;
+    course: Course | null;
+    todos: TodoItem[];
+  }
+
+  let groupedTodos = $derived.by(() => {
+    const list = todos;
+    const map = new Map<string, TodoItem[]>();
+    const general: TodoItem[] = [];
+
+    for (const t of list) {
+      if (t.courseId) {
+        const arr = map.get(t.courseId) ?? [];
+        arr.push(t);
+        map.set(t.courseId, arr);
+      } else {
+        general.push(t);
+      }
+    }
+
+    const groups: CourseTodoGroup[] = [];
+    for (const [cid, cTodos] of map.entries()) {
+      groups.push({
+        courseId: cid,
+        course: courseById.get(cid) ?? null,
+        todos: cTodos
+      });
+    }
+
+    if (general.length > 0) {
+      groups.push({
+        courseId: null,
+        course: null,
+        todos: general
+      });
+    }
+
+    return groups;
+  });
   let conflicts = $derived(dayData?.conflicts ?? []);
 
   let assignableUnits = $derived(
@@ -307,11 +434,179 @@
         </div>
       {/if}
 
+      {#if todos.length === 0}
+        <p class="section-empty-hint">Nessun task registrato per questa data.</p>
+      {:else}
+        <div class="subject-todo-blocks">
+          {#each groupedTodos as grp (grp.courseId ?? "general")}
+            {@const c = grp.course}
+            {@const palette = c ? generateCourseColorTokens(c.colorHex, isDark) : null}
+            {@const grpDone = grp.todos.filter((t) => t.done).length}
+            <div
+              class="subject-todo-card"
+              style:background={palette ? palette.bgTint : "var(--surface-card)"}
+              style:border-color={palette ? palette.borderTint : "var(--hairline-border)"}
+            >
+              <!-- Intestazione Scheda Materia -->
+              <div class="stc-header">
+                <div class="stc-title-group">
+                  {#if c}
+                    <span class="stc-bar" style:background={palette?.solid}></span>
+                    <span
+                      class="stc-sigla"
+                      style:background={palette?.solid}
+                      style:color={palette?.badgeText}
+                    >
+                      {c.sigla}
+                    </span>
+                    <span class="stc-name" style:color={palette?.textContrast}>{c.name}</span>
+                  {:else}
+                    <span class="stc-bar generic"></span>
+                    <span class="stc-sigla generic">GEN</span>
+                    <span class="stc-name">Attività Generali</span>
+                  {/if}
+                </div>
+                <span class="stc-count">{grpDone}/{grp.todos.length}</span>
+              </div>
+
+              <!-- Lista Task della Materia -->
+              <div class="stc-items-list">
+                {#each grp.todos as td (td.id)}
+                  {@const subCount = td.subtasks?.length ?? 0}
+                  {@const subDoneCount = td.subtasks?.filter((s) => s.done).length ?? 0}
+                  {@const isExpanded = isTodoExpanded(td.id)}
+                  <div class="todo-task-wrapper" class:done={td.done} class:expanded={isExpanded}>
+                    <!-- Riga Task Principale -->
+                    <div class="todo-item-row" class:done={td.done}>
+                      <input
+                        type="checkbox"
+                        checked={td.done}
+                        onchange={(e) =>
+                          sessionStore.toggleTodo(
+                            td.id,
+                            (e.currentTarget as HTMLInputElement).checked
+                          )}
+                      />
+                      <span class="todo-text">{td.text}</span>
+
+                      <!-- Badge Contatore Sotto-elementi / Trigger Fisarmonica -->
+                      {#if subCount > 0}
+                        <button
+                          type="button"
+                          class="subtasks-toggle-btn pressable"
+                          class:all-done={subDoneCount === subCount}
+                          title="{isExpanded ? 'Comprimi' : 'Espandi'} sotto-elementi ({subDoneCount}/{subCount})"
+                          onclick={() => toggleExpandTodo(td.id)}
+                        >
+                          <span class="st-fraction">{subDoneCount}/{subCount}</span>
+                          <span class="st-chevron">{isExpanded ? "▾" : "▸"}</span>
+                        </button>
+                      {:else}
+                        <button
+                          type="button"
+                          class="subtasks-add-action-btn pressable"
+                          title="Aggiungi sotto-elementi"
+                          onclick={() => toggleExpandTodo(td.id)}
+                        >
+                          + Sotto-task
+                        </button>
+                      {/if}
+
+                      <button
+                        type="button"
+                        class="todo-del-btn"
+                        title="Rimuovi task"
+                        onclick={() => sessionStore.deleteTodo(td.id)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <!-- Fisarmonica Sotto-elementi Espansa -->
+                    {#if isExpanded}
+                      <div class="subtasks-container">
+                        {#if td.subtasks && td.subtasks.length > 0}
+                          <div class="subtasks-list">
+                            {#each td.subtasks as sub (sub.id)}
+                              <div class="subtask-row" class:done={sub.done}>
+                                <input
+                                  type="checkbox"
+                                  checked={sub.done}
+                                  onchange={() => handleToggleSubtask(sub.id)}
+                                />
+                                {#if editingSubId === sub.id}
+                                  <!-- svelte-ignore a11y_autofocus -->
+                                  <input
+                                    type="text"
+                                    class="subtask-edit-input"
+                                    bind:value={editingSubText}
+                                    onkeydown={(e) => {
+                                      if (e.key === "Enter") saveEditSubtask(td.id, sub.id);
+                                      if (e.key === "Escape") cancelEditSubtask();
+                                    }}
+                                    onblur={() => saveEditSubtask(td.id, sub.id)}
+                                    autofocus
+                                  />
+                                {:else}
+                                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                                  <span
+                                    class="subtask-text"
+                                    title="Doppio-click per modificare"
+                                    ondblclick={() => startEditSubtask(sub)}
+                                  >
+                                    {sub.text}
+                                  </span>
+                                {/if}
+                                <button
+                                  type="button"
+                                  class="subtask-del-btn"
+                                  title="Rimuovi sotto-elemento"
+                                  onclick={() => handleDeleteSubtask(sub.id)}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            {/each}
+                          </div>
+                        {/if}
+
+                        <!-- Input inline rapido per nuovi sotto-elementi -->
+                        <form class="subtask-inline-add" onsubmit={(e) => handleAddSubtask(td.id, e)}>
+                          <input
+                            type="text"
+                            class="subtask-inline-input"
+                            placeholder="Aggiungi sotto-elemento… (Invio)"
+                            bind:value={newSubText[td.id]}
+                          />
+                          <button type="submit" class="subtask-inline-submit pressable">+</button>
+                        </form>
+                      </div>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+
+              <!-- Input rapido task dedicato alla materia -->
+              <form class="stc-quick-add" onsubmit={(e) => handleAddTodoForCourse(grp.courseId, e)}>
+                <input
+                  type="text"
+                  class="stc-quick-input"
+                  placeholder="+ Aggiungi task a {c?.sigla ?? 'Generale'}…"
+                  bind:value={newCourseTodoText[grp.courseId || 'general']}
+                />
+                <button type="submit" class="stc-quick-btn pressable" title="Aggiungi task">+</button>
+              </form>
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      <!-- Form rapido per inserire un nuovo To-Do con selettore corso -->
       <form class="todo-quick-form" onsubmit={handleAddTodo}>
         <input
           type="text"
           class="todo-input"
-          placeholder="Aggiungi un task per questa data…"
+          placeholder="Aggiungi task per questa data…"
           bind:value={newTodoText}
         />
         {#if sessionStore.courses.length > 0}
@@ -324,37 +619,6 @@
         {/if}
         <button type="submit" class="todo-submit-btn pressable">+</button>
       </form>
-
-      {#if todos.length > 0}
-        <div class="items-list">
-          {#each todos as td (td.id)}
-            {@const c = td.courseId ? courseById.get(td.courseId) : null}
-            <div class="todo-item-row" class:done={td.done}>
-              <input
-                type="checkbox"
-                checked={td.done}
-                onchange={(e) =>
-                  sessionStore.toggleTodo(
-                    td.id,
-                    (e.currentTarget as HTMLInputElement).checked
-                  )}
-              />
-              {#if c}
-                <span class="todo-course-tag" style:background={c.colorHex}>{c.sigla}</span>
-              {/if}
-              <span class="todo-text">{td.text}</span>
-              <button
-                type="button"
-                class="todo-del-btn"
-                title="Rimuovi task"
-                onclick={() => sessionStore.deleteTodo(td.id)}
-              >
-                ✕
-              </button>
-            </div>
-          {/each}
-        </div>
-      {/if}
     </section>
 
     <!-- 3.1 ARRETRATI DA RECUPERARE (Task precedenti non completati) -->
@@ -371,31 +635,119 @@
         <div class="items-list">
           {#each arrears as td (td.id)}
             {@const c = td.courseId ? courseById.get(td.courseId) : null}
-            <div class="todo-item-row arrear-item-row">
-              <input
-                type="checkbox"
-                checked={td.done}
-                onchange={(e) =>
-                  sessionStore.toggleTodo(
-                    td.id,
-                    (e.currentTarget as HTMLInputElement).checked
-                  )}
-              />
-              {#if c}
-                <span class="todo-course-tag" style:background={c.colorHex}>{c.sigla}</span>
-              {/if}
-              <div class="arrear-content">
-                <span class="todo-text">{td.text}</span>
-                <span class="arrear-date-tag">📅 {td.date}</span>
+            {@const subCount = td.subtasks?.length ?? 0}
+            {@const subDoneCount = td.subtasks?.filter((s) => s.done).length ?? 0}
+            {@const isExpanded = isTodoExpanded(td.id)}
+            <div class="todo-task-wrapper arrear-task-wrapper" class:done={td.done} class:expanded={isExpanded}>
+              <div class="todo-item-row arrear-item-row">
+                <input
+                  type="checkbox"
+                  checked={td.done}
+                  onchange={(e) =>
+                    sessionStore.toggleTodo(
+                      td.id,
+                      (e.currentTarget as HTMLInputElement).checked
+                    )}
+                />
+                {#if c}
+                  <span class="todo-course-tag" style:background={c.colorHex}>{c.sigla}</span>
+                {/if}
+                <div class="arrear-content">
+                  <span class="todo-text">{td.text}</span>
+                  <span class="arrear-date-tag">📅 {td.date}</span>
+                </div>
+
+                {#if subCount > 0}
+                  <button
+                    type="button"
+                    class="subtasks-toggle-btn pressable"
+                    class:all-done={subDoneCount === subCount}
+                    title="{isExpanded ? 'Comprimi' : 'Espandi'} sotto-elementi ({subDoneCount}/{subCount})"
+                    onclick={() => toggleExpandTodo(td.id)}
+                  >
+                    <span class="st-fraction">{subDoneCount}/{subCount}</span>
+                    <span class="st-chevron">{isExpanded ? "▾" : "▸"}</span>
+                  </button>
+                {:else}
+                  <button
+                    type="button"
+                    class="subtasks-add-action-btn pressable"
+                    title="Aggiungi sotto-elementi"
+                    onclick={() => toggleExpandTodo(td.id)}
+                  >
+                    + Sotto-task
+                  </button>
+                {/if}
+
+                <button
+                  type="button"
+                  class="todo-del-btn"
+                  title="Rimuovi task"
+                  onclick={() => sessionStore.deleteTodo(td.id)}
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                type="button"
-                class="todo-del-btn"
-                title="Rimuovi task"
-                onclick={() => sessionStore.deleteTodo(td.id)}
-              >
-                ✕
-              </button>
+
+              <!-- Fisarmonica sotto-elementi negli arretrati -->
+              {#if isExpanded}
+                <div class="subtasks-container">
+                  {#if td.subtasks && td.subtasks.length > 0}
+                    <div class="subtasks-list">
+                      {#each td.subtasks as sub (sub.id)}
+                        <div class="subtask-row" class:done={sub.done}>
+                          <input
+                            type="checkbox"
+                            checked={sub.done}
+                            onchange={() => handleToggleSubtask(sub.id)}
+                          />
+                          {#if editingSubId === sub.id}
+                            <!-- svelte-ignore a11y_autofocus -->
+                            <input
+                              type="text"
+                              class="subtask-edit-input"
+                              bind:value={editingSubText}
+                              onkeydown={(e) => {
+                                if (e.key === "Enter") saveEditSubtask(td.id, sub.id);
+                                if (e.key === "Escape") cancelEditSubtask();
+                              }}
+                              onblur={() => saveEditSubtask(td.id, sub.id)}
+                              autofocus
+                            />
+                          {:else}
+                            <!-- svelte-ignore a11y_no_static_element_interactions -->
+                            <span
+                              class="subtask-text"
+                              title="Doppio-click per modificare"
+                              ondblclick={() => startEditSubtask(sub)}
+                            >
+                              {sub.text}
+                            </span>
+                          {/if}
+                          <button
+                            type="button"
+                            class="subtask-del-btn"
+                            title="Rimuovi sotto-elemento"
+                            onclick={() => handleDeleteSubtask(sub.id)}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+
+                  <form class="subtask-inline-add" onsubmit={(e) => handleAddSubtask(td.id, e)}>
+                    <input
+                      type="text"
+                      class="subtask-inline-input"
+                      placeholder="Aggiungi sotto-elemento… (Invio)"
+                      bind:value={newSubText[td.id]}
+                    />
+                    <button type="submit" class="subtask-inline-submit pressable">+</button>
+                  </form>
+                </div>
+              {/if}
             </div>
           {/each}
         </div>
@@ -894,6 +1246,289 @@
     color: var(--text-tertiary);
     cursor: pointer;
     font-size: 0.74rem;
+  }
+
+  /* Schede Materie To-Do */
+  .subject-todo-blocks {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    margin-top: 0.35rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .subject-todo-card {
+    border-radius: var(--radius-sm);
+    border: 0.5px solid var(--hairline-border);
+    padding: 0.65rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    box-shadow: var(--shadow-card, 0 1px 3px rgba(0, 0, 0, 0.05));
+    transition: background 180ms ease, border-color 180ms ease;
+  }
+
+  .stc-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .stc-title-group {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+  }
+
+  .stc-bar {
+    width: 3.5px;
+    height: 1.1rem;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .stc-bar.generic {
+    background: var(--text-tertiary);
+  }
+
+  .stc-sigla {
+    font-size: 0.64rem;
+    font-weight: 800;
+    padding: 0.12rem 0.4rem;
+    border-radius: 0.3rem;
+    letter-spacing: var(--tracking-wide);
+    flex-shrink: 0;
+  }
+
+  .stc-sigla.generic {
+    background: var(--surface-pill);
+    color: var(--text-secondary);
+    border: 0.5px solid var(--hairline-border);
+  }
+
+  .stc-name {
+    font-size: 0.8rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .stc-count {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+  }
+
+  .stc-items-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .stc-quick-add {
+    display: flex;
+    gap: 0.35rem;
+    margin-top: 0.2rem;
+  }
+
+  .stc-quick-input {
+    flex: 1;
+    height: 1.8rem;
+    padding: 0 0.55rem;
+    font-size: 0.72rem;
+    border-radius: var(--radius-xs);
+    border: 0.5px solid var(--hairline-border);
+    background: var(--surface-card);
+    color: var(--text-primary);
+  }
+
+  .stc-quick-btn {
+    height: 1.8rem;
+    padding: 0 0.65rem;
+    border-radius: var(--radius-xs);
+    border: none;
+    background: var(--accent-primary);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  /* Task Wrapper & Sotto-elementi */
+  .todo-task-wrapper {
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--radius-xs);
+    border: 0.5px solid var(--hairline-border);
+    background: var(--surface-card);
+    overflow: hidden;
+    transition: border-color 150ms ease;
+  }
+
+  .todo-task-wrapper.expanded {
+    border-color: var(--hairline-border-strong);
+  }
+
+  .subtasks-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.64rem;
+    font-weight: 700;
+    padding: 0.12rem 0.45rem;
+    border-radius: var(--radius-pill);
+    border: 0.5px solid var(--hairline-border);
+    background: var(--surface-pill);
+    color: var(--text-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 140ms ease;
+  }
+
+  .subtasks-toggle-btn:hover {
+    background: var(--surface-card);
+    color: var(--text-primary);
+  }
+
+  .subtasks-toggle-btn.all-done {
+    background: rgba(52, 199, 89, 0.16);
+    color: #34c759;
+    border-color: rgba(52, 199, 89, 0.35);
+  }
+
+  .st-chevron {
+    font-size: 0.68rem;
+  }
+
+  .subtasks-add-action-btn {
+    font-size: 0.64rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0.1rem 0.35rem;
+    border-radius: var(--radius-xs);
+    flex-shrink: 0;
+    transition: color 140ms ease;
+  }
+
+  .subtasks-add-action-btn:hover {
+    color: var(--accent-primary);
+    background: var(--surface-pill);
+  }
+
+  .subtasks-container {
+    margin-left: 1.45rem;
+    padding-left: 0.65rem;
+    padding-right: 0.55rem;
+    border-left: 1.5px solid var(--hairline-border-strong);
+    margin-top: 0.25rem;
+    margin-bottom: 0.45rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .subtasks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .subtask-row {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.28rem 0.45rem;
+    border-radius: var(--radius-xs);
+    background: var(--surface-pill);
+    font-size: 0.72rem;
+    transition: background 150ms ease;
+  }
+
+  .subtask-row.done .subtask-text {
+    text-decoration: line-through;
+    opacity: 0.55;
+  }
+
+  .subtask-text {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-primary);
+    cursor: pointer;
+    user-select: text;
+  }
+
+  .subtask-edit-input {
+    flex: 1;
+    height: 1.55rem;
+    font-size: 0.72rem;
+    padding: 0 0.4rem;
+    border-radius: 0.25rem;
+    border: 1px solid var(--accent-primary);
+    background: var(--surface-card);
+    color: var(--text-primary);
+  }
+
+  .subtask-del-btn {
+    background: transparent;
+    border: none;
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    padding: 0.1rem;
+    flex-shrink: 0;
+  }
+
+  .subtask-del-btn:hover {
+    color: #ff453a;
+  }
+
+  .subtask-inline-add {
+    display: flex;
+    gap: 0.25rem;
+    margin-top: 0.15rem;
+  }
+
+  .subtask-inline-input {
+    flex: 1;
+    height: 1.6rem;
+    padding: 0 0.45rem;
+    font-size: 0.7rem;
+    border-radius: var(--radius-xs);
+    border: 0.5px dashed var(--hairline-border-strong);
+    background: transparent;
+    color: var(--text-primary);
+  }
+
+  .subtask-inline-input:focus {
+    border-style: solid;
+    border-color: var(--accent-primary);
+    background: var(--surface-card);
+  }
+
+  .subtask-inline-submit {
+    height: 1.6rem;
+    width: 1.6rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-xs);
+    border: none;
+    background: var(--surface-pill);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.72rem;
+  }
+
+  .subtask-inline-submit:hover {
+    background: var(--accent-primary);
+    color: #fff;
   }
 
   /* Arretrati */

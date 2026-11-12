@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const SUPPORTED_SCHEMA_VERSION: i64 = 1;
+pub const SUPPORTED_SCHEMA_VERSION: i64 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -113,6 +113,15 @@ pub struct PlanDay {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct PlanSubTask {
+    pub id: String,
+    pub text: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct PlanTask {
     pub id: String,
     pub course_id: String,
@@ -127,4 +136,6 @@ pub struct PlanTask {
     pub source: Option<String>,
     #[serde(default)]
     pub aliases: Vec<String>,
+    #[serde(default)]
+    pub subtasks: Vec<PlanSubTask>,
 }

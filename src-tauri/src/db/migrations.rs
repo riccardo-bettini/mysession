@@ -241,6 +241,21 @@ CREATE TABLE IF NOT EXISTS ignored_conflicts (
 CREATE INDEX IF NOT EXISTS idx_ignored_conflicts_session ON ignored_conflicts(session_id);
 "#;
 
+const MIGRATION_V7_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS todo_subitems (
+    id TEXT PRIMARY KEY,
+    todo_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    done INTEGER NOT NULL DEFAULT 0,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    plan_subtask_id TEXT,
+    FOREIGN KEY (todo_id) REFERENCES todos(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_todo_subitems_todo ON todo_subitems(todo_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_todo_subitems_plan ON todo_subitems(todo_id, plan_subtask_id) WHERE plan_subtask_id IS NOT NULL;
+"#;
+
 pub fn configure_connection_pragmas(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
@@ -334,6 +349,16 @@ pub fn run_migrations(conn: &mut Connection) -> Result<()> {
         tx.execute(
             "INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
             params![6, &now_iso],
+        )?;
+        tx.commit()?;
+    }
+
+    if current_version < 7 {
+        let tx = conn.transaction()?;
+        tx.execute_batch(MIGRATION_V7_SQL)?;
+        tx.execute(
+            "INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
+            params![7, &now_iso],
         )?;
         tx.commit()?;
     }

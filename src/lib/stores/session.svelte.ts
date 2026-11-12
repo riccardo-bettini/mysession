@@ -16,6 +16,7 @@ import type {
   UpsertProfileInput,
   UpsertSessionInput,
   UpsertTodoInput,
+  UpsertTodoSubItemInput,
   UserProfile,
   WeeklyLesson,
   UpsertWeeklyLessonInput,
@@ -230,6 +231,30 @@ class SessionWorkspaceStore {
     const sessionId = this.activeSession?.id;
     if (!sessionId) return null;
     const snap = await ipc.deleteTodo(sessionId, todoId);
+    this.activeSnapshot = snap;
+    return snap;
+  }
+
+  async upsertTodoSubItem(input: UpsertTodoSubItemInput): Promise<SessionSnapshot | null> {
+    const sessionId = this.activeSession?.id;
+    if (!sessionId) return null;
+    const snap = await ipc.upsertTodoSubItem(sessionId, input);
+    this.activeSnapshot = snap;
+    return snap;
+  }
+
+  async toggleTodoSubItem(subitemId: string): Promise<SessionSnapshot | null> {
+    const sessionId = this.activeSession?.id;
+    if (!sessionId) return null;
+    const snap = await ipc.toggleTodoSubItem(sessionId, subitemId);
+    this.activeSnapshot = snap;
+    return snap;
+  }
+
+  async deleteTodoSubItem(subitemId: string): Promise<SessionSnapshot | null> {
+    const sessionId = this.activeSession?.id;
+    if (!sessionId) return null;
+    const snap = await ipc.deleteTodoSubItem(sessionId, subitemId);
     this.activeSnapshot = snap;
     return snap;
   }

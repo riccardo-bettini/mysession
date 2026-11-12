@@ -206,6 +206,18 @@ pub struct GenericEvent {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TodoSubItem {
+    pub id: String,
+    pub todo_id: String,
+    pub text: String,
+    pub done: bool,
+    pub sort_order: i32,
+    pub created_at: String,
+    pub plan_subtask_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TodoItem {
     pub id: String,
     pub session_id: String,
@@ -218,6 +230,8 @@ pub struct TodoItem {
     pub plan_task_id: Option<String>,
     pub planned_hours: Option<f64>,
     pub kind: Option<String>,
+    #[serde(default)]
+    pub subtasks: Vec<TodoSubItem>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -496,6 +510,17 @@ pub struct UpsertTodoInput {
     pub plan_task_id: Option<String>,
     pub planned_hours: Option<f64>,
     pub kind: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpsertTodoSubItemInput {
+    pub id: Option<String>,
+    pub todo_id: String,
+    pub text: String,
+    pub done: Option<bool>,
+    pub sort_order: Option<i32>,
+    pub plan_subtask_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -10,8 +10,8 @@ use crate::engine::holidays::list_holidays_for_years;
 use crate::models::{
     AppSettings, BootstrapPayload, CreateItinerePairInput, FullWorkspaceBackup, HolidayInfo,
     SessionSnapshot, UpsertCourseInput, UpsertExamInput, UpsertGenericEventInput,
-    UpsertProfileInput, UpsertSessionInput, UpsertTodoInput, UpsertWeeklyLessonInput, UserProfile,
-    WeeklyLesson,
+    UpsertProfileInput, UpsertSessionInput, UpsertTodoInput, UpsertTodoSubItemInput,
+    UpsertWeeklyLessonInput, UserProfile, WeeklyLesson,
 };
 use crate::win32::{
     apply_window_backdrop_and_theme, get_system_theme_state, update_maximize_button_bounds,
@@ -296,6 +296,48 @@ pub fn delete_todo(
 ) -> Result<SessionSnapshot, String> {
     db.with_conn(|conn| {
         DatabaseManager::delete_todo(conn, &todo_id)?;
+        let settings = DatabaseManager::get_settings(conn)?;
+        DatabaseManager::build_session_snapshot(conn, &session_id, &settings)
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn upsert_todo_subitem(
+    db: State<'_, DatabaseManager>,
+    session_id: String,
+    input: UpsertTodoSubItemInput,
+) -> Result<SessionSnapshot, String> {
+    db.with_conn(|conn| {
+        let _ = DatabaseManager::upsert_todo_subitem(conn, &input)?;
+        let settings = DatabaseManager::get_settings(conn)?;
+        DatabaseManager::build_session_snapshot(conn, &session_id, &settings)
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn toggle_todo_subitem(
+    db: State<'_, DatabaseManager>,
+    session_id: String,
+    subitem_id: String,
+) -> Result<SessionSnapshot, String> {
+    db.with_conn(|conn| {
+        let _ = DatabaseManager::toggle_todo_subitem(conn, &subitem_id)?;
+        let settings = DatabaseManager::get_settings(conn)?;
+        DatabaseManager::build_session_snapshot(conn, &session_id, &settings)
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_todo_subitem(
+    db: State<'_, DatabaseManager>,
+    session_id: String,
+    subitem_id: String,
+) -> Result<SessionSnapshot, String> {
+    db.with_conn(|conn| {
+        let _ = DatabaseManager::delete_todo_subitem(conn, &subitem_id)?;
         let settings = DatabaseManager::get_settings(conn)?;
         DatabaseManager::build_session_snapshot(conn, &session_id, &settings)
     })
@@ -1041,6 +1083,110 @@ mod tests {
             // Because the date changed, the conflict id changed and is now active again!
             assert_eq!(snap_moved.conflicts.len(), 1);
             assert_eq!(snap_moved.ignored_conflicts.len(), 0);
+
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn test_todo_subitems_and_cascade_logic() {
+        let db = DatabaseManager::init_in_memory().expect("In-memory SQLite init failed");
+        db.with_conn(|conn| {
+            let sess = DatabaseManager::upsert_session(
+                conn,
+                &UpsertSessionInput {
+                    id: Some("sess_sub".to_string()),
+                    name: "Sessione Subtask".to_string(),
+                    subtitle: "".to_string(),
+                    session_type: "invernale".to_string(),
+                    academic_year: "2026/2027".to_string(),
+                    start_date: "2026-11-01".to_string(),
+                    end_date: "2027-02-28".to_string(),
+                    notes: None,
+                    plan_id: None,
+                },
+            )?;
+
+            // 1. Create Todo
+            let todo = DatabaseManager::upsert_todo(
+                conn,
+                &UpsertTodoInput {
+                    id: Some("td_main".to_string()),
+                    session_id: sess.id.clone(),
+                    course_id: None,
+                    date: "2026-11-05".to_string(),
+                    text: "Capitolo 1 Teoria".to_string(),
+                    priority: Some(1),
+                    plan_task_id: None,
+                    planned_hours: Some(2.0),
+                    kind: Some("study".to_string()),
+                },
+            )?;
+            assert!(!todo.done);
+            assert_eq!(todo.subtasks.len(), 0);
+
+            // 2. Add 2 subtasks
+            let sub1 = DatabaseManager::upsert_todo_subitem(
+                conn,
+                &UpsertTodoSubItemInput {
+                    id: Some("sub1".to_string()),
+                    todo_id: todo.id.clone(),
+                    text: "Modellazione cinematica".to_string(),
+                    done: Some(false),
+                    sort_order: Some(0),
+                    plan_subtask_id: None,
+                },
+            )?;
+            let sub2 = DatabaseManager::upsert_todo_subitem(
+                conn,
+                &UpsertTodoSubItemInput {
+                    id: Some("sub2".to_string()),
+                    todo_id: todo.id.clone(),
+                    text: "Gradi di libertà".to_string(),
+                    done: Some(false),
+                    sort_order: Some(1),
+                    plan_subtask_id: None,
+                },
+            )?;
+
+            let list = DatabaseManager::list_todos(conn, &sess.id)?;
+            assert_eq!(list[0].subtasks.len(), 2);
+            assert!(!list[0].done);
+
+            // 3. Toggle sub1 -> parent still undone
+            DatabaseManager::toggle_todo_subitem(conn, &sub1.id)?;
+            let list = DatabaseManager::list_todos(conn, &sess.id)?;
+            assert!(list[0].subtasks[0].done);
+            assert!(!list[0].subtasks[1].done);
+            assert!(!list[0].done);
+
+            // 4. Toggle sub2 -> ALL subtasks done -> parent automatically marked done!
+            DatabaseManager::toggle_todo_subitem(conn, &sub2.id)?;
+            let list = DatabaseManager::list_todos(conn, &sess.id)?;
+            assert!(list[0].subtasks[0].done);
+            assert!(list[0].subtasks[1].done);
+            assert!(list[0].done);
+
+            // 5. Toggle sub1 off -> parent becomes undone!
+            DatabaseManager::toggle_todo_subitem(conn, &sub1.id)?;
+            let list = DatabaseManager::list_todos(conn, &sess.id)?;
+            assert!(!list[0].subtasks[0].done);
+            assert!(list[0].subtasks[1].done);
+            assert!(!list[0].done);
+
+            // 6. Toggle parent todo directly to done -> all subtasks become done!
+            DatabaseManager::toggle_todo(conn, &todo.id)?;
+            let list = DatabaseManager::list_todos(conn, &sess.id)?;
+            assert!(list[0].done);
+            assert!(list[0].subtasks[0].done);
+            assert!(list[0].subtasks[1].done);
+
+            // 7. Delete sub1 -> only sub2 remains
+            DatabaseManager::delete_todo_subitem(conn, &sub1.id)?;
+            let list = DatabaseManager::list_todos(conn, &sess.id)?;
+            assert_eq!(list[0].subtasks.len(), 1);
+            assert_eq!(list[0].subtasks[0].id, "sub2");
 
             Ok(())
         })
