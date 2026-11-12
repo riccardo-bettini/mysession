@@ -1,5 +1,5 @@
-param(
-    [string]$Tag = "v1.0.50",
+﻿param(
+    [string]$Tag = "v1.0.57",
     [string]$Token = $env:GITHUB_TOKEN
 )
 
@@ -33,16 +33,21 @@ if ($existing) {
 }
 
 $releaseNotes = @"
-### Novità e Migliorie di MySession v1.0.50
+### Novità e Migliorie di MySession v1.0.57
 
-- **Ristrutturazione Toolbar Superiore**: rimosso dalla barra il pulsante modale dell'orario per massima pulizia visiva (l'orario settimanale resta sempre accessibile dal menu a tendina della sessione). Preservato il comodo toggle rapido dell'orologio nel calendario.
-- **Compattazione Dinamica Responsive**:
-  - **Tasto Conflitti**: passa automaticamente a pillola compatta con badge numerico (🔴 N / 🙈 N) e tooltip informativo esteso su hover quando lo spazio si riduce.
-  - **Blocco Sessione**: nasconde l'etichetta testuale mantenendo l'icona del lucchetto animato con fisica Apple HIG a molla e indicatore cromatico.
-  - **Selettore Viste Calendario**: passa a 4 icone dedicate ad alta definizione SVG (Infinito ∞, Mese, Settimana, Agenda) con tooltip dedicato su ciascuna vista.
-- **Scorrimento Ciclico con Rotella del Mouse**: posizionando il cursore sopra il selettore di sessione, la rotella del mouse permette di scorrere istantaneamente e ciclicamente tra tutte le sessioni configurate (con throttling a 150ms anti-scatto).
-- **Ridimensionamento Fluido del Selettore di Sessione**: il titolo della sessione si adatta con troncamento intelligente (...), nascondendo prima l'anno accademico in schermi ridotti.
-- **Area di Drag Nativa Garantita**: riservati sempre almeno 48px di spazio libero centrale con `data-tauri-drag-region`, permettendo il trascinamento fluido della finestra a qualsiasi risoluzione.
+- **Sotto-elementi To-Do (Subtasks Checklist)**:
+  - Ogni attività giornaliera può ora contenere una propria mini to-do list di sotto-elementi / sotto-argomenti spuntabili singolarmente.
+  - **Cascata Intelligente**: spuntando tutti i sotto-elementi il task padre si completa in automatico; spuntando il padre si completano tutti i sotto-elementi; deselezionando un sotto-elemento il padre torna non completato.
+  - **Interazione Fluida Apple HIG**: contatore di avanzamento con badge e chevron espandibile/collassabile, aggiunta rapida inline continua con Invio, doppio click per modificare il testo in linea e rimozione rapida.
+- **Raggruppamento per Materia nell'Ispettore Giornata**:
+  - Le attività della giornata sono ora suddivise in schede/box dedicati per ciascuna materia programmata nel giorno (con barra d'accento, sigla e nome completo) con contatore di completamento e input rapido per inserire nuovi task direttamente in quella materia.
+  - Box dedicato separato per le attività Generali.
+- **Coerenza Multivista & Arretrati**:
+  - Sotto-elementi e fisarmonica interattiva integrati anche nella sezione **Arretrati da recuperare**.
+  - Visualizzazione compatta della frazione di avanzamento dei sotto-elementi nella vista **Settimana** del calendario.
+- **Supporto Piani di Studio v2**:
+  - Compatibilità nativa con schema v1 e v2 (`subtasks` con ID stabili per non perdere progressi tra revisioni).
+  - Preservazione intelligente delle spunte e dei sotto-elementi manuali dell'utente durante gli aggiornamenti del piano.
 "@
 
 $releasePayload = @{
