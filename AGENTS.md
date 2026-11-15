@@ -80,3 +80,6 @@ Questo documento stabilisce le regole operative, architetturali e di design per 
   - Firma di sicurezza auto-updater (`MySession_<version>_x64-setup.exe.sig`)
   - Manifest GitHub Releases (`latest.json`)
   - Tabella Checksum SHA256 (`SHA256SUMS-<version>.txt`)
+- **Igiene Spazio su Disco (`src-tauri/target`)**:
+  - Mantenere `debug = 0` in `[profile.dev]` (e `strip = true` in `[profile.release]`) dentro `src-tauri/Cargo.toml` per ridurre la dimensione degli artefatti di sviluppo.
+  - Eseguire `cargo clean` al termine di ogni rilascio, dopo aver esportato gli eseguibili finali in `release/` (già automatizzato in `scripts/build-release.ps1`).

@@ -1,6 +1,6 @@
 [package]
 name = "mysession"
-version = "1.0.59"
+version = "1.0.60"
 description = "MySession — Gestione Sessioni Accademiche & Calendario Infinito"
 authors = ["Riccardo Bettini"]
 edition = "2021"
@@ -43,6 +43,9 @@ windows = { version = "0.58", features = [
     "Win32_System_JobObjects",
     "Win32_System_Threading"
 ] }
+
+[profile.dev]
+debug = 0
 
 [profile.release]
 panic = "abort"
