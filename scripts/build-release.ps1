@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # MySession — Script di Build Release Stand-Alone (Windows 11 x64)
 # Autore: Riccardo Bettini
 # ==============================================================================
@@ -6,6 +6,7 @@
 [CmdletBinding()]
 param (
     [switch]$SkipTests = $false,
+    [switch]$KeepTarget = $false,
     [string]$Target = 'all'
 )
 
@@ -166,6 +167,18 @@ Get-ChildItem -Path $releaseOutDir -File | Where-Object { $_.Name -like "*$appVe
 $hashEntries | Set-Content -Path $checksumFile -Encoding UTF8
 $csMsg = '  -> Checksum SHA256 generato: ' + $checksumName
 Write-Host $csMsg -ForegroundColor Cyan
+
+# 7. Pulizia artefatti di compilazione Rust (src-tauri/target) per mantenere la cartella al minimo
+if (-not $KeepTarget) {
+    Write-Host ''
+    Write-Host '[Pulizia] Rimozione artefatti di compilazione Rust (cargo clean)...' -ForegroundColor Yellow
+    cargo clean --manifest-path src-tauri/Cargo.toml
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning 'cargo clean non completato.'
+    } else {
+        Write-Host '[OK] Cartella src-tauri/target ripulita.' -ForegroundColor Green
+    }
+}
 
 Write-Host ''
 Write-Host '==================================================================' -ForegroundColor Cyan
