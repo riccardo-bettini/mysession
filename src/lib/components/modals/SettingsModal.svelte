@@ -1,3015 +1,693 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { open, save } from "@tauri-apps/plugin-dialog";
-  import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
-  import { APP_AUTHOR, APP_VERSION } from "../../constants/version";
-  import { sessionStore } from "../../stores/session.svelte";
-  import { themeStore } from "../../stores/theme.svelte";
-  import { planStore } from "../../stores/plan.svelte";
-  import { updaterStore } from "../../stores/updater.svelte";
+  import { open } from "@tauri-apps/plugin-dialog";
+  import {
+    ArrowDown,
+    ArrowUp,
+    CheckCircle2,
+    Download,
+    Eye,
+    EyeOff,
+    FolderOpen,
+    Play,
+    RefreshCw,
+    Square,
+    Terminal,
+    Trash2,
+    X
+  } from "lucide-svelte";
+  import { onMount } from "svelte";
   import { ipc } from "../../api/ipc";
+  import { APP_AUTHOR, APP_VERSION } from "../../constants/version";
+  import { navStore } from "../../stores/navigation.svelte";
+  import { sessionStore } from "../../stores/session.svelte";
+  import { themeStore, UI_SCALE_MAX, UI_SCALE_MIN, UI_SCALE_STEP } from "../../stores/theme.svelte";
+  import { updaterStore } from "../../stores/updater.svelte";
   import type {
-    AiProvider,
-    BackdropMaterial,
-    CalendarViewMode,
-    ThemeChoice,
-    WindowControlsStyle,
     AiModelCatalogItem,
-    SystemHardwareInfo,
+    AiModelDownloadProgress,
+    AiProvider,
     AiRuntimeStatus,
-    AiModelDownloadProgress
+    BackdropMaterial,
+    CliAgentInfo,
+    SectionId,
+    ThemeChoice
   } from "../../types/domain";
+  import { CORE_FIVE_CATEGORIES, SECTION_LABELS } from "../../utils/categories";
   import ColorPickerField from "../common/ColorPickerField.svelte";
-  import CustomSelect, { type SelectOption } from "../common/CustomSelect.svelte";
 
-  const startDayOptions: SelectOption<number>[] = [
-    { value: 1, label: "Lunedì", description: "Standard Europeo ISO 8601" },
-    { value: 0, label: "Domenica", description: "Standard Anglosassone" }
-  ];
-
-  const holidayOptions: SelectOption<number>[] = [
-    { value: 0, label: "Domenica", description: "Festivo tradizionale" },
-    { value: 6, label: "Sabato", description: "Weekend lungo" },
-    { value: -1, label: "Nessuno", description: "Mostra tutti i giorni uguali" }
-  ];
-
-  const idleTimeoutOptions: SelectOption<number>[] = [
-    { value: 1, label: "Dopo 1 minuto", description: "Massimo risparmio energetico" },
-    { value: 3, label: "Dopo 3 minuti" },
-    { value: 5, label: "Dopo 5 minuti", badge: "Consigliato" },
-    { value: 10, label: "Dopo 10 minuti" },
-    { value: 15, label: "Dopo 15 minuti" },
-    { value: 30, label: "Dopo 30 minuti" },
-    { value: 0, label: "Mai (Sempre attivo)", description: "Modello mantenuto costantemente in memoria" }
-  ];
-
-  const bootStrategyOptions: SelectOption<"on_demand" | "on_app_start" | "contextual">[] = [
-    { value: "on_demand", label: "Su richiesta", badge: "Default", description: "Zero RAM all'avvio dell'app" },
-    { value: "on_app_start", label: "Precarica all'avvio", description: "Risposta istantanea alla prima richiesta" },
-    { value: "contextual", label: "Contestuale", description: "All'apertura orario o chat assistente" }
-  ];
-
-  const hardwarePreferenceOptions: SelectOption<"auto" | "gpu" | "cpu">[] = [
-    { value: "auto", label: "Automatico", badge: "Raccomandato", description: "GPU Vulkan/DirectML con fallback CPU" },
-    { value: "gpu", label: "Forza GPU", description: "Massime prestazioni di inferenza" },
-    { value: "cpu", label: "Forza solo CPU", description: "Preserva VRAM per altri compiti" }
-  ];
-
-  export type SettingsTab =
-    | "appearance"
-    | "colors"
-    | "calendar"
-    | "workload"
-    | "plan"
-    | "ai"
-    | "profile"
-    | "backup"
-    | "updates";
-
-  interface Props {
-    initialTab?: SettingsTab;
-    onClose: () => void;
-    onToast?: (msg: string) => void;
-  }
-
-  let { initialTab = "appearance", onClose, onToast }: Props = $props();
-
-  let activeTab = $state<SettingsTab>("appearance");
+  let activeTab = $state<"appearance" | "sidebar" | "sessions" | "ai">("appearance");
+  let cliAgents = $state<CliAgentInfo[]>([]);
+  let aiModels = $state<AiModelCatalogItem[]>([]);
+  let runtimeStatus = $state<AiRuntimeStatus | null>(null);
+  let downloadProgress = $state<AiModelDownloadProgress | null>(null);
+  let customCliInput = $state(themeStore.settings.aiCustomCliCommand);
+  let unlistenDl: UnlistenFn | null = null;
 
   $effect(() => {
-    activeTab = initialTab;
+    if (navStore.isSettingsOpen) {
+      activeTab = navStore.settingsInitialTab;
+      customCliInput = themeStore.settings.aiCustomCliCommand;
+      void refreshAiState();
+    }
   });
 
-  // Stato locale modificabile sincronizzato con themeStore.settings e sessionStore.profile
-  let studentName = $state<string>(sessionStore.profile.studentName);
-  let university = $state<string>(sessionStore.profile.university);
-  let faculty = $state<string>(sessionStore.profile.faculty);
-  let degreeCourse = $state<string>(sessionStore.profile.degreeCourse);
-  let enrollmentYear = $state<number>(
-    sessionStore.profile.enrollmentYear ?? new Date().getFullYear()
-  );
-
-  let aiProvider = $state<AiProvider>(themeStore.settings.aiProvider);
-  let aiApiKey = $state<string>(themeStore.settings.aiApiKey);
-  let aiModel = $state<string>(themeStore.settings.aiModel);
-  let aiEndpointUrl = $state<string>(themeStore.settings.aiEndpointUrl);
-  let aiLocalModelId = $state<string>(themeStore.settings.aiLocalModelId || "qwen2.5-vl-3b");
-  let aiIdleTimeoutMinutes = $state<number>(themeStore.settings.aiIdleTimeoutMinutes ?? 5);
-  let aiBootStrategy = $state<"on_demand" | "on_app_start" | "contextual">(
-    themeStore.settings.aiBootStrategy || "on_demand"
-  );
-  let aiHardwarePreference = $state<"auto" | "gpu" | "cpu">(
-    themeStore.settings.aiHardwarePreference || "auto"
-  );
-
-  let hardwareInfo = $state<SystemHardwareInfo | null>(null);
-  let modelCatalog = $state<AiModelCatalogItem[]>([]);
-  let runtimeStatus = $state<AiRuntimeStatus | null>(null);
-  let downloadProgressMap = $state<Record<string, AiModelDownloadProgress>>({});
-  let isAiLoading = $state<boolean>(false);
-  let isWakingAi = $state<boolean>(false);
-  let isStoppingAi = $state<boolean>(false);
-  let runtimePollTimer: number | null = null;
-  let unlistenDownloadProgress: UnlistenFn | null = null;
-
-  async function loadAiData() {
-    isAiLoading = true;
+  async function refreshAiState() {
     try {
-      const [hw, models, status] = await Promise.all([
-        ipc.getSystemHardwareInfo().catch(() => null),
-        ipc.getAiModelsStatus().catch(() => []),
-        ipc.getAiRuntimeStatus().catch(() => null)
+      const [clis, mods, rt] = await Promise.all([
+        ipc.getCliAgentsStatus(),
+        ipc.getAiModelsStatus(),
+        ipc.getAiRuntimeStatus()
       ]);
-      if (hw) hardwareInfo = hw;
-      if (models) modelCatalog = models;
-      if (status) runtimeStatus = status;
-    } finally {
-      isAiLoading = false;
-    }
-  }
-
-  async function handleDownloadModel(modelId: string) {
-    try {
-      await ipc.startAiModelDownload(modelId);
-      onToast?.("Download del modello avviato in background");
-    } catch (e) {
-      onToast?.(`Errore avvio download: ${e}`);
-    }
-  }
-
-  async function handleCancelDownload(modelId: string) {
-    try {
-      await ipc.cancelAiModelDownload(modelId);
-      const nextMap = { ...downloadProgressMap };
-      delete nextMap[modelId];
-      downloadProgressMap = nextMap;
-      onToast?.("Download annullato");
-    } catch (e) {
-      onToast?.(`Errore annullamento: ${e}`);
-    }
-  }
-
-  async function handleDeleteModel(modelId: string) {
-    try {
-      await ipc.deleteAiModel(modelId);
-      await loadAiData();
-      onToast?.("File del modello eliminato dal disco");
-    } catch (e) {
-      onToast?.(`Errore eliminazione: ${e}`);
-    }
-  }
-
-  async function handleSetActiveModel(modelId: string) {
-    aiLocalModelId = modelId;
-    await themeStore.updateSettings({ aiLocalModelId: modelId });
-    await loadAiData();
-    onToast?.("Modello AI impostato come predefinito");
-  }
-
-  async function handleWakeUpRuntime() {
-    isWakingAi = true;
-    try {
-      await ipc.startAiRuntime(aiLocalModelId);
-      runtimeStatus = await ipc.getAiRuntimeStatus();
-      onToast?.("Modello AI pronto in memoria");
-    } catch (e) {
-      onToast?.(`Errore avvio AI: ${e}`);
-    } finally {
-      isWakingAi = false;
-    }
-  }
-
-  async function handleStopRuntime() {
-    isStoppingAi = true;
-    try {
-      await ipc.stopAiRuntime();
-      runtimeStatus = await ipc.getAiRuntimeStatus();
-      onToast?.("Memoria RAM e VRAM liberata con successo");
-    } catch (e) {
-      onToast?.(`Errore spegnimento AI: ${e}`);
-    } finally {
-      isStoppingAi = false;
-    }
-  }
-
-  onMount(async () => {
-    await loadAiData();
-    try {
-      unlistenDownloadProgress = await listen<AiModelDownloadProgress>(
-        "ai-model-download-progress",
-        async (event) => {
-          const p = event.payload;
-          downloadProgressMap = {
-            ...downloadProgressMap,
-            [p.modelId]: p
-          };
-          if (p.isCompleted) {
-            const nextMap = { ...downloadProgressMap };
-            delete nextMap[p.modelId];
-            downloadProgressMap = nextMap;
-            await loadAiData();
-            onToast?.("Download del modello completato con successo!");
-          } else if (p.error) {
-            const nextMap = { ...downloadProgressMap };
-            delete nextMap[p.modelId];
-            downloadProgressMap = nextMap;
-            onToast?.(`Errore download: ${p.error}`);
-          }
-        }
-      );
-    } catch {}
-
-    runtimePollTimer = window.setInterval(async () => {
-      if (activeTab === "ai") {
-        try {
-          runtimeStatus = await ipc.getAiRuntimeStatus();
-        } catch {}
-      }
-    }, 2000);
-  });
-
-  onDestroy(() => {
-    if (unlistenDownloadProgress) unlistenDownloadProgress();
-    if (runtimePollTimer) clearInterval(runtimePollTimer);
-  });
-  let studyHoursPerCfu = $state<number>(themeStore.settings.studyHoursPerCfu || 25);
-  let startDayOfWeek = $state<number>(themeStore.settings.startDayOfWeek ?? 1);
-  let weeklyHolidayDay = $state<number>(themeStore.settings.weeklyHolidayDay ?? 0);
-
-  let accentColor = $state<string>(themeStore.settings.accentColor || "#0284C7");
-  let holidayColor = $state<string>(themeStore.settings.holidayColor || "#DC2626");
-  let sundayColor = $state<string>(themeStore.settings.sundayColor || "#EA580C");
-  let catStudioColor = $state<string>(themeStore.settings.catStudioColor || "#0284C7");
-  let catScadenzaColor = $state<string>(themeStore.settings.catScadenzaColor || "#EA580C");
-  let catLezioneColor = $state<string>(themeStore.settings.catLezioneColor || "#7C3AED");
-  let catPersonaleColor = $state<string>(
-    themeStore.settings.catPersonaleColor || "#16A34A"
-  );
-
-  let isSaving = $state<boolean>(false);
-  let backupStatus = $state<string | null>(null);
-  let fileInputEl = $state<HTMLInputElement | null>(null);
-
-  async function handleThemeSelect(theme: ThemeChoice) {
-    await themeStore.setTheme(theme);
-  }
-
-  async function handleMaterialSelect(material: BackdropMaterial) {
-    await themeStore.setBackdropMaterial(material);
-  }
-
-  async function handleControlsStyleSelect(style: WindowControlsStyle) {
-    await themeStore.setWindowControlsStyle(style);
-  }
-
-  async function handleDefaultViewSelect(view: CalendarViewMode) {
-    await themeStore.setDefaultView(view);
-  }
-
-  async function handleSaveAllSettings() {
-    isSaving = true;
-    try {
-      await themeStore.updateSettings({
-        startDayOfWeek,
-        weeklyHolidayDay,
-        studyHoursPerCfu: Math.max(10, Math.min(50, Math.round(studyHoursPerCfu))),
-        accentColor,
-        holidayColor,
-        sundayColor,
-        catStudioColor,
-        catScadenzaColor,
-        catLezioneColor,
-        catPersonaleColor,
-        aiProvider,
-        aiApiKey: aiApiKey.trim(),
-        aiModel: aiModel.trim(),
-        aiEndpointUrl: aiEndpointUrl.trim(),
-        aiLocalModelId,
-        aiIdleTimeoutMinutes,
-        aiBootStrategy,
-        aiHardwarePreference
-      });
-
-      await sessionStore.upsertProfile({
-        studentName: studentName.trim() || "Studente",
-        university: university.trim(),
-        faculty: faculty.trim(),
-        degreeCourse: degreeCourse.trim(),
-        enrollmentYear: enrollmentYear || null,
-        onboardingCompleted: true
-      });
-
-      await sessionStore.refreshActiveSnapshot();
-      onToast?.("Impostazioni e profilo salvati con successo");
-      onClose();
-    } catch (e) {
-      backupStatus = e instanceof Error ? e.message : String(e);
-    } finally {
-      isSaving = false;
-    }
-  }
-
-  async function handleExportBackup() {
-    backupStatus = null;
-    try {
-      const json = await sessionStore.exportBackupJson();
-      const defaultFileName = `mysession-backup-${new Date().toISOString().slice(0, 10)}.json`;
-
-      try {
-        const targetPath = await save({
-          title: "Esporta Backup Completo MySession (.json)",
-          defaultPath: defaultFileName,
-          filters: [{ name: "JSON Backup", extensions: ["json"] }]
-        });
-
-        if (targetPath) {
-          await writeTextFile(targetPath, json);
-          backupStatus = `Backup esportato correttamente in: ${targetPath}`;
-          onToast?.("Backup JSON salvato su disco");
-          return;
-        }
-      } catch {
-        const blob = new Blob([json], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = defaultFileName;
-        a.click();
-        URL.revokeObjectURL(url);
-        backupStatus = "Backup JSON scaricato con successo.";
-      }
-    } catch (e) {
-      backupStatus = `Errore esportazione: ${e instanceof Error ? e.message : String(e)}`;
-    }
-  }
-
-  async function handleImportBackupNative() {
-    backupStatus = null;
-    try {
-      const selected = await open({
-        title: "Importa Backup MySession (.json)",
-        multiple: false,
-        filters: [{ name: "JSON Backup", extensions: ["json"] }]
-      });
-
-      if (typeof selected === "string" && selected) {
-        const rawJson = await readTextFile(selected);
-        await sessionStore.importBackupJson(rawJson);
-        backupStatus = "Workspace ripristinato con successo dal file di backup.";
-        onToast?.("Backup importato con successo");
-      }
+      cliAgents = clis;
+      aiModels = mods;
+      runtimeStatus = rt;
     } catch {
-      fileInputEl?.click();
+      // ignore
     }
   }
 
-  async function handleHtmlFileImport(e: Event) {
-    const input = e.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) return;
-    try {
-      const rawJson = await file.text();
-      await sessionStore.importBackupJson(rawJson);
-      backupStatus = "Workspace ripristinato con successo dal file selezionato.";
-      onToast?.("Backup importato con successo");
-    } catch (err) {
-      backupStatus = `Errore importazione: ${err instanceof Error ? err.message : String(err)}`;
-    } finally {
-      input.value = "";
+  onMount(() => {
+    let active = true;
+    void listen<AiModelDownloadProgress>("ai-model-download-progress", (ev) => {
+      if (!active) return;
+      downloadProgress = ev.payload;
+      if (ev.payload.isCompleted || ev.payload.error) {
+        void refreshAiState();
+      }
+    }).then((un) => {
+      unlistenDl = un;
+    });
+    return () => {
+      active = false;
+      unlistenDl?.();
+    };
+  });
+
+  function moveSection(idx: number, delta: number) {
+    const list = [...themeStore.settings.sidebarSections];
+    const target = idx + delta;
+    if (target < 0 || target >= list.length) return;
+    [list[idx], list[target]] = [list[target], list[idx]];
+    void themeStore.updateSettings({ sidebarSections: list });
+  }
+
+  function toggleHiddenSection(id: SectionId) {
+    if (id === "home") return; // Home sempre visibile
+    const hidden = new Set(themeStore.settings.hiddenSections);
+    if (hidden.has(id)) hidden.delete(id);
+    else hidden.add(id);
+    void themeStore.updateSettings({ hiddenSections: Array.from(hidden) });
+  }
+
+  async function choosePlanFolder() {
+    const selected = await open({ directory: true, multiple: false, title: "Cartella file delle sessioni" });
+    if (typeof selected === "string" && selected.trim()) {
+      const pending = await sessionStore.setPlanFolder(selected);
+      navStore.showToast(
+        pending.length > 0 ? `Trovati ${pending.length} piani nella cartella` : "Cartella salvata",
+        "info"
+      );
+    }
+  }
+
+  function getCatColorVal(id: string): string {
+    switch (id) {
+      case "teoria":
+        return themeStore.settings.catTeoriaColor;
+      case "esercizi":
+        return themeStore.settings.catEserciziColor;
+      case "temi_esame":
+        return themeStore.settings.catTemiEsameColor;
+      case "dimostrazioni":
+        return themeStore.settings.catDimostrazioniColor;
+      default:
+        return themeStore.settings.catDomandeOraleColor;
+    }
+  }
+
+  function setCatColor(id: string, hex: string) {
+    switch (id) {
+      case "teoria":
+        void themeStore.updateSettings({ catTeoriaColor: hex });
+        break;
+      case "esercizi":
+        void themeStore.updateSettings({ catEserciziColor: hex });
+        break;
+      case "temi_esame":
+        void themeStore.updateSettings({ catTemiEsameColor: hex });
+        break;
+      case "dimostrazioni":
+        void themeStore.updateSettings({ catDimostrazioniColor: hex });
+        break;
+      default:
+        void themeStore.updateSettings({ catDomandeOraleColor: hex });
+        break;
     }
   }
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="modal-backdrop" onclick={onClose}>
-  <div
-    class="settings-sheet squircle"
-    onclick={(e) => e.stopPropagation()}
-    role="dialog"
-    aria-modal="true"
-    aria-label="Impostazioni MySession"
-    tabindex="-1"
-  >
-    <!-- Header del Pannello Impostazioni -->
-    <header class="sheet-header">
-      <div>
-        <span class="sheet-kicker">PREFERENZE DI SISTEMA & ARCHITETTURA</span>
-        <h2 class="sheet-title">Impostazioni MySession</h2>
-      </div>
-      <button type="button" class="close-btn pressable" onclick={onClose} aria-label="Chiudi">
-        ✕
-      </button>
-    </header>
-
-    <!-- Layout Impostazioni: Barra Laterale Sinistra + Area Contenuti -->
-    <div class="settings-layout">
-      <!-- Barra Laterale Sinistra con Categorie Dedicate & Footer Autore/Versione -->
-      <nav class="settings-nav" aria-label="Navigazione sezioni impostazioni">
-        <div class="nav-items-scroll">
-          <div class="nav-group-header">INTERFACCIA</div>
-          <button
-            type="button"
-            class="nav-item pressable"
-            class:active={activeTab === "appearance"}
-            onclick={() => (activeTab = "appearance")}
-          >
-            <span class="nav-icon">
-              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
-                <rect x="2" y="2.5" width="12" height="11" rx="2" stroke="currentColor" stroke-width="1.3" />
-                <line x1="2" y1="5.5" x2="14" y2="5.5" stroke="currentColor" stroke-width="1.3" />
-                <circle cx="4" cy="4" r="0.6" fill="currentColor" />
-                <circle cx="6" cy="4" r="0.6" fill="currentColor" />
-              </svg>
-            </span>
-            <span>Aspetto & Finestra</span>
-          </button>
-          <button
-            type="button"
-            class="nav-item pressable"
-            class:active={activeTab === "colors"}
-            onclick={() => (activeTab = "colors")}
-          >
-            <span class="nav-icon">
-              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
-                <circle cx="8" cy="8" r="5.75" stroke="currentColor" stroke-width="1.3" />
-                <path d="M8 2.25A5.75 5.75 0 0 1 13.75 8H8z" fill="currentColor" fill-opacity="0.25" />
-                <circle cx="8" cy="8" r="1.5" fill="currentColor" />
-              </svg>
-            </span>
-            <span>Palette & Colori</span>
-          </button>
-
-          <div class="nav-group-header">PIANIFICAZIONE</div>
-          <button
-            type="button"
-            class="nav-item pressable"
-            class:active={activeTab === "calendar"}
-            onclick={() => (activeTab = "calendar")}
-          >
-            <span class="nav-icon">
-              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
-                <rect x="2" y="2.75" width="12" height="10.5" rx="2" stroke="currentColor" stroke-width="1.3" />
-                <line x1="2" y1="6" x2="14" y2="6" stroke="currentColor" stroke-width="1.3" />
-                <line x1="5.25" y1="1.75" x2="5.25" y2="3.75" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
-                <line x1="10.75" y1="1.75" x2="10.75" y2="3.75" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
-              </svg>
-            </span>
-            <span>Calendario & Viste</span>
-          </button>
-          <button
-            type="button"
-            class="nav-item pressable"
-            class:active={activeTab === "workload"}
-            onclick={() => (activeTab = "workload")}
-          >
-            <span class="nav-icon">
-              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
-                <path d="M8.75 1.75L3.25 9.25H8L7.25 14.25L12.75 6.75H8L8.75 1.75Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-            </span>
-            <span>Algoritmo CFU & Carico</span>
-          </button>
-          <button
-            type="button"
-            class="nav-item pressable"
-            class:active={activeTab === "plan"}
-            onclick={() => (activeTab = "plan")}
-          >
-            <span class="nav-icon">
-              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
-                <path d="M2.5 3.5C2.5 2.67 3.17 2 4 2H6.5C6.9 2 7.28 2.16 7.56 2.44L8.56 3.44C8.84 3.72 9.22 3.88 9.62 3.88H12C12.83 3.88 13.5 4.55 13.5 5.38V12C13.5 12.83 12.83 13.5 12 13.5H4C3.17 13.5 2.5 12.83 2.5 12V3.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
-              </svg>
-            </span>
-            <span>Piani di Studio & Builder</span>
-          </button>
-
-          <div class="nav-group-header">INTELLIGENZA & DATI</div>
-          <button
-            type="button"
-            class="nav-item pressable"
-            class:active={activeTab === "ai"}
-            onclick={() => (activeTab = "ai")}
-          >
-            <span class="nav-icon">
-              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
-                <path d="M8 1.5L9.2 5.3L13 6.5L9.2 7.7L8 11.5L6.8 7.7L3 6.5L6.8 5.3L8 1.5Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round" />
-                <path d="M12.5 10.5L13.1 12.4L15 13L13.1 13.6L12.5 15.5L11.9 13.6L10 13L11.9 12.4L12.5 10.5Z" stroke="currentColor" stroke-width="1" stroke-linejoin="round" />
-              </svg>
-            </span>
-            <span>Assistente AI & NLP</span>
-          </button>
-          <button
-            type="button"
-            class="nav-item pressable"
-            class:active={activeTab === "profile"}
-            onclick={() => (activeTab = "profile")}
-          >
-            <span class="nav-icon">
-              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
-                <path d="M8 2.25L1.75 5.5L8 8.75L14.25 5.5L8 2.25Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
-                <path d="M3.75 7V10.25C3.75 11.8 5.65 13 8 13C10.35 13 12.25 11.8 12.25 10.25V7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
-                <path d="M14.25 5.5V10.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
-              </svg>
-            </span>
-            <span>Profilo Accademico</span>
-          </button>
-          <button
-            type="button"
-            class="nav-item pressable"
-            class:active={activeTab === "backup"}
-            onclick={() => (activeTab = "backup")}
-          >
-            <span class="nav-icon">
-              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
-                <ellipse cx="8" cy="4" rx="5.5" ry="2" stroke="currentColor" stroke-width="1.3" />
-                <path d="M2.5 4V8C2.5 9.1 4.96 10 8 10C11.04 10 13.5 9.1 13.5 8V4" stroke="currentColor" stroke-width="1.3" />
-                <path d="M2.5 8V12C2.5 13.1 4.96 14 8 14C11.04 14 13.5 13.1 13.5 12V8" stroke="currentColor" stroke-width="1.3" />
-              </svg>
-            </span>
-            <span>Dati & Backup JSON</span>
-          </button>
-          <button
-            type="button"
-            class="nav-item pressable"
-            class:active={activeTab === "updates"}
-            onclick={() => (activeTab = "updates")}
-          >
-            <span class="nav-icon">
-              <svg viewBox="0 0 16 16" fill="none" class="nav-svg">
-                <path d="M10 2.5C8 2 5.5 3.5 4 5C2.5 6.5 2 9 2.5 11L4 9.5C4 8 5.5 7 6.5 7L9 9.5C9 10.5 8 12 6.5 12L5 13.5C7 14 9.5 13.5 11 12C12.5 10.5 14 8 13.5 6L10 2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
-                <circle cx="9.5" cy="6.5" r="1" fill="currentColor" />
-              </svg>
-            </span>
-            <span>Aggiornamenti</span>
-            {#if updaterStore.status === "available"}
-              <span class="nav-update-dot"></span>
-            {/if}
-          </button>
+{#if navStore.isSettingsOpen}
+  <div class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Impostazioni">
+    <div class="bento-card settings-modal bento-enter">
+      <header class="sm-head">
+        <div>
+          <h2>Impostazioni</h2>
+          <p>MySession v{APP_VERSION} · {APP_AUTHOR}</p>
         </div>
+        <button type="button" class="close-btn" onclick={() => (navStore.isSettingsOpen = false)} aria-label="Chiudi">
+          <X size={18} />
+        </button>
+      </header>
 
-        <!-- Sezione Dedicata in Basso alla Barra Laterale Sinistra (Autore & Versione) -->
-        <div class="settings-nav-footer">
-          <div class="nav-brand-row">
-            <span class="nav-brand-title">MySession</span>
-            <span class="nav-version-badge">v{APP_VERSION}</span>
-          </div>
-          <div class="nav-author-row">
-            <span class="nav-author-label">Autore:</span>
-            <span class="nav-author-name">{APP_AUTHOR}</span>
-          </div>
-        </div>
+      <nav class="sm-tabs">
+        <button type="button" class="pill-filter" class:active={activeTab === "appearance"} onclick={() => (activeTab = "appearance")}>
+          Aspetto & Colori
+        </button>
+        <button type="button" class="pill-filter" class:active={activeTab === "sidebar"} onclick={() => (activeTab = "sidebar")}>
+          Barra Laterale
+        </button>
+        <button type="button" class="pill-filter" class:active={activeTab === "sessions"} onclick={() => (activeTab = "sessions")}>
+          Sessioni & Cartella
+        </button>
+        <button type="button" class="pill-filter" class:active={activeTab === "ai"} onclick={() => (activeTab = "ai")}>
+          AI & Agenti CLI
+        </button>
       </nav>
 
-      <!-- Contenuto della Sezione Attiva -->
-      <div class="settings-content">
-        {#key activeTab}
-          <div class="tab-pane">
-            <!-- 1. ASPETTO & FINESTRA -->
-            {#if activeTab === "appearance"}
-          <div class="panel-group">
-            <h3 class="group-title">Tema di Sistema (Sincronizzazione Windows 11)</h3>
-            <p class="field-hint">Adatta automaticamente la palette al tema Chiaro/Scuro di Windows oppure forza una modalità fissa.</p>
-            <div class="segmented-row">
-              {#each [
-                { id: "auto", label: "Automatico (OS)" },
-                { id: "dark", label: "Scuro" },
-                { id: "light", label: "Chiaro" }
-              ] as item (item.id)}
+      <div class="sm-body">
+        {#if activeTab === "appearance"}
+          <div class="set-group">
+            <h4>Tema</h4>
+            <div class="seg-row">
+              {#each [["light", "Chiaro (Video)"], ["dark", "Scuro"], ["auto", "Sistema"]] as [val, lbl] (val)}
                 <button
                   type="button"
-                  class="seg-option pressable"
-                  class:active={themeStore.settings.theme === item.id}
-                  onclick={() => handleThemeSelect(item.id as ThemeChoice)}
+                  class="pill-filter"
+                  class:active={themeStore.settings.theme === val}
+                  onclick={() => themeStore.updateSettings({ theme: val as ThemeChoice })}
                 >
-                  {item.label}
+                  {lbl}
                 </button>
               {/each}
             </div>
           </div>
 
-          <div class="panel-group">
-            <h3 class="group-title">Materiale DWM Nativo Windows 11 (Vibrancy & Mica)</h3>
-            <p class="field-hint">Iniezione di sistema del materiale di sfondo DWM tramite Win32 DwmSetWindowAttribute.</p>
-            <div class="segmented-row">
-              {#each [
-                { id: "mica", label: "Mica (Nativo Win11)" },
-                { id: "acrylic", label: "Acrylic (Vetro)" },
-                { id: "tabbed", label: "Mica Alt (Tabbed)" },
-                { id: "solid", label: "Solido Opaco" }
-              ] as mat (mat.id)}
+          <div class="set-group">
+            <h4>Materiale Finestra Windows 11</h4>
+            <div class="seg-row">
+              {#each [["mica", "Mica"], ["acrylic", "Acrylic"], ["tabbed", "Tabbed"], ["solid", "Solido"]] as [val, lbl] (val)}
                 <button
                   type="button"
-                  class="seg-option pressable"
-                  class:active={themeStore.settings.backdropMaterial === mat.id}
-                  onclick={() => handleMaterialSelect(mat.id as BackdropMaterial)}
+                  class="pill-filter"
+                  class:active={themeStore.settings.backdropMaterial === val}
+                  onclick={() => themeStore.updateSettings({ backdropMaterial: val as BackdropMaterial })}
                 >
-                  {mat.label}
+                  {lbl}
                 </button>
               {/each}
             </div>
           </div>
 
-          <div class="panel-group">
-            <h3 class="group-title">Stile Controlli Finestra Desktop</h3>
-            <div class="segmented-row">
-              <button
-                type="button"
-                class="seg-option pressable"
-                class:active={themeStore.settings.windowControlsStyle === "macos-left"}
-                onclick={() => handleControlsStyleSelect("macos-left")}
-              >
-                Semaforo Apple (Sinistra)
-              </button>
-              <button
-                type="button"
-                class="seg-option pressable"
-                class:active={themeStore.settings.windowControlsStyle === "win11-right"}
-                onclick={() => handleControlsStyleSelect("win11-right")}
-              >
-                Windows 11 Nativo (Destra)
-              </button>
-            </div>
+          <div class="set-group">
+            <h4>Scala Interfaccia ({themeStore.settings.uiScale}%)</h4>
+            <input
+              type="range"
+              min={UI_SCALE_MIN}
+              max={UI_SCALE_MAX}
+              step={UI_SCALE_STEP}
+              value={themeStore.settings.uiScale}
+              oninput={(e) => themeStore.updateSettings({ uiScale: Number((e.currentTarget as HTMLInputElement).value) })}
+            />
           </div>
 
-          <div class="panel-group">
-            <h3 class="group-title">Scala Interfaccia & Zoom Dinamico</h3>
-            <div class="zoom-control-box">
-              <div class="zoom-header">
-                <span>Ridimensionamento fluido dell'interfaccia utente (80% – 150%)</span>
-                <strong>{themeStore.settings.uiScale}%</strong>
-              </div>
-              <input
-                type="range"
-                min="80"
-                max="150"
-                step="5"
-                value={themeStore.settings.uiScale}
-                oninput={(e) =>
-                  themeStore.setUiScale(Number((e.currentTarget as HTMLInputElement).value))}
-              />
-              <div class="zoom-presets">
-                {#each [85, 100, 110, 125, 140] as pct (pct)}
-                  <button
-                    type="button"
-                    class="preset-chip pressable"
-                    class:active={themeStore.settings.uiScale === pct}
-                    onclick={() => themeStore.setUiScale(pct)}
-                  >
-                    {pct}%
-                  </button>
-                {/each}
-              </div>
-            </div>
+          <div class="set-group">
+            <ColorPickerField
+              label="Colore Accento App"
+              previewText="ACCENTO"
+              value={themeStore.settings.accentColor}
+              onChange={(hex) => themeStore.updateSettings({ accentColor: hex })}
+            />
           </div>
 
-        <!-- 2. PALETTE & COLORI -->
-        {:else if activeTab === "colors"}
-          <div class="panel-group">
-            <h3 class="group-title">Colori di Sistema & Contrasto Elevato (WCAG AA/AAA)</h3>
-            <p class="field-hint">Personalizza i colori guida. I testi e i contrasti vengono calcolati dinamicamente per garantire leggibilità ottimale.</p>
-            <div class="colors-grid">
-              <ColorPickerField
-                label="Colore d'Accento Principale"
-                value={accentColor}
-                onChange={(hex) => (accentColor = hex)}
-              />
-              <ColorPickerField
-                label="Festività Nazionali"
-                value={holidayColor}
-                onChange={(hex) => (holidayColor = hex)}
-              />
-              <ColorPickerField
-                label="Domenica / Giorno di Riposo"
-                value={sundayColor}
-                onChange={(hex) => (sundayColor = hex)}
-              />
-            </div>
-          </div>
-
-          <div class="panel-group">
-            <h3 class="group-title">Colori Categorie Eventi & Appunti</h3>
-            <p class="field-hint">Tinte attribuite automaticamente alle card e agli indicatori di eventi generici e task giornalieri.</p>
-            <div class="colors-grid">
-              <ColorPickerField
-                label="Categoria Studio"
-                value={catStudioColor}
-                onChange={(hex) => (catStudioColor = hex)}
-              />
-              <ColorPickerField
-                label="Categoria Scadenza"
-                value={catScadenzaColor}
-                onChange={(hex) => (catScadenzaColor = hex)}
-              />
-              <ColorPickerField
-                label="Categoria Lezione"
-                value={catLezioneColor}
-                onChange={(hex) => (catLezioneColor = hex)}
-              />
-              <ColorPickerField
-                label="Categoria Personale"
-                value={catPersonaleColor}
-                onChange={(hex) => (catPersonaleColor = hex)}
-              />
-            </div>
-          </div>
-
-        <!-- 3. CALENDARIO & VISTE -->
-        {:else if activeTab === "calendar"}
-          <div class="panel-group">
-            <h3 class="group-title">Vista Calendario Predefinita all'Avvio</h3>
-            <div class="segmented-row">
-              {#each [
-                { id: "continuous", label: "Continua Infinita" },
-                { id: "month", label: "Vista Mese" },
-                { id: "week", label: "Vista Settimana" },
-                { id: "agenda", label: "Agenda Appelli" }
-              ] as v (v.id)}
-                <button
-                  type="button"
-                  class="seg-option pressable"
-                  class:active={themeStore.settings.defaultView === v.id}
-                  onclick={() => handleDefaultViewSelect(v.id as CalendarViewMode)}
-                >
-                  {v.label}
-                </button>
+          <div class="set-group">
+            <h4>Colori delle 5 Categorie</h4>
+            <div class="cat-colors-grid">
+              {#each CORE_FIVE_CATEGORIES as cat (cat.id)}
+                <label class="cat-color-chip">
+                  <input
+                    type="color"
+                    value={getCatColorVal(cat.id)}
+                    onchange={(e) => setCatColor(cat.id, (e.currentTarget as HTMLInputElement).value)}
+                  />
+                  <span>{cat.label}</span>
+                </label>
               {/each}
             </div>
           </div>
 
-          <div class="panel-group">
-            <h3 class="group-title">Configurazione Settimanale & Riposo</h3>
-            <div class="form-grid-2">
-              <div class="field">
-                <span>Primo giorno della settimana</span>
-                <CustomSelect
-                  bind:value={startDayOfWeek}
-                  options={startDayOptions}
-                  ariaLabel="Primo giorno della settimana"
-                />
-              </div>
-
-              <div class="field">
-                <span>Giorno di riposo settimanale evidenziato</span>
-                <CustomSelect
-                  bind:value={weeklyHolidayDay}
-                  options={holidayOptions}
-                  ariaLabel="Giorno di riposo settimanale evidenziato"
-                />
-              </div>
+          <div class="set-group row-between">
+            <div>
+              <h4>Aggiornamenti Automatici</h4>
+              <p class="hint">Versione corrente v{APP_VERSION}</p>
             </div>
+            <button type="button" class="pill-btn pill-btn-soft" onclick={() => updaterStore.checkForUpdates(false)}>
+              <RefreshCw size={14} />
+              Controlla ora
+            </button>
           </div>
-
-          <div class="panel-group">
-            <h3 class="group-title">Visualizzazione Lezioni nel Calendario</h3>
-            <p class="field-hint">
-              Controlla la visualizzazione rapida dell'orario delle lezioni nelle celle del calendario. Il cassetto di dettaglio della singola giornata continuerà a mostrare sempre l'orario completo.
-            </p>
-            <label class="toggle-row" style="margin-top: 0.65rem;">
-              <input
-                type="checkbox"
-                checked={themeStore.showLessonTimes}
-                onchange={() => themeStore.toggleShowLessonTimes()}
-              />
-              <span>Mostra orario delle lezioni nelle celle del calendario (vista rapida)</span>
-            </label>
-          </div>
-
-          <div class="panel-group">
-            <h3 class="group-title">Scorciatoie da Tastiera per la Navigazione</h3>
-            <div class="info-card">
-              <p>• <strong>T</strong>: Salta istantaneamente alla data di oggi nel calendario.</p>
-              <p>• <strong>Spazio</strong> oppure <strong>Ctrl+K</strong>: Apri la Command Palette / Assistente AI.</p>
-              <p>• <strong>Ctrl + / -</strong>: Ingrandisci o riduci lo zoom dell'interfaccia.</p>
-              <p>• <strong>Esc</strong>: Chiudi qualsiasi modale o cassetto laterale aperto.</p>
-            </div>
-          </div>
-
-        <!-- 4. ALGORITMO CFU & CARICO -->
-        {:else if activeTab === "workload"}
-          <div class="panel-group">
-            <h3 class="group-title">Parametro di Calcolo del Carico di Studio</h3>
-            <label class="field">
-              <span>Ore di studio stimate per singolo Credito Formativo Universitario (CFU)</span>
-              <input
-                type="number"
-                min="10"
-                max="50"
-                bind:value={studyHoursPerCfu}
-              />
-            </label>
-            <p class="field-hint">
-              Il valore accademico standard in Italia è pari a <strong>25 ore per CFU</strong> (comprese le lezioni frontali e lo studio individuale).
-            </p>
-          </div>
-
-          <div class="panel-group">
-            <h3 class="group-title">Architettura del Workload Engine & Conflict Engine in Rust</h3>
-            <div class="info-card">
-              <strong>Motore di Calcolo Deterministico Integrato:</strong>
-              <p>
-                Il core nativo in Rust combina le ore per CFU con il fattore di difficoltà di ogni materia,
-                le unità didattiche ancora da completare e la distanza temporale dagli appelli per determinare:
-              </p>
-              <p>• <strong>Ore di studio giornaliere consigliate</strong> per ciascuna data.</p>
-              <p>• <strong>Buffer di sicurezza dinamico ($B$)</strong> tra appelli vicini, rilevando conflitti critici o avvisi di sovrapposizione.</p>
-              <p>• <strong>Festività automatiche</strong> con calcolo perpetuo della Pasqua (algoritmo di Butcher) per preservare i giorni di riposo.</p>
-            </div>
-          </div>
-
-        <!-- 5. PIANI DI STUDIO & BUILDER -->
-        {:else if activeTab === "plan"}
-          <div class="panel-group">
-            <h3 class="group-title">Cartella Condivisa dei Piani di Studio (Progetto B)</h3>
-            <p class="field-hint">
-              Indica la directory in cui il Builder genera e aggiorna i file JSON dei piani di studio.
-              MySession monitora questa cartella in background ed estrae automaticamente modifiche, nuovi corsi e to-do.
-            </p>
-            <div class="folder-input-row">
-              <input
-                type="text"
-                class="folder-path-input"
-                readonly
-                value={planStore.planFolder || "Nessuna cartella configurata"}
-                title={planStore.planFolder || "Nessuna cartella configurata"}
-              />
-              <button
-                type="button"
-                class="btn-action pressable"
-                onclick={() => planStore.browseFolder()}
-                title="Sfoglia cartelle nel computer"
-              >
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M1.75 3.75C1.75 2.65 2.65 1.75 3.75 1.75H6.25L8 3.75H12.25C13.35 3.75 14.25 4.65 14.25 5.75V12.25C14.25 13.35 13.35 14.25 12.25 14.25H3.75C2.65 14.25 1.75 13.35 1.75 12.25V3.75Z" />
-                </svg>
-                <span>Sfoglia…</span>
-              </button>
-              <button
-                type="button"
-                class="btn-action pressable"
-                disabled={!planStore.planFolder}
-                title="Apri la cartella in Esplora Risorse di Windows"
-                onclick={() => planStore.openPlanFolder()}
-              >
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M1.75 4C1.75 3 2.5 2.25 3.5 2.25H6L7.5 4H12.5C13.5 4 14.25 4.75 14.25 5.75V6.25H3L1.75 12.75V4Z" />
-                  <path d="M3 6.25L1.5 13.75H13L14.5 6.25H3Z" />
-                </svg>
-                <span>Apri Cartella</span>
-              </button>
-              <button
-                type="button"
-                class="btn-action pressable"
-                disabled={planStore.isScanning || !planStore.planFolder}
-                title="Scansiona la cartella per rilevare nuovi piani"
-                onclick={() => planStore.scan()}
-              >
-                <svg class:spin={planStore.isScanning} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M2.5 8C2.5 4.96 4.96 2.5 8 2.5C10.5 2.5 12.63 4.17 13.28 6.5" />
-                  <path d="M13.5 8C13.5 11.04 11.04 13.5 8 13.5C5.5 13.5 3.37 11.83 2.72 9.5" />
-                  <path d="M14 3.5V6.5H11" />
-                  <path d="M2 12.5V9.5H5" />
-                </svg>
-                <span>{planStore.isScanning ? "Scansione…" : "Verifica Ora"}</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="panel-group">
-            <h3 class="group-title">Piani Rilevati & In Attesa</h3>
-            {#if planStore.pendingPlans.length === 0}
-              <div class="info-card">
-                <p>Nessun nuovo piano o aggiornamento in attesa nella cartella selezionata.</p>
-                <p style="font-size: 0.78rem; color: var(--text-tertiary); margin-top: 0.25rem;">
-                  Quando crei o modifichi un piano con la skill in Progetto B, apparirà qui e tramite notifica interattiva.
-                </p>
-              </div>
-            {:else}
-              <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                {#each planStore.pendingPlans as plan (plan.planId)}
-                  <div
-                    style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-radius: var(--radius-sm); background: rgba(128, 128, 128, 0.06); border: 0.5px solid var(--hairline-border);"
-                  >
-                    <div>
-                      <div style="font-weight: 600; font-size: 0.9rem; color: var(--text-primary);">
-                        {plan.planName} ({plan.planId})
-                      </div>
-                      <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.15rem;">
-                        Revisione {plan.revision} • {plan.isNewSession ? "Nuova sessione" : "Aggiornamento sessione"}
-                      </div>
-                    </div>
+        {:else if activeTab === "sidebar"}
+          <div class="set-group">
+            <h4>Ordine e Visibilità delle Sezioni nella Barra Laterale</h4>
+            <p class="hint">Sposta le sezioni per cambiare l'ordine nella Floating Pill Sidebar (esclusi Logo, Sessioni e Impostazioni).</p>
+            <div class="order-list">
+              {#each themeStore.settings.sidebarSections as secId, idx (secId)}
+                {@const isHidden = themeStore.settings.hiddenSections.includes(secId)}
+                <div class="order-row">
+                  <span class="ord-idx">{idx + 1}</span>
+                  <strong class="ord-lbl">{SECTION_LABELS[secId] ?? secId}</strong>
+                  <div class="ord-actions">
+                    <button type="button" class="icon-mini" disabled={idx === 0} onclick={() => moveSection(idx, -1)} title="Sposta su">
+                      <ArrowUp size={14} />
+                    </button>
                     <button
                       type="button"
-                      class="btn-action pressable"
-                      style="background: var(--accent, #007AFF); color: #fff; border: none; font-weight: 600;"
-                      onclick={() => {
-                        onClose();
-                        planStore.openPreview(plan);
-                      }}
+                      class="icon-mini"
+                      disabled={idx === themeStore.settings.sidebarSections.length - 1}
+                      onclick={() => moveSection(idx, 1)}
+                      title="Sposta giù"
                     >
-                      Esamina & Applica
+                      <ArrowDown size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      class="icon-mini"
+                      disabled={secId === "home"}
+                      onclick={() => toggleHiddenSection(secId)}
+                      title={isHidden ? "Mostra sezione" : "Nascondi sezione"}
+                    >
+                      {#if isHidden}<EyeOff size={14} />{:else}<Eye size={14} />{/if}
+                    </button>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {:else if activeTab === "sessions"}
+          <div class="set-group">
+            <h4>Cartella File delle Sessioni (.json v3)</h4>
+            <p class="hint">MySession monitora questa cartella per rilevare nuovi piani o revisioni dal Builder.</p>
+            <div class="folder-row">
+              <input type="text" class="soft-input" readonly value={themeStore.settings.planFolder || "Nessuna cartella selezionata"} />
+              <button type="button" class="pill-btn pill-btn-primary" onclick={choosePlanFolder}>
+                <FolderOpen size={14} />
+                Scegli
+              </button>
+              {#if themeStore.settings.planFolder}
+                <button type="button" class="pill-btn pill-btn-soft" onclick={() => ipc.openFolderInExplorer(themeStore.settings.planFolder)}>
+                  Apri
+                </button>
+              {/if}
+            </div>
+          </div>
+
+          <div class="set-group">
+            <h4>Gestione Sessioni Esistenti ({sessionStore.sessions.length})</h4>
+            {#if sessionStore.sessions.length === 0}
+              <p class="hint">Nessuna sessione salvata nel database.</p>
+            {:else}
+              <div class="order-list">
+                {#each sessionStore.sessions as s (s.id)}
+                  <div class="order-row">
+                    <div class="sess-det">
+                      <strong>{s.name}</strong>
+                      <span>{s.startDate} → {s.endDate}</span>
+                    </div>
+                    <button type="button" class="icon-mini danger" onclick={() => sessionStore.deleteSession(s.id)} title="Elimina sessione">
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 {/each}
               </div>
             {/if}
           </div>
-
-        <!-- 5. ASSISTENTE AI & NLP -->
         {:else if activeTab === "ai"}
-          <div class="panel-group">
-            <h3 class="group-title">Architettura Assistente AI Multimodale</h3>
-            <p class="field-hint">
-              Scegli tra l'AI locale on-demand a privacy totale (senza token o abbonamenti) oppure provider esterni cloud.
-              I modelli locali vengono eseguiti direttamente su questa macchina e liberano la memoria RAM/VRAM non appena finisci di usarli.
-            </p>
-
-            <div class="segmented-row">
-              {#each [
-                { id: "local", label: "AI Locale On-Demand" },
-                { id: "gemini", label: "Google Gemini" },
-                { id: "openai", label: "OpenAI" },
-                { id: "ollama", label: "Ollama / LM Studio" }
-              ] as p (p.id)}
+          <div class="set-group">
+            <h4>Provider AI Attivo</h4>
+            <p class="hint">Usa il modello locale leggero Qwen2.5-VL 3B oppure collega direttamente un Agente CLI installato sul tuo PC.</p>
+            <div class="seg-row">
+              {#each [["local", "Locale Base (Qwen2.5-VL 3B)"], ["cli_agy", "Antigravity CLI (agy)"], ["cli_claude", "Claude Code"], ["cli_codex", "Codex CLI"], ["cli_custom", "CLI Custom"]] as [id, label] (id)}
                 <button
                   type="button"
-                  class="seg-option pressable"
-                  class:active={aiProvider === p.id}
-                  onclick={() => (aiProvider = p.id as AiProvider)}
+                  class="pill-filter"
+                  class:active={themeStore.settings.aiProvider === id}
+                  onclick={() => themeStore.updateSettings({ aiProvider: id as AiProvider })}
                 >
-                  {p.label}
+                  {label}
                 </button>
               {/each}
             </div>
-
-            {#if aiProvider === "local"}
-              <!-- 1. Scheda Hardware Rilevato -->
-              {#if hardwareInfo}
-                <div class="ai-hw-banner">
-                  <div class="hw-icon-col">💻</div>
-                  <div class="hw-details-col">
-                    <div class="hw-title-row">
-                      <strong>Hardware Rilevato:</strong>
-                      <span class="hw-gpu-tag">{hardwareInfo.gpuName} ({hardwareInfo.dedicatedVramGb > 0 ? `${hardwareInfo.dedicatedVramGb} GB VRAM` : "Integrata"})</span>
-                      <span class="hw-ram-tag">{hardwareInfo.totalRamGb} GB RAM Totale</span>
-                    </div>
-                    <p class="hw-reason-text">
-                      <span class="star-badge">★</span> {hardwareInfo.recommendedReason}
-                    </p>
-                  </div>
-                </div>
-              {/if}
-
-              <!-- 2. Pannello Controllo Memoria & Alimentazione On-Demand -->
-              <div class="ai-control-box">
-                <div class="ai-control-header">
-                  <div class="ai-status-indicator">
-                    {#if runtimeStatus?.state === "ready"}
-                      <span class="status-dot ready"></span>
-                      <div>
-                        <strong style="color: #34C759;">Pronto in Memoria</strong>
-                        <span class="status-sub">
-                          {#if runtimeStatus.secondsUntilIdleShutdown !== null && runtimeStatus.secondsUntilIdleShutdown !== undefined}
-                            Spegnimento automatico tra {Math.floor(runtimeStatus.secondsUntilIdleShutdown / 60)}m {runtimeStatus.secondsUntilIdleShutdown % 60}s
-                          {:else}
-                            Sempre attivo (inattività disattivata)
-                          {/if}
-                        </span>
-                      </div>
-                    {:else if runtimeStatus?.state === "starting"}
-                      <span class="status-dot starting"></span>
-                      <div>
-                        <strong style="color: #FF9500;">Caricamento in memoria...</strong>
-                        <span class="status-sub">Inizializzazione pesi e layer GPU</span>
-                      </div>
-                    {:else if runtimeStatus?.state === "error"}
-                      <span class="status-dot error"></span>
-                      <div>
-                        <strong style="color: #FF3B30;">Stato: Errore</strong>
-                        <span class="status-sub">{runtimeStatus.errorMessage || "Impossibile avviare il modello"}</span>
-                      </div>
-                    {:else}
-                      <span class="status-dot stopped"></span>
-                      <div>
-                        <strong>Stato: Spento a Riposo</strong>
-                        <span class="status-sub">0 MB di RAM e VRAM occupati (latenza zero all'avvio app)</span>
-                      </div>
-                    {/if}
-                  </div>
-
-                  <div class="ai-quick-actions">
-                    {#if runtimeStatus?.state === "ready" || runtimeStatus?.state === "starting"}
-                      <button
-                        type="button"
-                        class="btn-danger-sub pressable"
-                        disabled={isStoppingAi}
-                        onclick={handleStopRuntime}
-                      >
-                        {isStoppingAi ? "Spegnimento..." : "🛑 Libera Memoria Adesso"}
-                      </button>
-                    {:else}
-                      <button
-                        type="button"
-                        class="btn-wake-sub pressable"
-                        disabled={isWakingAi}
-                        onclick={handleWakeUpRuntime}
-                      >
-                        {isWakingAi ? "Avvio in corso..." : "⚡ Sveglia / Avvia Ora"}
-                      </button>
-                    {/if}
-                  </div>
-                </div>
-
-                <div class="form-grid-3" style="margin-top: 1rem;">
-                  <div class="field">
-                    <span>Spegnimento per Inattività</span>
-                    <CustomSelect
-                      bind:value={aiIdleTimeoutMinutes}
-                      options={idleTimeoutOptions}
-                      ariaLabel="Spegnimento per inattività"
-                    />
-                  </div>
-
-                  <div class="field">
-                    <span>Strategia di Avvio</span>
-                    <CustomSelect
-                      bind:value={aiBootStrategy}
-                      options={bootStrategyOptions}
-                      ariaLabel="Strategia di avvio"
-                    />
-                  </div>
-
-                  <div class="field">
-                    <span>Accelerazione Hardware</span>
-                    <CustomSelect
-                      bind:value={aiHardwarePreference}
-                      options={hardwarePreferenceOptions}
-                      ariaLabel="Accelerazione hardware"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <!-- 3. Model Hub & Catalogo 5 Modelli -->
-              <div class="models-catalog-section">
-                <div class="models-catalog-header">
-                  <div>
-                    <h4 style="margin: 0; font-size: 0.95rem; font-weight: 700;">Catalogo Modelli Multimodali Locali</h4>
-                    <p class="field-hint">Seleziona o scarica il modello più adatto alla potenza del tuo computer.</p>
-                  </div>
-                  <button
-                    type="button"
-                    class="btn-refresh-sub pressable"
-                    disabled={isAiLoading}
-                    onclick={loadAiData}
-                  >
-                    🔄 Aggiorna Stato
-                  </button>
-                </div>
-
-                <div class="models-grid">
-                  {#each modelCatalog as m (m.id)}
-                    {@const isRec = hardwareInfo?.recommendedModelId === m.id}
-                    {@const isSelected = aiLocalModelId === m.id}
-                    {@const dlProgress = downloadProgressMap[m.id]}
-
-                    <div
-                      class="model-card"
-                      class:selected-active={isSelected && m.isDownloaded}
-                      class:recommended-card={isRec}
-                    >
-                      <div class="model-card-top">
-                        <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
-                          <span class="tier-pill tier-{m.tier}">Livello {m.tierLevel} · {m.tier.toUpperCase()}</span>
-                          {#if isRec}
-                            <span class="badge-recommended">★ Consigliato per te</span>
-                          {/if}
-                          {#if isSelected && m.isDownloaded}
-                            <span class="badge-active-model">● Modello Predefinito</span>
-                          {/if}
-                        </div>
-                        <h5 class="model-name">{m.name}</h5>
-                        <p class="model-tagline">{m.tagline}</p>
-                      </div>
-
-                      <div class="model-specs-row">
-                        <span title="Spazio occupato sul disco SSD">💾 ~{m.sizeGb} GB</span>
-                        <span title="Memoria RAM/VRAM occupata durante l'uso">⚡ ~{m.vramReqGb} GB</span>
-                        <span title="Finestra di contesto token">📝 {m.contextWindow} tok</span>
-                      </div>
-
-                      <p class="model-desc">{m.description}</p>
-                      <p class="model-rec-for"><strong>Adatto a:</strong> {m.recommendedFor}</p>
-
-                      <div class="model-card-actions">
-                        {#if dlProgress}
-                          <div class="download-progress-container">
-                            <div class="dl-text-row">
-                              <span>Download in corso... ({dlProgress.progressPct}%)</span>
-                              <span>{dlProgress.speedMbPerSec} MB/s</span>
-                            </div>
-                            <div class="progress-bar-track">
-                              <div class="progress-bar-fill" style="width: {dlProgress.progressPct}%"></div>
-                            </div>
-                            <button
-                              type="button"
-                              class="btn-cancel-dl pressable"
-                              onclick={() => handleCancelDownload(m.id)}
-                            >
-                              Annulla
-                            </button>
-                          </div>
-                        {:else if m.isDownloaded}
-                          <div class="action-btn-row">
-                            {#if !isSelected}
-                              <button
-                                type="button"
-                                class="btn-set-active pressable"
-                                onclick={() => handleSetActiveModel(m.id)}
-                              >
-                                Imposta come Attivo
-                              </button>
-                            {:else}
-                              <span class="installed-tag">✓ Attivo per Vision & Chat</span>
-                            {/if}
-                            <button
-                              type="button"
-                              class="btn-delete-model pressable"
-                              title="Elimina file dal disco per liberare spazio"
-                              onclick={() => handleDeleteModel(m.id)}
-                            >
-                              🗑️ Elimina (~{m.sizeGb} GB)
-                            </button>
-                          </div>
-                        {:else}
-                          <button
-                            type="button"
-                            class="btn-download-model pressable"
-                            class:btn-rec-cta={isRec}
-                            onclick={() => handleDownloadModel(m.id)}
-                          >
-                            ⬇️ Scarica Modello (~{m.sizeGb} GB)
-                          </button>
-                        {/if}
-                      </div>
-                    </div>
-                  {/each}
-                </div>
-              </div>
-
-            {:else if aiProvider === "gemini" || aiProvider === "openai"}
-              <label class="field">
-                <span>API Key Personale ({aiProvider === "gemini" ? "Google AI Studio" : "OpenAI"})</span>
-                <input
-                  type="password"
-                  bind:value={aiApiKey}
-                  placeholder="Inserisci la tua API Key (memorizzata localmente in SQLite)..."
-                />
-              </label>
-
-              <label class="field">
-                <span>Modello LLM</span>
-                <input
-                  type="text"
-                  bind:value={aiModel}
-                  placeholder={aiProvider === "gemini" ? "gemini-3.8-flash" : "gpt-4o-mini"}
-                />
-              </label>
-
-            {:else if aiProvider === "ollama"}
-              <label class="field">
-                <span>Endpoint Locale Ollama / LM Studio</span>
-                <input
-                  type="text"
-                  bind:value={aiEndpointUrl}
-                  placeholder="http://localhost:11434/api/generate"
-                />
-              </label>
-              <label class="field">
-                <span>Nome Modello Locale</span>
-                <input
-                  type="text"
-                  bind:value={aiModel}
-                  placeholder="llama3.2"
-                />
-              </label>
-            {/if}
           </div>
 
-        <!-- 6. PROFILO ACCADEMICO -->
-        {:else if activeTab === "profile"}
-          <div class="panel-group">
-            <h3 class="group-title">Dati Personali Studente & Percorso di Studi</h3>
-            <div class="form-grid-2">
-              <label class="field">
-                <span>Nome e Cognome</span>
-                <input type="text" bind:value={studentName} placeholder="Es. Marco Rossi" />
-              </label>
-              <label class="field">
-                <span>Anno di Immatricolazione</span>
-                <input type="number" min="1990" max="2040" bind:value={enrollmentYear} />
-              </label>
-              <label class="field">
-                <span>Università / Ateneo</span>
-                <input
-                  type="text"
-                  bind:value={university}
-                  placeholder="Es. Politecnico di Milano"
-                />
-              </label>
-              <label class="field">
-                <span>Facoltà / Scuola</span>
-                <input
-                  type="text"
-                  bind:value={faculty}
-                  placeholder="Es. Ingegneria Industriale e dell'Informazione"
-                />
-              </label>
+          <!-- Stato Agenti CLI -->
+          <div class="set-group">
+            <h4>Agenti CLI Rilevati nel Sistema</h4>
+            <div class="order-list">
+              {#each cliAgents as cli (cli.id)}
+                <div class="order-row">
+                  <Terminal size={15} />
+                  <div class="sess-det">
+                    <strong>{cli.name} (<code>{cli.command || "non impostato"}</code>)</strong>
+                    <span>{cli.installed ? `Trovato: ${cli.resolvedPath}` : "Non rilevato nel PATH"}</span>
+                  </div>
+                  <span class="status-pill" class:ok={cli.installed}>
+                    {cli.installed ? "Pronto" : "Assente"}
+                  </span>
+                </div>
+              {/each}
             </div>
-            <label class="field">
-              <span>Corso di Laurea</span>
+            <div class="folder-row">
               <input
                 type="text"
-                bind:value={degreeCourse}
-                placeholder="Es. Ingegneria Meccanica / Informatica"
+                class="soft-input"
+                placeholder="Comando CLI Custom (es. my-agent --prompt &#123;prompt&#125;)"
+                bind:value={customCliInput}
               />
-            </label>
+              <button
+                type="button"
+                class="pill-btn pill-btn-soft"
+                onclick={async () => {
+                  await themeStore.updateSettings({ aiCustomCliCommand: customCliInput });
+                  await refreshAiState();
+                  navStore.showToast("Comando CLI salvato", "success");
+                }}
+              >
+                Salva CLI
+              </button>
+            </div>
           </div>
 
-        <!-- 7. DATI & BACKUP JSON -->
-        {:else if activeTab === "backup"}
-          <div class="panel-group">
-            <h3 class="group-title">Isolamento Locale & Portabilità Dati Multi-Utente</h3>
-            <div class="info-card">
-              <div>
-                <strong>Database SQLite Locale (Modalità WAL):</strong>
-                <code class="db-path-code">{sessionStore.dbPath || "%APPDATA%\\com.mysession.app\\mysession.db"}</code>
-              </div>
-              <div>
-                <strong>Versione Software Ufficiale:</strong> MySession v{APP_VERSION} — Autore: {APP_AUTHOR}
-              </div>
-            </div>
-
-            <div class="backup-actions-row">
-              <button type="button" class="action-card-btn" onclick={handleExportBackup}>
-                <span class="action-title">⬇ Esporta Backup Completo (.json)</span>
-                <span class="action-desc">
-                  Salva sessioni, corsi, appelli, note Markdown, to-do giornalieri e preferenze in un unico archivio.
-                </span>
-              </button>
-
-              <button type="button" class="action-card-btn" onclick={handleImportBackupNative}>
-                <span class="action-title">⬆ Importa Backup da File (.json)</span>
-                <span class="action-desc">
-                  Ripristina un workspace completo senza perdita di dati su qualsiasi PC.
-                </span>
-              </button>
-              <input
-                bind:this={fileInputEl}
-                type="file"
-                accept=".json,application/json"
-                style="display: none"
-                onchange={handleHtmlFileImport}
-              />
-            </div>
-
-            {#if backupStatus}
-              <div class="backup-status-banner">{backupStatus}</div>
-            {/if}
-          </div>
-
-        <!-- 9. AGGIORNAMENTI & GITHUB -->
-        {:else if activeTab === "updates"}
-          <div class="panel-group">
-            <h3 class="group-title">Stato Installazione & Versione MySession</h3>
-            <p class="field-hint">
-              MySession supporta l'aggiornamento automatico e trasparente tramite le release ufficiali di GitHub con firma crittografica Minisign.
-            </p>
-
-            <div class="update-hero-card">
-              <div class="uh-icon-col">
-                <span class="uh-icon">🚀</span>
-              </div>
-              <div class="uh-info-col">
-                <div class="uh-version-row">
-                  <span class="uh-app-name">MySession</span>
-                  <span class="uh-badge">v{APP_VERSION}</span>
-                  {#if updaterStore.status === "up-to-date"}
-                    <span class="badge-status-ok">✓ Aggiornato</span>
-                  {:else if updaterStore.status === "available"}
-                    <span class="badge-status-new">Nuova v{updaterStore.availableVersion}</span>
+          <!-- Modello Locale Base -->
+          <div class="set-group">
+            <h4>Modello Locale Base (Multimodale + OCR Orario)</h4>
+            {#each aiModels as mod (mod.id)}
+              <div class="local-model-card">
+                <div class="lm-top">
+                  <div>
+                    <strong>{mod.name}</strong>
+                    <p class="hint">{mod.tagline} · ~{mod.sizeGb} GB</p>
+                  </div>
+                  {#if mod.isDownloaded}
+                    <span class="status-pill ok"><CheckCircle2 size={12} /> Scaricato</span>
+                  {:else}
+                    <span class="status-pill">Non scaricato</span>
                   {/if}
                 </div>
-                <p class="uh-author-text">Software sviluppato da <strong>{APP_AUTHOR}</strong> · Repository: <code>riccardo-bettini/mysession</code></p>
-                {#if updaterStore.lastCheckDate}
-                  <span class="uh-time-text">Ultimo controllo: oggi alle {updaterStore.lastCheckDate}</span>
-                {/if}
-              </div>
-            </div>
-          </div>
 
-          <div class="panel-group">
-            <h3 class="group-title">Controllo e Download Aggiornamenti</h3>
-            {#if updaterStore.status === "available"}
-              <div class="update-available-card">
-                <div class="uac-header">
-                  <div>
-                    <h4 style="margin: 0; font-size: 0.95rem; font-weight: 700;">Nuova versione v{updaterStore.availableVersion} disponibile!</h4>
-                    {#if updaterStore.releaseDate}
-                      <span style="font-size: 0.74rem; color: var(--text-tertiary);">Rilasciata il {updaterStore.releaseDate}</span>
+                {#if downloadProgress && downloadProgress.modelId === mod.id && !downloadProgress.isCompleted && !downloadProgress.error}
+                  <div class="dl-bar">
+                    <div class="dl-fill" style:width="{downloadProgress.progressPct}%"></div>
+                  </div>
+                  <small>{downloadProgress.progressPct}% · {downloadProgress.speedMbPerSec} MB/s</small>
+                {/if}
+
+                <div class="lm-actions">
+                  {#if !mod.isDownloaded}
+                    <button type="button" class="pill-btn pill-btn-primary" onclick={() => ipc.startAiModelDownload(mod.id)}>
+                      <Download size={14} /> Scarica Modello
+                    </button>
+                  {:else}
+                    {#if runtimeStatus?.state === "ready"}
+                      <button type="button" class="pill-btn pill-btn-soft" onclick={async () => { await ipc.stopAiRuntime(); await refreshAiState(); }}>
+                        <Square size={13} /> Ferma Server
+                      </button>
+                    {:else}
+                      <button type="button" class="pill-btn pill-btn-primary" onclick={async () => { await ipc.startAiRuntime(mod.id); await refreshAiState(); }}>
+                        <Play size={13} /> Avvia Ora
+                      </button>
                     {/if}
-                  </div>
-                  <button
-                    type="button"
-                    class="btn-install-update pressable"
-                    onclick={() => updaterStore.downloadAndInstall()}
-                  >
-                    ⬇ Scarica e Installa Ora
-                  </button>
-                </div>
-                {#if updaterStore.releaseNotes}
-                  <div class="uac-notes">
-                    <strong>Note di rilascio:</strong>
-                    <div class="notes-body">{updaterStore.releaseNotes}</div>
-                  </div>
-                {/if}
-              </div>
-            {:else if updaterStore.status === "downloading"}
-              <div class="update-progress-box">
-                <div class="upb-header">
-                  <span>Download aggiornamento v{updaterStore.availableVersion}...</span>
-                  <strong>{updaterStore.downloadProgress}%</strong>
-                </div>
-                <div class="progress-track">
-                  <div class="progress-bar-fill" style:width="{updaterStore.downloadProgress}%"></div>
+                    <button type="button" class="pill-btn pill-btn-soft" onclick={async () => { await ipc.deleteAiModel(mod.id); await refreshAiState(); }}>
+                      <Trash2 size={13} /> Rimuovi
+                    </button>
+                  {/if}
                 </div>
               </div>
-            {:else if updaterStore.status === "ready"}
-              <div class="update-ready-box">
-                <div class="urb-text">
-                  <span class="urb-icon">✓</span>
-                  <div>
-                    <h4 style="margin: 0; font-size: 0.95rem; font-weight: 700;">Aggiornamento installato con successo!</h4>
-                    <p style="margin: 0.2rem 0 0; font-size: 0.77rem; color: var(--text-secondary);">La nuova versione v{updaterStore.availableVersion} è pronta. Riavvia per completare l'aggiornamento.</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  class="btn-relaunch pressable"
-                  onclick={() => updaterStore.relaunch()}
-                >
-                  Riavvia Ora
-                </button>
-              </div>
-            {:else}
-              <div class="update-action-row">
-                <button
-                  type="button"
-                  class="btn-action pressable"
-                  disabled={updaterStore.status === "checking"}
-                  onclick={() => updaterStore.checkForUpdates(false)}
-                >
-                  <svg class:spin={updaterStore.status === "checking"} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M2.5 8C2.5 4.96 4.96 2.5 8 2.5C10.5 2.5 12.63 4.17 13.28 6.5" />
-                    <path d="M13.5 8C13.5 11.04 11.04 13.5 8 13.5C5.5 13.5 3.37 11.83 2.72 9.5" />
-                    <path d="M14 3.5V6.5H11" />
-                    <path d="M2 12.5V9.5H5" />
-                  </svg>
-                  <span>{updaterStore.status === "checking" ? "Verifica in corso…" : "Verifica Aggiornamenti Ora"}</span>
-                </button>
-                {#if updaterStore.status === "up-to-date"}
-                  <div class="update-status-badge success">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M3.5 8.5L6.5 11.5L12.5 4.5" />
-                    </svg>
-                    <span>Stai utilizzando l'ultima versione disponibile.</span>
-                  </div>
-                {/if}
-              </div>
-              {#if updaterStore.errorMessage}
-                <div class="info-card" style="border-color: rgba(255, 69, 58, 0.4); margin-top: 0.75rem;">
-                  <p style="color: #FF453A; font-weight: 600; margin: 0;">Errore durante la verifica:</p>
-                  <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.2rem;">{updaterStore.errorMessage}</p>
-                </div>
-              {/if}
-            {/if}
+            {/each}
           </div>
         {/if}
-          </div>
-        {/key}
       </div>
     </div>
-
-    <!-- Footer Azioni della Scheda -->
-    <footer class="sheet-footer">
-      <button type="button" class="secondary-btn" onclick={onClose}>Chiudi</button>
-      <button
-        type="button"
-        class="primary-btn"
-        onclick={handleSaveAllSettings}
-        disabled={isSaving}
-      >
-        {isSaving ? "Salvataggio..." : "Salva Impostazioni"}
-      </button>
-    </footer>
   </div>
-</div>
+{/if}
 
 <style>
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.48);
+    z-index: 140;
+    background: rgba(12, 12, 18, 0.55);
     backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 1.5rem;
-    z-index: 360;
+    display: grid;
+    place-items: center;
+    padding: 20px;
   }
 
-  .settings-sheet {
-    width: min(1040px, 94vw);
-    max-width: 1040px;
-    height: min(780px, 90vh);
-    background: var(--popover-bg);
-    backdrop-filter: blur(28px) saturate(195%);
-    -webkit-backdrop-filter: blur(28px) saturate(195%);
-    border: 0.5px solid var(--hairline-border-strong);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-modal);
+  .settings-modal {
+    width: min(760px, 100%);
+    max-height: 88vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
 
-  .sheet-header {
+  .sm-head {
+    padding: 20px 24px 12px;
     display: flex;
-    align-items: center;
     justify-content: space-between;
-    padding: 1.1rem 1.6rem;
-    border-bottom: 0.5px solid var(--hairline-border);
-    flex-shrink: 0;
+    align-items: flex-start;
   }
 
-  .sheet-kicker {
-    font-size: 0.68rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    color: var(--accent, #007AFF);
+  .sm-head h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 800;
   }
 
-  .sheet-title {
-    margin: 0.15rem 0 0;
-    font-size: 1.22rem;
-    font-weight: 700;
-    letter-spacing: -0.024em;
+  .sm-head p {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: var(--text-secondary);
   }
 
   .close-btn {
-    width: 2rem;
-    height: 2rem;
-    border-radius: 999px;
-    border: 0.5px solid var(--hairline-border);
-    background: var(--surface-pill);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--bg-surface-muted);
+    display: grid;
+    place-items: center;
+  }
+
+  .sm-tabs {
+    padding: 0 24px 14px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .sm-body {
+    padding: 20px 24px 24px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .set-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .set-group h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .hint {
+    margin: 0;
+    font-size: 12px;
     color: var(--text-secondary);
-    cursor: pointer;
-    display: inline-flex;
+  }
+
+  .seg-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .cat-colors-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+    gap: 8px;
+  }
+
+  .cat-color-chip {
+    display: flex;
     align-items: center;
-    justify-content: center;
-    transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), background 120ms ease, color 120ms ease;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    background: var(--bg-surface-muted);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
   }
 
-  .close-btn:hover {
-    background: var(--surface-card);
-    color: var(--text-primary);
+  .cat-color-chip input[type="color"] {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: none;
+    padding: 0;
+    cursor: pointer;
   }
 
-  .close-btn:active {
-    transform: scale(0.92);
+  .row-between {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
   }
 
-  .settings-layout {
+  .order-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .order-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: var(--bg-surface-muted);
+  }
+
+  .ord-idx {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--bg-surface);
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .ord-lbl,
+  .sess-det {
     flex: 1;
+    font-size: 13px;
+  }
+
+  .sess-det {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sess-det span {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+  }
+
+  .ord-actions {
+    display: flex;
+    gap: 4px;
+  }
+
+  .icon-mini {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: var(--bg-surface);
     display: grid;
-    grid-template-columns: 260px 1fr;
-    min-height: 0;
-    overflow: hidden;
+    place-items: center;
   }
 
-  /* Barra Laterale Sinistra */
-  .settings-nav {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    padding: 1rem 0.85rem;
-    border-right: 0.5px solid var(--hairline-border);
-    background: rgba(128, 128, 128, 0.04);
-    overflow: hidden;
-  }
-
-  .nav-items-scroll {
-    display: flex;
-    flex-direction: column;
-    gap: 0.28rem;
-    overflow-y: auto;
-    padding-right: 0.25rem;
-    scrollbar-width: thin;
-    scrollbar-color: var(--hairline-border-strong) transparent;
-  }
-
-  .nav-group-header {
-    font-size: 0.66rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    color: var(--text-tertiary);
-    padding: 0.65rem 0.85rem 0.25rem;
-  }
-
-  .nav-group-header:first-of-type {
-    padding-top: 0.2rem;
-  }
-
-  .nav-item {
-    display: flex;
-    align-items: center;
-    gap: 0.72rem;
-    padding: 0.62rem 0.85rem;
-    border-radius: var(--radius-sm);
-    border: none;
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: 0.84rem;
-    font-weight: 600;
-    text-align: left;
-    cursor: pointer;
-    transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), background 120ms ease, color 120ms ease;
-  }
-
-  .nav-icon {
-    width: 1.3rem;
-    height: 1.3rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .nav-svg {
-    width: 1.15rem;
-    height: 1.15rem;
-  }
-
-  .nav-item:active {
-    transform: scale(0.98);
-  }
-
-  .nav-item:hover {
-    color: var(--text-primary);
-    background: rgba(128, 128, 128, 0.08);
-  }
-
-  .nav-item.active {
-    background: color-mix(in srgb, var(--accent, #007AFF) 15%, transparent);
-    color: var(--accent, #007AFF);
-  }
-
-  /* Sezione Dedicata in Basso alla Barra Laterale Sinistra */
-  .settings-nav-footer {
-    margin-top: 0.65rem;
-    padding: 0.75rem 0.85rem 0.4rem;
-    border-top: 0.5px solid var(--hairline-border);
-    display: flex;
-    flex-direction: column;
-    gap: 0.32rem;
-    background: rgba(128, 128, 128, 0.03);
-    border-radius: var(--radius-sm);
-    flex-shrink: 0;
-  }
-
-  .nav-brand-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .nav-brand-title {
-    font-size: 0.82rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    letter-spacing: -0.01em;
-  }
-
-  .nav-version-badge {
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 0.12rem 0.45rem;
-    border-radius: var(--radius-xs);
-    background: var(--surface-pill);
-    border: 0.5px solid var(--hairline-border);
-    color: var(--text-secondary);
-  }
-
-  .nav-author-row {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.72rem;
-    color: var(--text-tertiary);
-  }
-
-  .nav-author-label {
-    font-weight: 500;
-  }
-
-  .nav-author-name {
-    font-weight: 600;
-    color: var(--text-secondary);
-  }
-
-  /* Area Contenuto Destra */
-  .settings-content {
-    padding: 1.45rem 2rem;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    scrollbar-width: thin;
-    scrollbar-color: var(--hairline-border-strong) transparent;
-  }
-
-  .tab-pane {
-    display: flex;
-    flex-direction: column;
-    gap: 1.4rem;
-    width: 100%;
-    animation: tabEnter 220ms cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  @keyframes tabEnter {
-    from {
-      opacity: 0;
-      transform: translateY(6px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .panel-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .group-title {
-    margin: 0;
-    font-size: 0.94rem;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-
-  .segmented-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 0.4rem;
-    padding: 0.3rem;
-    border-radius: var(--radius-md);
-    background: rgba(128, 128, 128, 0.1);
-    border: 0.5px solid var(--hairline-border);
-    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
-  }
-
-  .seg-option {
-    padding: 0.48rem 0.65rem;
-    border-radius: var(--radius-xs);
-    border: none;
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 140ms cubic-bezier(0.16, 1, 0.3, 1);
-    text-align: center;
-  }
-
-  .seg-option:active {
-    transform: scale(0.98);
-  }
-
-  .seg-option.active {
-    background: var(--surface-card);
-    color: var(--text-primary);
-    box-shadow: 0 1.5px 5px rgba(0, 0, 0, 0.14);
-  }
-
-  .zoom-control-box {
-    padding: 0.75rem 0.9rem;
-    border-radius: var(--radius-md);
-    border: 0.5px solid var(--hairline-border);
-    background: rgba(128, 128, 128, 0.05);
-    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .zoom-header {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.82rem;
-    color: var(--text-secondary);
-  }
-
-  .zoom-presets {
-    display: flex;
-    gap: 0.4rem;
-  }
-
-  .preset-chip {
-    padding: 0.28rem 0.65rem;
-    border-radius: var(--radius-pill);
-    border: 0.5px solid var(--hairline-border);
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: 0.74rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .preset-chip.active {
-    background: var(--accent, #007AFF);
-    border-color: var(--accent, #007AFF);
-    color: #fff;
-  }
-
-  .colors-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1.1rem;
-  }
-
-  .form-grid-2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.85rem;
-  }
-
-  .toggle-row {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.65rem;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    cursor: pointer;
-    user-select: none;
-  }
-
-  .toggle-row input[type="checkbox"] {
-    width: 1.15rem;
-    height: 1.15rem;
-    accent-color: var(--accent-primary, #007AFF);
-    cursor: pointer;
-  }
-
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-  }
-
-  .field input {
-    padding: 0.54rem 0.75rem;
-    border-radius: var(--radius-md);
-    border: 0.5px solid var(--hairline-border-strong);
-    background: var(--surface-card);
-    color: var(--text-primary);
-    font-size: 0.84rem;
-    outline: none;
-    transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
-  }
-
-  .field input:focus-visible {
-    border-color: var(--accent-primary, #007AFF);
-    box-shadow: 0 0 0 2.5px var(--accent-soft);
-  }
-
-  .field-hint {
-    margin: 0;
-    font-size: 0.77rem;
-    line-height: 1.45;
-    color: var(--text-muted);
-  }
-
-  .info-card {
-    padding: 0.9rem 1.1rem;
-    border-radius: var(--radius-md);
-    border: 0.5px solid var(--hairline-border);
-    background: rgba(128, 128, 128, 0.06);
-    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
-    font-size: 0.8rem;
-    line-height: 1.5;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-  }
-
-  .info-card p {
-    margin: 0;
-    color: var(--text-secondary);
-  }
-
-  .db-path-code {
-    display: block;
-    margin-top: 0.25rem;
-    padding: 0.35rem 0.55rem;
-    border-radius: 6px;
-    background: rgba(0, 0, 0, 0.2);
-    font-family: var(--font-mono);
-    font-size: 0.74rem;
-    word-break: break-all;
-  }
-
-  .backup-actions-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.85rem;
-  }
-
-  .action-card-btn {
-    padding: 0.95rem;
-    border-radius: var(--radius-lg);
-    border: 0.5px solid var(--hairline-border-strong);
-    background: rgba(128, 128, 128, 0.07);
-    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
-    text-align: left;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    cursor: pointer;
-    transition: all 140ms ease;
-  }
-
-  .action-card-btn:hover {
-    background: rgba(128, 128, 128, 0.14);
-    border-color: var(--accent, #007AFF);
-  }
-
-  .action-title {
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-
-  .action-desc {
-    font-size: 0.74rem;
-    line-height: 1.4;
-    color: var(--text-muted);
-  }
-
-  .backup-status-banner {
-    padding: 0.65rem 0.85rem;
-    border-radius: var(--radius-md);
-    background: rgba(16, 185, 129, 0.14);
-    border: 0.5px solid rgba(16, 185, 129, 0.4);
-    color: #34d399;
-    font-size: 0.78rem;
-  }
-
-  .sheet-footer {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.65rem;
-    padding: 1rem 1.6rem;
-    border-top: 0.5px solid var(--hairline-border);
-    flex-shrink: 0;
-  }
-
-  .secondary-btn {
-    padding: 0.52rem 1.05rem;
-    border-radius: var(--radius-md);
-    border: 0.5px solid var(--hairline-border);
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: 0.84rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .primary-btn {
-    padding: 0.52rem 1.25rem;
-    border-radius: var(--radius-md);
-    border: none;
-    background: var(--accent, #007AFF);
-    color: #fff;
-    font-size: 0.84rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .btn-action {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.45rem;
-    height: 2.15rem;
-    padding: 0 0.85rem;
-    border-radius: var(--radius-sm);
-    background: var(--surface-pill);
-    border: 0.5px solid var(--hairline-border);
-    box-shadow: var(--shadow-pill);
-    color: var(--text-primary);
-    font-size: 0.8125rem;
-    font-weight: 600;
-    letter-spacing: var(--tracking-normal);
-    cursor: pointer;
-    white-space: nowrap;
-    transition:
-      background-color 130ms ease,
-      border-color 130ms ease,
-      box-shadow 130ms ease,
-      color 130ms ease,
-      transform 120ms var(--spring-press);
-  }
-
-  .btn-action:hover:not(:disabled) {
-    background: var(--surface-pill-hover);
-    border-color: var(--hairline-border-strong);
-    color: var(--text-primary);
-  }
-
-  .btn-action:active:not(:disabled) {
-    transform: scale(0.97);
-  }
-
-  .btn-action:disabled {
-    opacity: 0.45;
+  .icon-mini:disabled {
+    opacity: 0.35;
     cursor: not-allowed;
   }
 
-  .btn-action svg {
-    width: 0.95rem;
-    height: 0.95rem;
-    flex-shrink: 0;
+  .icon-mini.danger:hover {
+    color: var(--danger);
   }
 
-  .folder-input-row {
+  .folder-row {
     display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    margin-top: 0.65rem;
+    gap: 8px;
   }
 
-  .folder-path-input {
+  .soft-input {
     flex: 1;
-    min-width: 0;
-    height: 2.15rem;
-    padding: 0 0.85rem;
-    border-radius: var(--radius-sm);
-    background: var(--surface-card);
-    border: 0.5px solid var(--hairline-border);
-    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.05);
+    padding: 9px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-surface-muted);
     color: var(--text-primary);
-    font-size: 0.8125rem;
-    font-family: var(--font-mono, ui-monospace, monospace);
-    letter-spacing: var(--tracking-normal);
-    text-overflow: ellipsis;
-    overflow: hidden;
-    white-space: nowrap;
-    user-select: all;
+    font-size: 12.5px;
   }
 
-  .update-action-row {
-    display: flex;
-    gap: 0.85rem;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-
-  .update-status-badge {
+  .status-pill {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.35rem 0.75rem;
-    border-radius: var(--radius-pill);
-    font-size: 0.78rem;
-    font-weight: 600;
-  }
-
-  .update-status-badge.success {
-    background: rgba(48, 209, 88, 0.12);
-    border: 0.5px solid rgba(48, 209, 88, 0.35);
-    color: #30D158;
-  }
-
-  .update-status-badge svg {
-    width: 0.85rem;
-    height: 0.85rem;
-    flex-shrink: 0;
-  }
-
-  @keyframes spinClockwise {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-
-  .spin {
-    animation: spinClockwise 850ms linear infinite;
-  }
-
-  /* Scheda Aggiornamenti */
-  .nav-update-dot {
-    width: 6px;
-    height: 6px;
+    gap: 4px;
+    padding: 3px 9px;
     border-radius: 999px;
-    background: var(--accent-primary, #0A84FF);
-    margin-left: auto;
-  }
-
-  .update-hero-card {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 1.15rem 1.25rem;
-    border-radius: var(--radius-md);
-    background: var(--surface-card);
-    border: 0.5px solid var(--hairline-border);
-    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.08), var(--shadow-sm);
-  }
-
-  .uh-icon-col {
-    width: 3.25rem;
-    height: 3.25rem;
-    border-radius: 999px;
-    background: rgba(10, 132, 255, 0.12);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.6rem;
-    flex-shrink: 0;
-  }
-
-  .uh-info-col {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .uh-version-row {
-    display: flex;
-    align-items: center;
-    gap: 0.55rem;
-  }
-
-  .uh-app-name {
-    font-size: 1.1rem;
-    font-weight: 800;
-  }
-
-  .uh-badge {
-    padding: 0.12rem 0.55rem;
-    border-radius: 999px;
-    background: var(--surface-pill);
-    border: 0.5px solid var(--hairline-border);
-    font-size: 0.72rem;
+    background: var(--bg-surface);
+    font-size: 11px;
     font-weight: 700;
-  }
-
-  .badge-status-ok {
-    padding: 0.12rem 0.55rem;
-    border-radius: 999px;
-    background: rgba(48, 209, 88, 0.15);
-    color: #30D158;
-    font-size: 0.7rem;
-    font-weight: 700;
-  }
-
-  .badge-status-new {
-    padding: 0.12rem 0.55rem;
-    border-radius: 999px;
-    background: var(--accent-primary, #0A84FF);
-    color: #fff;
-    font-size: 0.7rem;
-    font-weight: 700;
-  }
-
-  .uh-author-text {
-    margin: 0.25rem 0 0;
-    font-size: 0.78rem;
     color: var(--text-secondary);
   }
 
-  .uh-author-text code {
-    font-family: monospace;
-    font-size: 0.74rem;
-    background: rgba(0, 0, 0, 0.15);
-    padding: 0.1rem 0.35rem;
-    border-radius: var(--radius-xs);
+  .status-pill.ok {
+    background: rgba(16, 185, 129, 0.16);
+    color: #059669;
   }
 
-  .uh-time-text {
-    display: inline-block;
-    margin-top: 0.35rem;
-    font-size: 0.7rem;
-    color: var(--text-tertiary);
-  }
-
-  .update-available-card {
-    padding: 1.15rem;
-    border-radius: var(--radius-md);
-    background: var(--surface-card);
-    border: 0.5px solid var(--accent-primary, #0A84FF);
+  .local-model-card {
+    padding: 14px;
+    border-radius: 16px;
+    background: var(--bg-surface-muted);
     display: flex;
     flex-direction: column;
-    gap: 0.85rem;
+    gap: 10px;
   }
 
-  .uac-header {
+  .lm-top {
     display: flex;
-    align-items: center;
     justify-content: space-between;
-    gap: 1rem;
-  }
-
-  .btn-install-update {
-    padding: 0.5rem 1.1rem;
-    border-radius: var(--radius-sm);
-    border: none;
-    background: var(--accent-primary, #0A84FF);
-    color: #fff;
-    font-size: 0.8rem;
-    font-weight: 700;
-    cursor: pointer;
-    box-shadow: 0 2px 8px rgba(10, 132, 255, 0.35);
-    white-space: nowrap;
-  }
-
-  /* =========================================================================
-     AI Multimodale Locale & Model Hub (Apple HIG)
-     ========================================================================= */
-  .ai-hw-banner {
-    display: flex;
     align-items: flex-start;
-    gap: 0.85rem;
-    padding: 0.85rem 1rem;
-    border-radius: var(--radius-md);
-    background: rgba(0, 122, 255, 0.08);
-    border: 0.5px solid rgba(0, 122, 255, 0.25);
+    gap: 10px;
   }
 
-  .hw-icon-col {
-    font-size: 1.5rem;
-    line-height: 1;
-  }
-
-  .hw-details-col {
+  .lm-actions {
     display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.82rem;
+    gap: 8px;
   }
 
-  .hw-title-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    color: var(--text-primary);
-  }
-
-  .hw-gpu-tag,
-  .hw-ram-tag {
-    padding: 0.15rem 0.5rem;
-    border-radius: var(--radius-pill);
-    background: rgba(0, 122, 255, 0.14);
-    color: var(--accent, #007AFF);
-    font-size: 0.74rem;
-    font-weight: 600;
-  }
-
-  .hw-reason-text {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: 0.77rem;
-    line-height: 1.4;
-  }
-
-  .star-badge {
-    color: #FF9500;
-    font-weight: 800;
-  }
-
-  .ai-control-box {
-    padding: 1rem 1.15rem;
-    border-radius: var(--radius-md);
-    border: 0.5px solid var(--hairline-border);
-    background: rgba(128, 128, 128, 0.06);
-    display: flex;
-    flex-direction: column;
-  }
-
-  .ai-control-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-
-  .ai-status-indicator {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    font-size: 0.82rem;
-  }
-
-  .status-dot {
-    width: 0.75rem;
-    height: 0.75rem;
+  .dl-bar {
+    height: 7px;
     border-radius: 999px;
-    flex-shrink: 0;
-  }
-
-  .status-dot.ready {
-    background: #34C759;
-    box-shadow: 0 0 8px rgba(52, 199, 89, 0.6);
-  }
-
-  .status-dot.starting {
-    background: #FF9500;
-    box-shadow: 0 0 8px rgba(255, 149, 0, 0.6);
-    animation: pulse 1.2s infinite alternate;
-  }
-
-  .status-dot.stopped {
-    background: #8E8E93;
-  }
-
-  .status-dot.error {
-    background: #FF3B30;
-  }
-
-  @keyframes pulse {
-    from { opacity: 0.5; }
-    to { opacity: 1; }
-  }
-
-  .status-sub {
-    display: block;
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    font-weight: 500;
-  }
-
-  .ai-quick-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .btn-danger-sub {
-    padding: 0.45rem 0.85rem;
-    border-radius: var(--radius-sm);
-    border: 0.5px solid rgba(255, 59, 48, 0.4);
-    background: rgba(255, 59, 48, 0.12);
-    color: #FF3B30;
-    font-size: 0.78rem;
-    font-weight: 700;
-    cursor: pointer;
-  }
-
-  .btn-wake-sub {
-    padding: 0.45rem 0.85rem;
-    border-radius: var(--radius-sm);
-    border: 0.5px solid rgba(0, 122, 255, 0.4);
-    background: rgba(0, 122, 255, 0.12);
-    color: var(--accent, #007AFF);
-    font-size: 0.78rem;
-    font-weight: 700;
-    cursor: pointer;
-  }
-
-  .form-grid-3 {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.75rem;
-  }
-
-  .models-catalog-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    margin-top: 0.5rem;
-  }
-
-  .models-catalog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-
-  .btn-refresh-sub {
-    padding: 0.35rem 0.65rem;
-    border-radius: var(--radius-pill);
-    border: 0.5px solid var(--hairline-border);
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: 0.74rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .models-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 0.85rem;
-  }
-
-  .model-card {
-    padding: 1rem 1.15rem;
-    border-radius: var(--radius-md);
-    border: 0.5px solid var(--hairline-border);
-    background: rgba(128, 128, 128, 0.04);
-    display: flex;
-    flex-direction: column;
-    gap: 0.55rem;
-    transition: all 180ms ease;
-  }
-
-  .model-card:hover {
-    border-color: rgba(128, 128, 128, 0.35);
-    background: rgba(128, 128, 128, 0.07);
-  }
-
-  .model-card.recommended-card {
-    border-color: rgba(255, 149, 0, 0.4);
-    background: rgba(255, 149, 0, 0.03);
-  }
-
-  .model-card.selected-active {
-    border-color: var(--accent, #007AFF);
-    box-shadow: 0 0 0 1px var(--accent, #007AFF);
-  }
-
-  .tier-pill {
-    padding: 0.15rem 0.5rem;
-    border-radius: var(--radius-pill);
-    font-size: 0.68rem;
-    font-weight: 700;
-    background: rgba(128, 128, 128, 0.18);
-    color: var(--text-secondary);
-  }
-
-  .tier-pill.tier-bilanciato {
-    background: rgba(0, 122, 255, 0.18);
-    color: var(--accent, #007AFF);
-  }
-
-  .tier-pill.tier-avanzato {
-    background: rgba(175, 82, 222, 0.18);
-    color: #AF52DE;
-  }
-
-  .badge-recommended {
-    padding: 0.15rem 0.5rem;
-    border-radius: var(--radius-pill);
-    font-size: 0.68rem;
-    font-weight: 700;
-    background: rgba(255, 149, 0, 0.18);
-    color: #FF9500;
-  }
-
-  .badge-active-model {
-    padding: 0.15rem 0.5rem;
-    border-radius: var(--radius-pill);
-    font-size: 0.68rem;
-    font-weight: 700;
-    background: rgba(52, 199, 89, 0.18);
-    color: #34C759;
-  }
-
-  .model-name {
-    margin: 0.25rem 0 0;
-    font-size: 0.92rem;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-
-  .model-tagline {
-    margin: 0;
-    font-size: 0.77rem;
-    color: var(--text-secondary);
-    font-style: italic;
-  }
-
-  .model-specs-row {
-    display: flex;
-    gap: 0.85rem;
-    flex-wrap: wrap;
-    font-size: 0.74rem;
-    color: var(--text-muted);
-    font-weight: 600;
-  }
-
-  .model-desc {
-    margin: 0;
-    font-size: 0.79rem;
-    line-height: 1.45;
-    color: var(--text-secondary);
-  }
-
-  .model-rec-for {
-    margin: 0;
-    font-size: 0.74rem;
-    color: var(--text-muted);
-  }
-
-  .model-card-actions {
-    margin-top: 0.35rem;
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-
-  .action-btn-row {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    flex-wrap: wrap;
-  }
-
-  .btn-set-active {
-    padding: 0.4rem 0.85rem;
-    border-radius: var(--radius-sm);
-    border: none;
-    background: var(--accent, #007AFF);
-    color: #fff;
-    font-size: 0.78rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .installed-tag {
-    font-size: 0.76rem;
-    font-weight: 700;
-    color: #34C759;
-  }
-
-  .btn-delete-model {
-    padding: 0.4rem 0.75rem;
-    border-radius: var(--radius-sm);
-    border: 0.5px solid var(--hairline-border);
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 0.74rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .btn-delete-model:hover {
-    color: #FF3B30;
-    border-color: rgba(255, 59, 48, 0.4);
-    background: rgba(255, 59, 48, 0.08);
-  }
-
-  .btn-download-model {
-    padding: 0.48rem 1rem;
-    border-radius: var(--radius-sm);
-    border: 0.5px solid var(--hairline-border);
-    background: var(--surface-card, rgba(128, 128, 128, 0.12));
-    color: var(--text-primary);
-    font-size: 0.78rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .btn-download-model.btn-rec-cta {
-    background: var(--accent, #007AFF);
-    border-color: var(--accent, #007AFF);
-    color: #fff;
-    font-weight: 700;
-  }
-
-  .download-progress-container {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-
-  .dl-text-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.74rem;
-    color: var(--accent, #007AFF);
-    font-weight: 600;
-  }
-
-  .progress-bar-track {
-    width: 100%;
-    height: 0.45rem;
-    border-radius: 999px;
-    background: rgba(128, 128, 128, 0.2);
+    background: var(--bg-surface);
     overflow: hidden;
   }
 
-  .progress-bar-fill {
+  .dl-fill {
     height: 100%;
-    background: var(--accent, #007AFF);
-    border-radius: 999px;
-    transition: width 200ms ease;
-  }
-
-  .btn-cancel-dl {
-    align-self: flex-start;
-    padding: 0.25rem 0.55rem;
-    border-radius: var(--radius-xs);
-    border: 0.5px solid var(--hairline-border);
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 0.72rem;
-    cursor: pointer;
-  }
-
-  .uac-notes {
-    padding: 0.75rem;
-    border-radius: var(--radius-sm);
-    background: var(--surface-base);
-    border: 0.5px solid var(--hairline-border);
-    font-size: 0.78rem;
-  }
-
-  .notes-body {
-    margin-top: 0.35rem;
-    color: var(--text-secondary);
-    white-space: pre-wrap;
-    line-height: 1.4;
-  }
-
-  .update-progress-box {
-    padding: 1.15rem;
-    border-radius: var(--radius-md);
-    background: var(--surface-card);
-    border: 0.5px solid var(--hairline-border);
-  }
-
-  .upb-header {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.82rem;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-  }
-
-  .progress-track {
-    width: 100%;
-    height: 6px;
-    background: rgba(128, 128, 128, 0.2);
-    border-radius: 999px;
-    overflow: hidden;
-  }
-
-  .progress-bar-fill {
-    height: 100%;
-    background: var(--accent-primary, #0A84FF);
-    border-radius: 999px;
-    transition: width 140ms ease;
-  }
-
-  .update-ready-box {
-    padding: 1.15rem;
-    border-radius: var(--radius-md);
-    background: rgba(48, 209, 88, 0.1);
-    border: 0.5px solid rgba(48, 209, 88, 0.3);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-
-  .urb-text {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .urb-icon {
-    width: 2rem;
-    height: 2rem;
-    border-radius: 999px;
-    background: #30D158;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 800;
-  }
-
-  .btn-relaunch {
-    padding: 0.5rem 1.2rem;
-    border-radius: var(--radius-sm);
-    border: none;
-    background: #30D158;
-    color: #fff;
-    font-size: 0.82rem;
-    font-weight: 700;
-    cursor: pointer;
-    box-shadow: 0 2px 8px rgba(48, 209, 88, 0.35);
-    white-space: nowrap;
-  }
-
-  /* =========================================================================
-     AI Multimodale Locale & Model Hub (Apple HIG)
-     ========================================================================= */
-  .ai-hw-banner {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.85rem;
-    padding: 0.85rem 1rem;
-    border-radius: var(--radius-md);
-    background: rgba(0, 122, 255, 0.08);
-    border: 0.5px solid rgba(0, 122, 255, 0.25);
-  }
-
-  .hw-icon-col {
-    font-size: 1.5rem;
-    line-height: 1;
-  }
-
-  .hw-details-col {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.82rem;
-  }
-
-  .hw-title-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    color: var(--text-primary);
-  }
-
-  .hw-gpu-tag,
-  .hw-ram-tag {
-    padding: 0.15rem 0.5rem;
-    border-radius: var(--radius-pill);
-    background: rgba(0, 122, 255, 0.14);
-    color: var(--accent, #007AFF);
-    font-size: 0.74rem;
-    font-weight: 600;
-  }
-
-  .hw-reason-text {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: 0.77rem;
-    line-height: 1.4;
-  }
-
-  .star-badge {
-    color: #FF9500;
-    font-weight: 800;
-  }
-
-  .ai-control-box {
-    padding: 1rem 1.15rem;
-    border-radius: var(--radius-md);
-    border: 0.5px solid var(--hairline-border);
-    background: rgba(128, 128, 128, 0.06);
-    display: flex;
-    flex-direction: column;
-  }
-
-  .ai-control-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-
-  .ai-status-indicator {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    font-size: 0.82rem;
-  }
-
-  .status-dot {
-    width: 0.75rem;
-    height: 0.75rem;
-    border-radius: 999px;
-    flex-shrink: 0;
-  }
-
-  .status-dot.ready {
-    background: #34C759;
-    box-shadow: 0 0 8px rgba(52, 199, 89, 0.6);
-  }
-
-  .status-dot.starting {
-    background: #FF9500;
-    box-shadow: 0 0 8px rgba(255, 149, 0, 0.6);
-    animation: pulse 1.2s infinite alternate;
-  }
-
-  .status-dot.stopped {
-    background: #8E8E93;
-  }
-
-  .status-dot.error {
-    background: #FF3B30;
-  }
-
-  @keyframes pulse {
-    from { opacity: 0.5; }
-    to { opacity: 1; }
-  }
-
-  .status-sub {
-    display: block;
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    font-weight: 500;
-  }
-
-  .ai-quick-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .btn-danger-sub {
-    padding: 0.45rem 0.85rem;
-    border-radius: var(--radius-sm);
-    border: 0.5px solid rgba(255, 59, 48, 0.4);
-    background: rgba(255, 59, 48, 0.12);
-    color: #FF3B30;
-    font-size: 0.78rem;
-    font-weight: 700;
-    cursor: pointer;
-  }
-
-  .btn-wake-sub {
-    padding: 0.45rem 0.85rem;
-    border-radius: var(--radius-sm);
-    border: 0.5px solid rgba(0, 122, 255, 0.4);
-    background: rgba(0, 122, 255, 0.12);
-    color: var(--accent, #007AFF);
-    font-size: 0.78rem;
-    font-weight: 700;
-    cursor: pointer;
-  }
-
-  .form-grid-3 {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.75rem;
-  }
-
-  .models-catalog-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    margin-top: 0.5rem;
-  }
-
-  .models-catalog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-
-  .btn-refresh-sub {
-    padding: 0.35rem 0.65rem;
-    border-radius: var(--radius-pill);
-    border: 0.5px solid var(--hairline-border);
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: 0.74rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .models-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 0.85rem;
-  }
-
-  .model-card {
-    padding: 1rem 1.15rem;
-    border-radius: var(--radius-md);
-    border: 0.5px solid var(--hairline-border);
-    background: rgba(128, 128, 128, 0.04);
-    display: flex;
-    flex-direction: column;
-    gap: 0.55rem;
-    transition: all 180ms ease;
-  }
-
-  .model-card:hover {
-    border-color: rgba(128, 128, 128, 0.35);
-    background: rgba(128, 128, 128, 0.07);
-  }
-
-  .model-card.recommended-card {
-    border-color: rgba(255, 149, 0, 0.4);
-    background: rgba(255, 149, 0, 0.03);
-  }
-
-  .model-card.selected-active {
-    border-color: var(--accent, #007AFF);
-    box-shadow: 0 0 0 1px var(--accent, #007AFF);
-  }
-
-  .tier-pill {
-    padding: 0.15rem 0.5rem;
-    border-radius: var(--radius-pill);
-    font-size: 0.68rem;
-    font-weight: 700;
-    background: rgba(128, 128, 128, 0.18);
-    color: var(--text-secondary);
-  }
-
-  .tier-pill.tier-bilanciato {
-    background: rgba(0, 122, 255, 0.18);
-    color: var(--accent, #007AFF);
-  }
-
-  .tier-pill.tier-avanzato {
-    background: rgba(175, 82, 222, 0.18);
-    color: #AF52DE;
-  }
-
-  .badge-recommended {
-    padding: 0.15rem 0.5rem;
-    border-radius: var(--radius-pill);
-    font-size: 0.68rem;
-    font-weight: 700;
-    background: rgba(255, 149, 0, 0.18);
-    color: #FF9500;
-  }
-
-  .badge-active-model {
-    padding: 0.15rem 0.5rem;
-    border-radius: var(--radius-pill);
-    font-size: 0.68rem;
-    font-weight: 700;
-    background: rgba(52, 199, 89, 0.18);
-    color: #34C759;
-  }
-
-  .model-name {
-    margin: 0.25rem 0 0;
-    font-size: 0.92rem;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-
-  .model-tagline {
-    margin: 0;
-    font-size: 0.77rem;
-    color: var(--text-secondary);
-    font-style: italic;
-  }
-
-  .model-specs-row {
-    display: flex;
-    gap: 0.85rem;
-    flex-wrap: wrap;
-    font-size: 0.74rem;
-    color: var(--text-muted);
-    font-weight: 600;
-  }
-
-  .model-desc {
-    margin: 0;
-    font-size: 0.79rem;
-    line-height: 1.45;
-    color: var(--text-secondary);
-  }
-
-  .model-rec-for {
-    margin: 0;
-    font-size: 0.74rem;
-    color: var(--text-muted);
-  }
-
-  .model-card-actions {
-    margin-top: 0.35rem;
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-
-  .action-btn-row {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    flex-wrap: wrap;
-  }
-
-  .btn-set-active {
-    padding: 0.4rem 0.85rem;
-    border-radius: var(--radius-sm);
-    border: none;
-    background: var(--accent, #007AFF);
-    color: #fff;
-    font-size: 0.78rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .installed-tag {
-    font-size: 0.76rem;
-    font-weight: 700;
-    color: #34C759;
-  }
-
-  .btn-delete-model {
-    padding: 0.4rem 0.75rem;
-    border-radius: var(--radius-sm);
-    border: 0.5px solid var(--hairline-border);
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 0.74rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .btn-delete-model:hover {
-    color: #FF3B30;
-    border-color: rgba(255, 59, 48, 0.4);
-    background: rgba(255, 59, 48, 0.08);
-  }
-
-  .btn-download-model {
-    padding: 0.48rem 1rem;
-    border-radius: var(--radius-sm);
-    border: 0.5px solid var(--hairline-border);
-    background: var(--surface-card, rgba(128, 128, 128, 0.12));
-    color: var(--text-primary);
-    font-size: 0.78rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .btn-download-model.btn-rec-cta {
-    background: var(--accent, #007AFF);
-    border-color: var(--accent, #007AFF);
-    color: #fff;
-    font-weight: 700;
-  }
-
-  .download-progress-container {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-
-  .dl-text-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.74rem;
-    color: var(--accent, #007AFF);
-    font-weight: 600;
-  }
-
-  .progress-bar-track {
-    width: 100%;
-    height: 0.45rem;
-    border-radius: 999px;
-    background: rgba(128, 128, 128, 0.2);
-    overflow: hidden;
-  }
-
-  .progress-bar-fill {
-    height: 100%;
-    background: var(--accent, #007AFF);
-    border-radius: 999px;
-    transition: width 200ms ease;
-  }
-
-  .btn-cancel-dl {
-    align-self: flex-start;
-    padding: 0.25rem 0.55rem;
-    border-radius: var(--radius-xs);
-    border: 0.5px solid var(--hairline-border);
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 0.72rem;
-    cursor: pointer;
+    background: var(--accent);
   }
 </style>

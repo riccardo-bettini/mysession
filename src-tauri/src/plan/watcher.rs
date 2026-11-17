@@ -1,24 +1,14 @@
+use crate::models::PendingPlanNotification;
+use crate::plan::model::PlanPayload;
+use crate::plan::validate::validate_plan;
+use rusqlite::Connection;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use rusqlite::Connection;
-use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
-use crate::plan::model::PlanPayload;
-use crate::plan::validate::validate_plan;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PendingPlanNotification {
-    pub plan_id: String,
-    pub plan_name: String,
-    pub revision: i64,
-    pub file_path: String,
-    pub is_new_session: bool,
-}
 
 pub fn scan_folder_for_pending_plans(
     conn: &Connection,
@@ -30,9 +20,8 @@ pub fn scan_folder_for_pending_plans(
         return results;
     }
 
-    let entries = match fs::read_dir(folder) {
-        Ok(e) => e,
-        Err(_) => return results,
+    let Ok(entries) = fs::read_dir(folder) else {
+        return results;
     };
 
     for entry in entries.flatten() {
@@ -41,28 +30,24 @@ pub fn scan_folder_for_pending_plans(
             continue;
         }
 
-        // Limit file size to 5MB
         if let Ok(meta) = entry.metadata() {
-            if meta.len() == 0 || meta.len() > 5 * 1024 * 1024 {
+            if meta.len() == 0 || meta.len() > 12 * 1024 * 1024 {
                 continue;
             }
         }
 
-        let content = match fs::read_to_string(&path) {
-            Ok(c) => c,
-            Err(_) => continue,
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
         };
 
-        let plan: PlanPayload = match serde_json::from_str(&content) {
-            Ok(p) => p,
-            Err(_) => continue,
+        let Ok(plan) = serde_json::from_str::<PlanPayload>(&content) else {
+            continue;
         };
 
         if validate_plan(&plan).is_err() {
             continue;
         }
 
-        // Query current applied revision from plan_state
         let applied_rev: i64 = conn
             .query_row(
                 "SELECT applied_revision FROM plan_state WHERE plan_id = ?1",
@@ -111,9 +96,8 @@ pub fn start_plan_watcher(app_handle: AppHandle, db_path: PathBuf) -> PlanWatche
         while !stop_clone.load(Ordering::SeqCst) {
             thread::sleep(Duration::from_secs(3));
 
-            let conn = match Connection::open(&db_path) {
-                Ok(c) => c,
-                Err(_) => continue,
+            let Ok(conn) = Connection::open(&db_path) else {
+                continue;
             };
 
             let folder_opt: Option<String> = conn

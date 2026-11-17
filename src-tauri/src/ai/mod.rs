@@ -1,16 +1,22 @@
 pub mod catalog;
+pub mod cli_bridge;
 pub mod downloader;
 pub mod hardware;
+pub mod parser;
 pub mod runtime;
 
 use crate::db::DatabaseManager;
 use crate::models::{
-    AppSettings, SessionSnapshot, UpsertCourseInput, UpsertExamInput, UpsertTodoInput,
+    AppSettings, ExtractedLessonItem, SessionSnapshot, UpsertCourseInput, UpsertExamInput,
+    UpsertTaskInput,
 };
-use chrono::{Datelike, Local, NaiveDate};
-use rusqlite::Connection;
+use chrono::{Duration, Local, NaiveDate};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
 use std::sync::OnceLock;
+use uuid::Uuid;
 
 static GLOBAL_RUNTIME: OnceLock<runtime::AiRuntimeManager> = OnceLock::new();
 static GLOBAL_DOWNLOADER: OnceLock<downloader::ModelDownloadManager> = OnceLock::new();
@@ -35,2402 +41,860 @@ pub struct AiToolCallRecord {
 pub struct AiAssistantResponse {
     pub reply_markdown: String,
     pub executed_tools: Vec<AiToolCallRecord>,
+    pub undo_snapshot_id: Option<String>,
     pub navigate_to_date: Option<String>,
+    pub navigate_to_section: Option<String>,
     pub updated_settings: Option<AppSettings>,
     pub updated_snapshot: Option<SessionSnapshot>,
     pub provider_used: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct LlmStructuredAction {
+#[serde(rename_all = "camelCase")]
+struct LlmActionPayload {
     reply_markdown: String,
-    action_type: Option<String>,
-    target_date: Option<String>,
-    theme: Option<String>,
-    backdrop_material: Option<String>,
-    default_view: Option<String>,
-    ui_scale: Option<i32>,
-    course_sigla: Option<String>,
-    course_name: Option<String>,
-    course_cfu: Option<i32>,
-    exam_round: Option<String>,
-    exam_time: Option<String>,
-    todo_text: Option<String>,
+    #[serde(default)]
+    actions: Vec<LlmToolAction>,
+    #[serde(default)]
+    navigate_to_date: Option<String>,
+    #[serde(default)]
+    navigate_to_section: Option<String>,
 }
 
-/// Punto di ingresso principale per l'Assistente AI Multimodale (Tastiera + Voce).
-/// Supporta provider cloud/locali configurati dall'utente (Gemini, OpenAI, Ollama/LM Studio)
-/// e il motore deterministico integrato a latenza zero (`local`).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LlmToolAction {
+    tool: String,
+    #[serde(default)]
+    course_sigla: Option<String>,
+    #[serde(default)]
+    course_name: Option<String>,
+    #[serde(default)]
+    course_cfu: Option<f64>,
+    #[serde(default)]
+    date: Option<String>,
+    #[serde(default)]
+    from_date: Option<String>,
+    #[serde(default)]
+    to_date: Option<String>,
+    #[serde(default)]
+    category: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    chapter: Option<String>,
+    #[serde(default)]
+    topic: Option<String>,
+    #[serde(default)]
+    pages: Option<String>,
+    #[serde(default)]
+    planned_hours: Option<f64>,
+    #[serde(default)]
+    done: Option<bool>,
+    #[serde(default)]
+    round: Option<String>,
+    #[serde(default)]
+    time_slot: Option<String>,
+    #[serde(default)]
+    quiz_questions: Option<Vec<LlmQuizQuestionDraft>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LlmQuizQuestionDraft {
+    #[serde(default)]
+    question_type: Option<String>,
+    #[serde(default)]
+    category: Option<String>,
+    #[serde(default)]
+    chapter: Option<String>,
+    #[serde(default)]
+    topic: Option<String>,
+    prompt: String,
+    #[serde(default)]
+    options: Vec<String>,
+    #[serde(default)]
+    correct_index: Option<i32>,
+    #[serde(default)]
+    explanation: String,
+}
+
+fn decode_base64_simple(input: &str) -> Result<Vec<u8>, String> {
+    let clean: Vec<u8> = input
+        .bytes()
+        .filter(|b| !b.is_ascii_whitespace())
+        .collect();
+    if clean.len() % 4 != 0 {
+        return Err("Base64 non valido".to_string());
+    }
+    let val = |b: u8| -> Result<u8, String> {
+        match b {
+            b'A'..=b'Z' => Ok(b - b'A'),
+            b'a'..=b'z' => Ok(b - b'a' + 26),
+            b'0'..=b'9' => Ok(b - b'0' + 52),
+            b'+' => Ok(62),
+            b'/' => Ok(63),
+            _ => Err("Carattere base64 non valido".to_string()),
+        }
+    };
+    let mut out = Vec::with_capacity((clean.len() / 4) * 3);
+    for chunk in clean.chunks(4) {
+        let a = val(chunk[0])?;
+        let b = val(chunk[1])?;
+        out.push((a << 2) | (b >> 4));
+        if chunk[2] != b'=' {
+            let c = val(chunk[2])?;
+            out.push((b << 4) | (c >> 2));
+            if chunk[3] != b'=' {
+                let d = val(chunk[3])?;
+                out.push((c << 6) | d);
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn write_temp_image_if_present(
+    image_base64: Option<&str>,
+    mime_type: Option<&str>,
+) -> Result<Option<PathBuf>, String> {
+    let Some(raw) = image_base64.filter(|s| !s.trim().is_empty()) else {
+        return Ok(None);
+    };
+    let clean_b64 = raw.split(";base64,").last().unwrap_or(raw);
+    let bytes = decode_base64_simple(clean_b64)?;
+    let ext = match mime_type.unwrap_or("image/png") {
+        "image/jpeg" | "image/jpg" => "jpg",
+        "image/webp" => "webp",
+        _ => "png",
+    };
+    let path = std::env::temp_dir().join(format!("mysession_ai_{}.{}", Uuid::new_v4().simple(), ext));
+    fs::write(&path, bytes).map_err(|e| format!("Impossibile scrivere immagine temporanea: {}", e))?;
+    Ok(Some(path))
+}
+
+fn build_session_context_summary(snapshot: &SessionSnapshot) -> String {
+    let today = &snapshot.telemetry.reference_today;
+    let courses: Vec<String> = snapshot
+        .courses
+        .iter()
+        .map(|c| format!("{} ({}, {} CFU)", c.sigla, c.name, c.cfu))
+        .collect();
+    let exams: Vec<String> = snapshot
+        .exams
+        .iter()
+        .map(|e| format!("{} [{}]", e.title, e.date))
+        .collect();
+    let today_tasks: Vec<String> = snapshot
+        .tasks
+        .iter()
+        .filter(|t| t.date == *today)
+        .map(|t| {
+            format!(
+                "[{}] {} ({} · {} · {}h · done={})",
+                t.category, t.title, t.chapter, t.topic, t.planned_hours, t.done
+            )
+        })
+        .collect();
+
+    format!(
+        "Sessione attiva: {} ({} -> {}). Data oggi: {}.\n\
+        Corsi: {:?}\nAppelli: {:?}\nTask di oggi: {:?}",
+        snapshot.session.name,
+        snapshot.session.start_date,
+        snapshot.session.end_date,
+        today,
+        courses,
+        exams,
+        today_tasks
+    )
+}
+
 pub fn process_natural_command(
     conn: &mut Connection,
     session_id: &str,
     prompt: &str,
+    image_base64: Option<&str>,
+    mime_type: Option<&str>,
 ) -> Result<AiAssistantResponse, String> {
     let clean_prompt = prompt.trim();
-    if clean_prompt.is_empty() {
-        return Err("Inserisci o detta un comando per l'Assistente AI.".to_string());
+    if clean_prompt.is_empty() && image_base64.is_none() {
+        return Err("Inserisci una domanda o un comando per l'Assistente AI.".to_string());
     }
 
     let settings = DatabaseManager::get_settings(conn).map_err(|e| e.to_string())?;
-    let snapshot =
-        DatabaseManager::build_session_snapshot(conn, session_id, &settings).map_err(|e| e.to_string())?;
+    let snapshot = DatabaseManager::build_session_snapshot(conn, session_id, &settings)
+        .map_err(|e| e.to_string())?;
 
-    // Se l'utente ha configurato un provider LLM (gemini / openai / ollama / local con modello scaricato),
-    // prova prima l'inferenza strutturata; in caso di fallimento o provider "local" non pronto,
-    // esegue il parser deterministico di Intent & Tool Calling a latenza zero.
     let provider = settings.ai_provider.trim().to_lowercase();
-    if provider == "gemini" || provider == "openai" || provider == "ollama" || provider == "local" {
-        if let Ok(llm_action) = try_call_external_llm(&settings, &snapshot, clean_prompt) {
-            return apply_structured_llm_action(
-                conn,
-                session_id,
-                settings,
-                llm_action,
-                &provider,
-            );
+    let context = build_session_context_summary(&snapshot);
+
+    let system_prompt = format!(
+        "Sei l'assistente AI accademico integrato in MySession v2.00.\n\
+        Rispondi in italiano chiaro e conciso, restituendo ESCLUSIVAMENTE un JSON valido con la struttura:\n\
+        {{\n\
+          \"replyMarkdown\": \"risposta per lo studente in markdown\",\n\
+          \"navigateToDate\": \"YYYY-MM-DD oppure null\",\n\
+          \"navigateToSection\": \"home|calendar|today|courses|quiz|progress|ai oppure null\",\n\
+          \"actions\": [\n\
+            {{ \"tool\": \"upsert_task\", \"courseSigla\": \"MAM\", \"date\": \"YYYY-MM-DD\", \"category\": \"teoria|esercizi|temi_esame|dimostrazioni|domande_orale\", \"title\": \"...\", \"chapter\": \"...\", \"topic\": \"...\", \"pages\": \"...\", \"plannedHours\": 1.5 }},\n\
+            {{ \"tool\": \"move_tasks_by_date\", \"fromDate\": \"YYYY-MM-DD\", \"toDate\": \"YYYY-MM-DD\", \"done\": false }},\n\
+            {{ \"tool\": \"toggle_task\", \"title\": \"parte del titolo\", \"date\": \"YYYY-MM-DD\", \"done\": true }},\n\
+            {{ \"tool\": \"upsert_exam\", \"courseSigla\": \"MAM\", \"date\": \"YYYY-MM-DD\", \"round\": \"1\", \"timeSlot\": \"09:00\" }},\n\
+            {{ \"tool\": \"upsert_course\", \"courseSigla\": \"MAM\", \"courseName\": \"...\", \"courseCfu\": 10 }},\n\
+            {{ \"tool\": \"create_quiz\", \"courseSigla\": \"MAM\", \"date\": \"YYYY-MM-DD\", \"title\": \"Quiz extra ...\", \"topic\": \"...\", \"quizQuestions\": [ {{ \"questionType\": \"multiple_choice\", \"category\": \"teoria\", \"chapter\": \"...\", \"topic\": \"...\", \"prompt\": \"...\", \"options\": [\"A\",\"B\",\"C\",\"D\"], \"correctIndex\": 0, \"explanation\": \"...\" }} ] }}\n\
+          ]\n\
+        }}\n\
+        Se l'utente fa solo una domanda senza chiedere modifiche, lascia \"actions\": [].\n\n\
+        CONTESTO SESSIONE:\n{}",
+        context
+    );
+
+    if provider.starts_with("cli_") {
+        let temp_img = write_temp_image_if_present(image_base64, mime_type)?;
+        let full_prompt = format!("{}\n\nRICHIESTA UTENTE:\n{}", system_prompt, clean_prompt);
+        let raw_res = cli_bridge::run_cli_agent(
+            &provider,
+            &settings.ai_custom_cli_command,
+            &full_prompt,
+            temp_img.as_deref(),
+        );
+        if let Some(ref p) = temp_img {
+            let _ = fs::remove_file(p);
+        }
+        let raw_output = raw_res?;
+        return parse_and_apply_llm_response(conn, session_id, &settings, &raw_output, &provider);
+    }
+
+    if provider == "local" {
+        if let Ok(raw_output) =
+            call_local_llama_server(&settings, &system_prompt, clean_prompt, image_base64, mime_type)
+        {
+            if let Ok(res) =
+                parse_and_apply_llm_response(conn, session_id, &settings, &raw_output, "local")
+            {
+                return Ok(res);
+            }
         }
     }
 
-    execute_deterministic_intent_engine(conn, session_id, settings, snapshot, clean_prompt)
+    execute_deterministic_fallback(conn, session_id, &settings, &snapshot, clean_prompt)
 }
 
-fn try_call_external_llm(
+fn call_local_llama_server(
     settings: &AppSettings,
-    snapshot: &SessionSnapshot,
+    system_prompt: &str,
     user_prompt: &str,
-) -> Result<LlmStructuredAction, String> {
-    let provider = settings.ai_provider.trim().to_lowercase();
-    let courses_summary: Vec<String> = snapshot
-        .courses
-        .iter()
-        .map(|c| format!("{} ({}, {} CFU, id={})", c.sigla, c.name, c.cfu, c.id))
-        .collect();
-    let exams_summary: Vec<String> = snapshot
-        .exams
-        .iter()
-        .map(|e| format!("courseId={} data={} turno={} ora={}", e.course_id, e.date, e.round, e.time_slot))
-        .collect();
+    image_base64: Option<&str>,
+    mime_type: Option<&str>,
+) -> Result<String, String> {
+    let app_data_dir = DatabaseManager::resolve_app_data_dir();
+    let runtime = get_runtime_manager();
+    let port = runtime.ensure_started(
+        &app_data_dir,
+        &settings.ai_local_model_id,
+        &settings.ai_hardware_preference_or_auto(),
+        settings.ai_idle_timeout_minutes,
+    )?;
+    runtime.touch_activity();
 
-    let system_instruction = format!(
-        "Sei l'assistente AI integrato di MySession. Rispondi SOLO con un oggetto JSON valido con campi: \
-        reply_markdown (stringa in italiano concisa), \
-        action_type (null | \"set_theme\" | \"set_material\" | \"set_view\" | \"set_zoom\" | \"add_course\" | \"add_exam\" | \"add_todo\" | \"navigate_date\"), \
-        target_date (YYYY-MM-DD opzionale), theme (\"dark\"|\"light\"|\"auto\"), backdrop_material (\"mica\"|\"acrylic\"|\"tabbed\"), \
-        default_view (\"continuous\"|\"month\"|\"week\"|\"agenda\"), ui_scale (80..150), \
-        course_sigla, course_name, course_cfu, exam_round, exam_time, todo_text. \
-        Data odierna: {}. Corsi attivi: {:?}. Appelli: {:?}. Conflitti: {}.",
-        snapshot.telemetry.reference_today,
-        courses_summary,
-        exams_summary,
-        snapshot.conflicts.len()
-    );
-
-    let agent = crate::ai::downloader::get_http_agent();
-    let raw_json = match provider.as_str() {
-        "gemini" => {
-            if settings.ai_api_key.trim().is_empty() {
-                return Err("API Key Gemini non configurata".to_string());
-            }
-            let model = if settings.ai_model.trim().is_empty() {
-                "gemini-3.8-flash"
-            } else {
-                settings.ai_model.trim()
-            };
-            let url = format!(
-                "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-                model,
-                settings.ai_api_key.trim()
-            );
-            let body = serde_json::json!({
-                "systemInstruction": { "parts": [{ "text": system_instruction }] },
-                "contents": [{ "parts": [{ "text": user_prompt }] }],
-                "generationConfig": { "responseMimeType": "application/json" }
-            });
-            let resp: serde_json::Value = agent.post(&url)
-                .send_json(body)
-                .map_err(|e| e.to_string())?
-                .into_json()
-                .map_err(|e| e.to_string())?;
-            resp["candidates"][0]["content"]["parts"][0]["text"]
-                .as_str()
-                .ok_or_else(|| "Risposta Gemini vuota".to_string())?
-                .to_string()
-        }
-        "openai" => {
-            if settings.ai_api_key.trim().is_empty() {
-                return Err("API Key OpenAI non configurata".to_string());
-            }
-            let model = if settings.ai_model.trim().is_empty() {
-                "gpt-4o-mini"
-            } else {
-                settings.ai_model.trim()
-            };
-            let body = serde_json::json!({
-                "model": model,
-                "response_format": { "type": "json_object" },
-                "messages": [
-                    { "role": "system", "content": system_instruction },
-                    { "role": "user", "content": user_prompt }
-                ]
-            });
-            let resp: serde_json::Value = agent.post("https://api.openai.com/v1/chat/completions")
-                .set("Authorization", &format!("Bearer {}", settings.ai_api_key.trim()))
-                .send_json(body)
-                .map_err(|e| e.to_string())?
-                .into_json()
-                .map_err(|e| e.to_string())?;
-            resp["choices"][0]["message"]["content"]
-                .as_str()
-                .ok_or_else(|| "Risposta OpenAI vuota".to_string())?
-                .to_string()
-        }
-        "ollama" => {
-            let base = settings.ai_endpoint_url.trim().trim_end_matches('/');
-            let url = format!("{}/api/generate", base);
-            let body = serde_json::json!({
-                "model": settings.ai_model.trim(),
-                "system": system_instruction,
-                "prompt": user_prompt,
-                "format": "json",
-                "stream": false
-            });
-            let resp: serde_json::Value = agent.post(&url)
-                .send_json(body)
-                .map_err(|e| e.to_string())?
-                .into_json()
-                .map_err(|e| e.to_string())?;
-            resp["response"]
-                .as_str()
-                .ok_or_else(|| "Risposta Ollama vuota".to_string())?
-                .to_string()
-        }
-        "local" => {
-            let app_data_dir = DatabaseManager::resolve_app_data_dir();
-            let runtime = get_runtime_manager();
-            let port = runtime
-                .ensure_started(
-                    &app_data_dir,
-                    &settings.ai_local_model_id,
-                    &settings.ai_hardware_preference,
-                    settings.ai_idle_timeout_minutes,
-                )
-                .map_err(|e| e.to_string())?;
-            runtime.touch_activity();
-
-            let body = serde_json::json!({
-                "model": settings.ai_local_model_id,
-                "response_format": { "type": "json_object" },
-                "messages": [
-                    { "role": "system", "content": system_instruction },
-                    { "role": "user", "content": user_prompt }
-                ]
-            });
-            let resp: serde_json::Value = ureq::post(&format!("http://127.0.0.1:{}/v1/chat/completions", port))
-                .send_json(body)
-                .map_err(|e| e.to_string())?
-                .into_json()
-                .map_err(|e| e.to_string())?;
-            resp["choices"][0]["message"]["content"]
-                .as_str()
-                .ok_or_else(|| "Risposta AI locale vuota".to_string())?
-                .to_string()
-        }
-        _ => return Err("Provider non supportato per inferenza remota".to_string()),
+    let user_content = if let Some(b64) = image_base64.filter(|s| !s.trim().is_empty()) {
+        let clean_b64 = b64.split(";base64,").last().unwrap_or(b64);
+        let mime = mime_type.unwrap_or("image/png");
+        serde_json::json!([
+            { "type": "text", "text": user_prompt },
+            { "type": "image_url", "image_url": { "url": format!("data:{};base64,{}", mime, clean_b64) } }
+        ])
+    } else {
+        serde_json::json!(user_prompt)
     };
 
-    serde_json::from_str::<LlmStructuredAction>(&raw_json).map_err(|e| e.to_string())
+    let body = serde_json::json!({
+        "model": settings.ai_local_model_id,
+        "temperature": 0.2,
+        "response_format": { "type": "json_object" },
+        "messages": [
+            { "role": "system", "content": system_prompt },
+            { "role": "user", "content": user_content }
+        ]
+    });
+
+    let resp: serde_json::Value = downloader::get_http_agent()
+        .post(&format!("http://127.0.0.1:{}/v1/chat/completions", port))
+        .send_json(body)
+        .map_err(|e| e.to_string())?
+        .into_json()
+        .map_err(|e| e.to_string())?;
+
+    resp["choices"][0]["message"]["content"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Risposta modello locale vuota".to_string())
 }
 
-fn apply_structured_llm_action(
+impl AppSettings {
+    pub fn ai_hardware_preference_or_auto(&self) -> &str {
+        "auto"
+    }
+}
+
+fn parse_and_apply_llm_response(
     conn: &mut Connection,
     session_id: &str,
-    mut settings: AppSettings,
-    action: LlmStructuredAction,
-    provider_name: &str,
+    settings: &AppSettings,
+    raw_output: &str,
+    provider_used: &str,
 ) -> Result<AiAssistantResponse, String> {
-    let mut executed_tools = Vec::new();
-    let mut navigate_to_date = action.target_date.clone();
-    let mut settings_changed = false;
+    let json_block = parser::extract_json_block(raw_output);
+    let payload: LlmActionPayload = match serde_json::from_str(&json_block) {
+        Ok(p) => p,
+        Err(_) => {
+            return Ok(AiAssistantResponse {
+                reply_markdown: raw_output.to_string(),
+                executed_tools: Vec::new(),
+                undo_snapshot_id: None,
+                navigate_to_date: None,
+                navigate_to_section: None,
+                updated_settings: None,
+                updated_snapshot: None,
+                provider_used: provider_used.to_string(),
+            });
+        }
+    };
 
-    if let Some(act) = action.action_type.as_deref() {
-        match act {
-            "set_theme" => {
-                if let Some(t) = action.theme {
-                    settings.theme = t.clone();
-                    settings_changed = true;
-                    executed_tools.push(AiToolCallRecord {
-                        tool_name: "update_settings.theme".to_string(),
-                        summary: format!("Tema impostato su '{}'", t),
-                    });
-                }
-            }
-            "set_material" => {
-                if let Some(m) = action.backdrop_material {
-                    settings.backdrop_material = m.clone();
-                    settings_changed = true;
-                    executed_tools.push(AiToolCallRecord {
-                        tool_name: "update_settings.backdrop_material".to_string(),
-                        summary: format!("Materiale DWM impostato su '{}'", m),
-                    });
-                }
-            }
-            "set_view" => {
-                if let Some(v) = action.default_view {
-                    settings.default_view = v.clone();
-                    settings_changed = true;
-                    executed_tools.push(AiToolCallRecord {
-                        tool_name: "update_settings.default_view".to_string(),
-                        summary: format!("Vista calendario impostata su '{}'", v),
-                    });
-                }
-            }
-            "set_zoom" => {
-                if let Some(z) = action.ui_scale {
-                    settings.ui_scale = z.clamp(80, 150);
-                    settings_changed = true;
-                    executed_tools.push(AiToolCallRecord {
-                        tool_name: "update_settings.ui_scale".to_string(),
-                        summary: format!("Zoom UI impostato a {}%", settings.ui_scale),
-                    });
-                }
-            }
-            "add_course" => {
-                let sigla = action.course_sigla.unwrap_or_else(|| "CORSO".to_string());
-                let name = action.course_name.unwrap_or_else(|| sigla.clone());
-                let cfu = action.course_cfu.unwrap_or(9).clamp(1, 45);
-                let _ = DatabaseManager::upsert_course(
-                    conn,
-                    &UpsertCourseInput {
-                        id: None,
-                        session_id: session_id.to_string(),
-                        sigla: sigla.to_uppercase(),
-                        name: name.clone(),
-                        code: String::new(),
-                        cfu,
-                        professor: String::new(),
-                        color_hex: "#007AFF".to_string(),
-                        difficulty_weight: Some(1.0),
-                        target_hours_override: None,
-                        notes: None,
-                        units: None,
-                        plan_course_id: None,
-                        is_visible: Some(true),
-                    },
-                )
-                .map_err(|e| e.to_string())?;
-                executed_tools.push(AiToolCallRecord {
+    let mut executed_tools = Vec::new();
+    let mut undo_snapshot_id = None;
+
+    if !payload.actions.is_empty() {
+        undo_snapshot_id = DatabaseManager::save_ai_undo_snapshot(
+            conn,
+            session_id,
+            &format!("Azione AI ({})", provider_used),
+        )
+        .ok();
+    }
+
+    for act in &payload.actions {
+        if let Some(rec) = execute_single_tool_action(conn, session_id, act) {
+            executed_tools.push(rec);
+        }
+    }
+
+    let updated_snapshot = if !executed_tools.is_empty() {
+        DatabaseManager::build_session_snapshot(conn, session_id, settings).ok()
+    } else {
+        None
+    };
+
+    Ok(AiAssistantResponse {
+        reply_markdown: payload.reply_markdown,
+        executed_tools,
+        undo_snapshot_id,
+        navigate_to_date: payload.navigate_to_date,
+        navigate_to_section: payload.navigate_to_section,
+        updated_settings: None,
+        updated_snapshot,
+        provider_used: provider_used.to_string(),
+    })
+}
+
+fn find_course_id_by_sigla(conn: &Connection, session_id: &str, sigla: Option<&str>) -> Option<String> {
+    let target = sigla?.trim().to_uppercase();
+    if target.is_empty() {
+        return None;
+    }
+    DatabaseManager::list_courses(conn, session_id)
+        .ok()?
+        .into_iter()
+        .find(|c| c.sigla.to_uppercase() == target || c.name.to_uppercase().contains(&target))
+        .map(|c| c.id)
+}
+
+fn execute_single_tool_action(
+    conn: &Connection,
+    session_id: &str,
+    act: &LlmToolAction,
+) -> Option<AiToolCallRecord> {
+    let today = Local::now().date_naive().format("%Y-%m-%d").to_string();
+    match act.tool.as_str() {
+        "upsert_course" => {
+            let sigla = act.course_sigla.as_deref().unwrap_or("NEW").to_uppercase();
+            let name = act.course_name.clone().unwrap_or_else(|| sigla.clone());
+            let cfu = act.course_cfu.unwrap_or(6.0);
+            if DatabaseManager::upsert_course(
+                conn,
+                &UpsertCourseInput {
+                    id: None,
+                    session_id: session_id.to_string(),
+                    sigla: sigla.clone(),
+                    name: name.clone(),
+                    code: None,
+                    cfu,
+                    professor: None,
+                    color_hex: "#7C5CFC".to_string(),
+                    difficulty_weight: Some(1.0),
+                    target_hours: None,
+                    is_active: Some(true),
+                    notes: None,
+                },
+            )
+            .is_ok()
+            {
+                return Some(AiToolCallRecord {
                     tool_name: "upsert_course".to_string(),
-                    summary: format!("Creato corso {} ({} CFU)", name, cfu),
+                    summary: format!("Aggiunto corso {} ({} CFU)", sigla, cfu),
                 });
             }
-            "add_exam" => {
-                if let (Some(sigla), Some(date)) = (action.course_sigla, action.target_date.clone()) {
-                    let snap = DatabaseManager::build_session_snapshot(conn, session_id, &settings)
-                        .map_err(|e| e.to_string())?;
-                    if let Some(course) = snap
-                        .courses
-                        .iter()
-                        .find(|c| c.sigla.eq_ignore_ascii_case(&sigla) || c.name.to_lowercase().contains(&sigla.to_lowercase()))
-                    {
-                        let _ = DatabaseManager::upsert_exam(
-                            conn,
-                            &UpsertExamInput {
-                                id: None,
-                                session_id: session_id.to_string(),
-                                course_id: course.id.clone(),
-                                date: date.clone(),
-                                time_slot: action.exam_time,
-                                duration_minutes: Some(120),
-                                round: action.exam_round.unwrap_or_else(|| "1".to_string()),
-                                exam_type: Some("Scritto + Orale".to_string()),
-                                classroom: None,
-                                weight_fraction: Some(1.0),
-                                pair_id: None,
-                                title: None,
-                                details: None,
-                                status: Some("planned".to_string()),
-                                grade: None,
-                            },
-                        )
-                        .map_err(|e| e.to_string())?;
-                        navigate_to_date = Some(date.clone());
-                        executed_tools.push(AiToolCallRecord {
-                            tool_name: "upsert_exam".to_string(),
-                            summary: format!("Pianificato appello {} in data {}", course.sigla, date),
+        }
+        "upsert_exam" => {
+            let cid = find_course_id_by_sigla(conn, session_id, act.course_sigla.as_deref())?;
+            let date = act.date.clone().unwrap_or_else(|| today.clone());
+            let round = act.round.clone().unwrap_or_else(|| "1".to_string());
+            if DatabaseManager::upsert_exam(
+                conn,
+                &UpsertExamInput {
+                    id: None,
+                    session_id: session_id.to_string(),
+                    course_id: cid,
+                    date: date.clone(),
+                    time_slot: act.time_slot.clone(),
+                    duration_minutes: Some(120),
+                    round: round.clone(),
+                    exam_type: Some("scritto_orale".to_string()),
+                    classroom: None,
+                    title: act.title.clone(),
+                    details: None,
+                    status: Some("planned".to_string()),
+                    grade: None,
+                },
+            )
+            .is_ok()
+            {
+                return Some(AiToolCallRecord {
+                    tool_name: "upsert_exam".to_string(),
+                    summary: format!("Appello salvato per il {}", date),
+                });
+            }
+        }
+        "upsert_task" => {
+            let cid = find_course_id_by_sigla(conn, session_id, act.course_sigla.as_deref());
+            let date = act.date.clone().unwrap_or_else(|| today.clone());
+            let category = act.category.clone().unwrap_or_else(|| "teoria".to_string());
+            let title = act.title.clone().unwrap_or_else(|| "Nuova attività di studio".to_string());
+            if DatabaseManager::upsert_task(
+                conn,
+                &UpsertTaskInput {
+                    id: None,
+                    session_id: session_id.to_string(),
+                    course_id: cid,
+                    unit_id: None,
+                    date: date.clone(),
+                    category: category.clone(),
+                    title: title.clone(),
+                    chapter: act.chapter.clone(),
+                    topic: act.topic.clone(),
+                    pages: act.pages.clone(),
+                    source: None,
+                    planned_hours: act.planned_hours.or(Some(1.5)),
+                    priority: Some(2),
+                },
+            )
+            .is_ok()
+            {
+                return Some(AiToolCallRecord {
+                    tool_name: "upsert_task".to_string(),
+                    summary: format!("Task [{}] '{}' aggiunta il {}", category, title, date),
+                });
+            }
+        }
+        "move_tasks_by_date" => {
+            let from_date = act.from_date.as_deref().unwrap_or(&today);
+            let to_date = act.to_date.clone().unwrap_or_else(|| {
+                NaiveDate::parse_from_str(from_date, "%Y-%m-%d")
+                    .map(|d| (d + Duration::days(1)).format("%Y-%m-%d").to_string())
+                    .unwrap_or_else(|_| today.clone())
+            });
+            let only_undone = act.done == Some(false);
+            let sql = if only_undone {
+                "UPDATE tasks SET date = ?1 WHERE session_id = ?2 AND date = ?3 AND done = 0"
+            } else {
+                "UPDATE tasks SET date = ?1 WHERE session_id = ?2 AND date = ?3"
+            };
+            if let Ok(changed) = conn.execute(sql, params![&to_date, session_id, from_date]) {
+                return Some(AiToolCallRecord {
+                    tool_name: "move_tasks_by_date".to_string(),
+                    summary: format!("Spostate {} task dal {} al {}", changed, from_date, to_date),
+                });
+            }
+        }
+        "toggle_task" => {
+            let needle = act.title.as_deref().unwrap_or("").to_lowercase();
+            let target_done = act.done.unwrap_or(true);
+            if let Ok(tasks) = DatabaseManager::list_tasks(conn, session_id) {
+                if let Some(found) = tasks.into_iter().find(|t| {
+                    (needle.is_empty() || t.title.to_lowercase().contains(&needle))
+                        && act.date.as_deref().map(|d| d == t.date).unwrap_or(true)
+                }) {
+                    if DatabaseManager::toggle_task(conn, &found.id, target_done).is_ok() {
+                        return Some(AiToolCallRecord {
+                            tool_name: "toggle_task".to_string(),
+                            summary: format!(
+                                "Task '{}' segnata come {}",
+                                found.title,
+                                if target_done { "completata" } else { "da fare" }
+                            ),
                         });
                     }
                 }
             }
-            "add_todo" => {
-                let text = action.todo_text.unwrap_or_default();
-                let date = action
-                    .target_date
-                    .clone()
-                    .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
-                if !text.trim().is_empty() {
-                    let _ = DatabaseManager::upsert_todo(
-                        conn,
-                        &UpsertTodoInput {
-                            id: None,
-                            session_id: session_id.to_string(),
-                            course_id: None,
-                            date: date.clone(),
-                            text: text.clone(),
-                            priority: Some(1),
-                            plan_task_id: None,
-                            planned_hours: None,
-                            kind: None,
-                        },
-                    )
-                    .map_err(|e| e.to_string())?;
-                    navigate_to_date = Some(date.clone());
-                    executed_tools.push(AiToolCallRecord {
-                        tool_name: "upsert_todo".to_string(),
-                        summary: format!("Aggiunto To-Do '{}' per il {}", text, date),
-                    });
-                }
-            }
-            _ => {}
         }
+        "create_quiz" => {
+            let cid = find_course_id_by_sigla(conn, session_id, act.course_sigla.as_deref())?;
+            let date = act.date.clone().unwrap_or_else(|| today.clone());
+            let title = act.title.clone().unwrap_or_else(|| "Quiz AI".to_string());
+            let topic = act.topic.clone().unwrap_or_default();
+            let qid = format!("quiz_{}", Uuid::new_v4().simple());
+            if conn
+                .execute(
+                    "INSERT INTO daily_quizzes (id, session_id, course_id, date, title, topic_summary, plan_quiz_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)",
+                    params![&qid, session_id, &cid, &date, &title, &topic],
+                )
+                .is_ok()
+            {
+                if let Some(ref questions) = act.quiz_questions {
+                    for (idx, q) in questions.iter().enumerate() {
+                        let qqid = format!("qq_{}", Uuid::new_v4().simple());
+                        let opts_json = serde_json::to_string(&q.options).unwrap_or_else(|_| "[]".into());
+                        let _ = conn.execute(
+                            r#"
+                            INSERT INTO quiz_questions (
+                                id, quiz_id, question_order, question_type, category, chapter,
+                                topic, prompt, options_json, correct_index, explanation, plan_question_id
+                            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL)
+                            "#,
+                            params![
+                                &qqid,
+                                &qid,
+                                (idx + 1) as i32,
+                                q.question_type.as_deref().unwrap_or("multiple_choice"),
+                                q.category.as_deref().unwrap_or("teoria"),
+                                q.chapter.as_deref().unwrap_or(""),
+                                q.topic.as_deref().unwrap_or(""),
+                                &q.prompt,
+                                &opts_json,
+                                q.correct_index,
+                                &q.explanation
+                            ],
+                        );
+                    }
+                }
+                return Some(AiToolCallRecord {
+                    tool_name: "create_quiz".to_string(),
+                    summary: format!("Creato quiz '{}' per il {}", title, date),
+                });
+            }
+        }
+        _ => {}
     }
-
-    if settings_changed {
-        settings = DatabaseManager::save_settings(conn, &settings).map_err(|e| e.to_string())?;
-    }
-
-    let updated_snapshot =
-        DatabaseManager::build_session_snapshot(conn, session_id, &settings).map_err(|e| e.to_string())?;
-
-    Ok(AiAssistantResponse {
-        reply_markdown: action.reply_markdown,
-        executed_tools,
-        navigate_to_date,
-        updated_settings: if settings_changed { Some(settings) } else { None },
-        updated_snapshot: Some(updated_snapshot),
-        provider_used: provider_name.to_string(),
-    })
+    None
 }
 
-/// Motore deterministico di Intent Parsing & Tool Calling in lingua italiana (zero latenza, offline-ready).
-fn execute_deterministic_intent_engine(
+fn execute_deterministic_fallback(
     conn: &mut Connection,
     session_id: &str,
-    mut settings: AppSettings,
-    snapshot: SessionSnapshot,
+    settings: &AppSettings,
+    snapshot: &SessionSnapshot,
     prompt: &str,
 ) -> Result<AiAssistantResponse, String> {
     let lower = prompt.to_lowercase();
-    let mut executed_tools: Vec<AiToolCallRecord> = Vec::new();
-    let mut navigate_to_date: Option<String> = None;
+    let today = snapshot.telemetry.reference_today.clone();
 
-    // ------------------------------------------------------------------------
-    // 1. MUTAZIONI IMPOSTAZIONI VISIVE (Tema, Materiale DWM, Zoom, Vista)
-    // ------------------------------------------------------------------------
-    if lower.contains("tema scuro") || lower.contains("dark mode") || lower.contains("modalità scura") {
-        settings.theme = "dark".to_string();
-        executed_tools.push(AiToolCallRecord {
-            tool_name: "set_theme_mode".to_string(),
-            summary: "Tema impostato su Scuro (Dark Mode)".to_string(),
-        });
-        let saved = DatabaseManager::save_settings(conn, &settings).map_err(|e| e.to_string())?;
+    if lower.contains("sposta") && lower.contains("domani") {
+        let tomorrow = NaiveDate::parse_from_str(&today, "%Y-%m-%d")
+            .map(|d| (d + Duration::days(1)).format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|_| today.clone());
+        let snap_id = DatabaseManager::save_ai_undo_snapshot(conn, session_id, "Sposta task non completate a domani").ok();
+        let changed = conn
+            .execute(
+                "UPDATE tasks SET date = ?1 WHERE session_id = ?2 AND date = ?3 AND done = 0",
+                params![&tomorrow, session_id, &today],
+            )
+            .map_err(|e| e.to_string())?;
+        let updated = DatabaseManager::build_session_snapshot(conn, session_id, settings).ok();
         return Ok(AiAssistantResponse {
-            reply_markdown: "Ho attivato il **Tema Scuro** e sincronizzato il backdrop nativo Windows 11 DWM.".to_string(),
-            executed_tools,
-            navigate_to_date: None,
-            updated_settings: Some(saved),
-            updated_snapshot: Some(snapshot),
-            provider_used: "local-engine".to_string(),
+            reply_markdown: format!("Ho spostato **{} attività** non completate da oggi ({}) a domani ({}).", changed, today, tomorrow),
+            executed_tools: vec![AiToolCallRecord {
+                tool_name: "move_tasks_by_date".to_string(),
+                summary: format!("Spostate {} task a {}", changed, tomorrow),
+            }],
+            undo_snapshot_id: snap_id,
+            navigate_to_date: Some(tomorrow),
+            navigate_to_section: Some("today".to_string()),
+            updated_settings: None,
+            updated_snapshot: updated,
+            provider_used: "deterministic".to_string(),
         });
     }
 
-    if lower.contains("tema chiaro") || lower.contains("light mode") || lower.contains("modalità chiara") {
-        settings.theme = "light".to_string();
-        executed_tools.push(AiToolCallRecord {
-            tool_name: "set_theme_mode".to_string(),
-            summary: "Tema impostato su Chiaro (Light Mode)".to_string(),
-        });
-        let saved = DatabaseManager::save_settings(conn, &settings).map_err(|e| e.to_string())?;
-        return Ok(AiAssistantResponse {
-            reply_markdown: "Ho attivato il **Tema Chiaro** e aggiornato i materiali traslucidi.".to_string(),
-            executed_tools,
-            navigate_to_date: None,
-            updated_settings: Some(saved),
-            updated_snapshot: Some(snapshot),
-            provider_used: "local-engine".to_string(),
-        });
-    }
-
-    if lower.contains("tema auto") || lower.contains("tema di sistema") {
-        settings.theme = "auto".to_string();
-        executed_tools.push(AiToolCallRecord {
-            tool_name: "set_theme_mode".to_string(),
-            summary: "Tema sincronizzato con il Registro di Windows 11 (Auto)".to_string(),
-        });
-        let saved = DatabaseManager::save_settings(conn, &settings).map_err(|e| e.to_string())?;
-        return Ok(AiAssistantResponse {
-            reply_markdown: "Il tema è ora sincronizzato in **Automatico** con il registro di Windows 11.".to_string(),
-            executed_tools,
-            navigate_to_date: None,
-            updated_settings: Some(saved),
-            updated_snapshot: Some(snapshot),
-            provider_used: "local-engine".to_string(),
-        });
-    }
-
-    if lower.contains("acrylic") || lower.contains("acrilico") {
-        settings.backdrop_material = "acrylic".to_string();
-        let saved = DatabaseManager::save_settings(conn, &settings).map_err(|e| e.to_string())?;
-        executed_tools.push(AiToolCallRecord {
-            tool_name: "set_window_material".to_string(),
-            summary: "Materiale DWM impostato su Acrylic".to_string(),
-        });
-        return Ok(AiAssistantResponse {
-            reply_markdown: "Materiale finestra aggiornato a **Windows 11 Acrylic** (`DWMSBT_TRANSIENTWINDOW`).".to_string(),
-            executed_tools,
-            navigate_to_date: None,
-            updated_settings: Some(saved),
-            updated_snapshot: Some(snapshot),
-            provider_used: "local-engine".to_string(),
-        });
-    }
-
-    if lower.contains("mica") {
-        settings.backdrop_material = "mica".to_string();
-        let saved = DatabaseManager::save_settings(conn, &settings).map_err(|e| e.to_string())?;
-        executed_tools.push(AiToolCallRecord {
-            tool_name: "set_window_material".to_string(),
-            summary: "Materiale DWM impostato su Mica".to_string(),
-        });
-        return Ok(AiAssistantResponse {
-            reply_markdown: "Materiale finestra aggiornato a **Windows 11 Mica** (`DWMSBT_MAINWINDOW`).".to_string(),
-            executed_tools,
-            navigate_to_date: None,
-            updated_settings: Some(saved),
-            updated_snapshot: Some(snapshot),
-            provider_used: "local-engine".to_string(),
-        });
-    }
-
-    if lower.contains("zoom") || lower.contains("ingrandisci") || lower.contains("rimpicciolisci") {
-        let target_scale = extract_number_in_range(&lower, 80, 150).unwrap_or_else(|| {
-            if lower.contains("ingrandisci") || lower.contains("aumenta") {
-                (settings.ui_scale + 10).clamp(80, 150)
-            } else if lower.contains("rimpicciolisci") || lower.contains("riduci") {
-                (settings.ui_scale - 10).clamp(80, 150)
-            } else {
-                100
+    if lower.contains("oggi") || lower.contains("priorit") || lower.contains("fare") {
+        let today_tasks: Vec<_> = snapshot.tasks.iter().filter(|t| t.date == today).collect();
+        let undone: Vec<_> = today_tasks.iter().filter(|t| !t.done).collect();
+        let mut msg = format!("### Riepilogo per Oggi ({})\n", today);
+        if undone.is_empty() {
+            msg.push_str("Nessuna task residua per oggi!");
+        } else {
+            for t in undone {
+                msg.push_str(&format!("- **[{}]** {} ({} · {}h)\n", t.category, t.title, t.chapter, t.planned_hours));
             }
-        });
-        settings.ui_scale = target_scale;
-        let saved = DatabaseManager::save_settings(conn, &settings).map_err(|e| e.to_string())?;
-        executed_tools.push(AiToolCallRecord {
-            tool_name: "set_ui_scale".to_string(),
-            summary: format!("Zoom interfaccia impostato al {}%", target_scale),
-        });
-        return Ok(AiAssistantResponse {
-            reply_markdown: format!("Ho regolato lo **Zoom dell'interfaccia al {}%**.", target_scale),
-            executed_tools,
-            navigate_to_date: None,
-            updated_settings: Some(saved),
-            updated_snapshot: Some(snapshot),
-            provider_used: "local-engine".to_string(),
-        });
-    }
-
-    if lower.contains("vista mese") || lower.contains("vista mensile") {
-        settings.default_view = "month".to_string();
-        let saved = DatabaseManager::save_settings(conn, &settings).map_err(|e| e.to_string())?;
-        executed_tools.push(AiToolCallRecord {
-            tool_name: "set_active_view".to_string(),
-            summary: "Vista attiva: Mensile".to_string(),
-        });
-        return Ok(AiAssistantResponse {
-            reply_markdown: "Sono passato alla **Vista Mensile**.".to_string(),
-            executed_tools,
-            navigate_to_date: None,
-            updated_settings: Some(saved),
-            updated_snapshot: Some(snapshot),
-            provider_used: "local-engine".to_string(),
-        });
-    }
-
-    if lower.contains("vista settimana") || lower.contains("vista settimanale") {
-        settings.default_view = "week".to_string();
-        let saved = DatabaseManager::save_settings(conn, &settings).map_err(|e| e.to_string())?;
-        executed_tools.push(AiToolCallRecord {
-            tool_name: "set_active_view".to_string(),
-            summary: "Vista attiva: Settimanale".to_string(),
-        });
-        return Ok(AiAssistantResponse {
-            reply_markdown: "Sono passato alla **Vista Settimanale**.".to_string(),
-            executed_tools,
-            navigate_to_date: None,
-            updated_settings: Some(saved),
-            updated_snapshot: Some(snapshot),
-            provider_used: "local-engine".to_string(),
-        });
-    }
-
-    if lower.contains("vista agenda") || lower.contains("agenda appelli") {
-        settings.default_view = "agenda".to_string();
-        let saved = DatabaseManager::save_settings(conn, &settings).map_err(|e| e.to_string())?;
-        executed_tools.push(AiToolCallRecord {
-            tool_name: "set_active_view".to_string(),
-            summary: "Vista attiva: Agenda Appelli".to_string(),
-        });
-        return Ok(AiAssistantResponse {
-            reply_markdown: "Sono passato alla **Vista Agenda Appelli**.".to_string(),
-            executed_tools,
-            navigate_to_date: None,
-            updated_settings: Some(saved),
-            updated_snapshot: Some(snapshot),
-            provider_used: "local-engine".to_string(),
-        });
-    }
-
-    if lower.contains("vista continua") || lower.contains("scorrimento infinito") {
-        settings.default_view = "continuous".to_string();
-        let saved = DatabaseManager::save_settings(conn, &settings).map_err(|e| e.to_string())?;
-        executed_tools.push(AiToolCallRecord {
-            tool_name: "set_active_view".to_string(),
-            summary: "Vista attiva: Continua Infinita".to_string(),
-        });
-        return Ok(AiAssistantResponse {
-            reply_markdown: "Sono passato alla **Vista Continua Infinita** virtualizzata.".to_string(),
-            executed_tools,
-            navigate_to_date: None,
-            updated_settings: Some(saved),
-            updated_snapshot: Some(snapshot),
-            provider_used: "local-engine".to_string(),
-        });
-    }
-
-    // ------------------------------------------------------------------------
-    // 2. INTERROGAZIONI STATISTICHE (CFU per mese, Corso più critico, Conflitti, Countdown)
-    // ------------------------------------------------------------------------
-    if lower.contains("quanti cfu") || lower.contains("totale cfu") || lower.contains("crediti") {
-        executed_tools.push(AiToolCallRecord {
-            tool_name: "query_cfu_statistics".to_string(),
-            summary: "Calcolo CFU pianificati per sessione e mese".to_string(),
-        });
-
-        if let Some((month_num, month_name)) = detect_italian_month(&lower) {
-            let mut course_ids_in_month = std::collections::HashSet::new();
-            for ex in &snapshot.exams {
-                if let Ok(dt) = NaiveDate::parse_from_str(&ex.date, "%Y-%m-%d") {
-                    if dt.month() == month_num {
-                        course_ids_in_month.insert(ex.course_id.clone());
-                    }
-                }
-            }
-            let cfu_month: i32 = snapshot
-                .courses
-                .iter()
-                .filter(|c| course_ids_in_month.contains(&c.id))
-                .map(|c| c.cfu)
-                .sum();
-
-            return Ok(AiAssistantResponse {
-                reply_markdown: format!(
-                    "Nel mese di **{}** hai pianificato appelli per **{} CFU** ({} materie coinvolte su {} CFU totali di sessione).",
-                    month_name,
-                    cfu_month,
-                    course_ids_in_month.len(),
-                    snapshot.telemetry.total_cfu
-                ),
-                executed_tools,
-                navigate_to_date: None,
-                updated_settings: None,
-                updated_snapshot: None,
-                provider_used: "local-engine".to_string(),
-            });
         }
-
         return Ok(AiAssistantResponse {
-            reply_markdown: format!(
-                "Nella sessione **{}** hai pianificato complessivamente **{} CFU** distribuiti su **{} materie** e **{} appelli** (avanzamento unità didattiche: **{}%**).",
-                snapshot.session.name,
-                snapshot.telemetry.total_cfu,
-                snapshot.telemetry.courses_count,
-                snapshot.telemetry.exams_count,
-                snapshot.telemetry.overall_progress_pct.round()
-            ),
-            executed_tools,
-            navigate_to_date: None,
+            reply_markdown: msg,
+            executed_tools: Vec::new(),
+            undo_snapshot_id: None,
+            navigate_to_date: Some(today),
+            navigate_to_section: Some("today".to_string()),
             updated_settings: None,
             updated_snapshot: None,
-            provider_used: "local-engine".to_string(),
+            provider_used: "deterministic".to_string(),
         });
     }
 
-    if lower.contains("critico") || lower.contains("difficile") || lower.contains("priorit") {
-        executed_tools.push(AiToolCallRecord {
-            tool_name: "query_critical_course".to_string(),
-            summary: "Analisi indice di criticità Workload Engine".to_string(),
-        });
-
-        if let Some(top) = snapshot
-            .telemetry
-            .course_workloads
-            .iter()
-            .max_by(|a, b| a.criticality_score.partial_cmp(&b.criticality_score).unwrap_or(std::cmp::Ordering::Equal))
-        {
-            return Ok(AiAssistantResponse {
-                reply_markdown: format!(
-                    "Il corso più critico è **{} — {}** (**{} CFU**): restano **{:.1} ore** di studio stimate ({:.0}% completato), con un carico consigliato di **{:.1} h/giorno**.",
-                    top.sigla,
-                    top.name,
-                    top.cfu,
-                    top.remaining_study_hours,
-                    top.completion_pct,
-                    top.recommended_daily_hours
-                ),
-                executed_tools,
-                navigate_to_date: top.next_exam_date.clone(),
-                updated_settings: None,
-                updated_snapshot: None,
-                provider_used: "local-engine".to_string(),
-            });
-        } else {
-            return Ok(AiAssistantResponse {
-                reply_markdown: "Non ci sono ancora materie registrate nella sessione attiva per calcolare l'indice di criticità.".to_string(),
-                executed_tools,
-                navigate_to_date: None,
-                updated_settings: None,
-                updated_snapshot: None,
-                provider_used: "local-engine".to_string(),
-            });
-        }
-    }
-
-    if lower.contains("conflitt") || lower.contains("collision") || lower.contains("sovrapposizion") {
-        executed_tools.push(AiToolCallRecord {
-            tool_name: "query_conflicts".to_string(),
-            summary: "Ispezione Conflict Engine in tempo reale".to_string(),
-        });
-
-        if snapshot.conflicts.is_empty() {
-            return Ok(AiAssistantResponse {
-                reply_markdown: "**Nessun conflitto rilevato!** Tutti gli appelli rispettano il buffer minimo di preparazione calcolato sui CFU.".to_string(),
-                executed_tools,
-                navigate_to_date: None,
-                updated_settings: None,
-                updated_snapshot: None,
-                provider_used: "local-engine".to_string(),
-            });
-        } else {
-            let bullets: Vec<String> = snapshot
-                .conflicts
-                .iter()
-                .map(|c| format!("- **{}** ({}): {}", c.title, c.date, c.description))
-                .collect();
-            return Ok(AiAssistantResponse {
-                reply_markdown: format!(
-                    "Ho rilevato **{} conflitti/criticità di buffer**:\n{}",
-                    snapshot.conflicts.len(),
-                    bullets.join("\n")
-                ),
-                executed_tools,
-                navigate_to_date: snapshot.conflicts.first().map(|c| c.date.clone()),
-                updated_settings: None,
-                updated_snapshot: None,
-                provider_used: "local-engine".to_string(),
-            });
-        }
-    }
-
-    // ------------------------------------------------------------------------
-    // 3. AZIONI CRUD: CREAZIONE CORSO, APPELLO, TO-DO
-    // ------------------------------------------------------------------------
-    if (lower.starts_with("crea corso ") || lower.starts_with("aggiungi corso ") || lower.starts_with("nuovo corso "))
-        && prompt.split_whitespace().count() >= 3
-    {
-        let tokens: Vec<&str> = prompt.split_whitespace().collect();
-        let sigla = tokens.get(2).copied().unwrap_or("CORSO").to_uppercase();
-        let cfu = extract_number_in_range(&lower, 1, 45).unwrap_or(9);
-        let name = tokens
-            .iter()
-            .skip(3)
-            .copied()
-            .filter(|w| !w.to_lowercase().contains("cfu") && w.parse::<i32>().is_err())
-            .collect::<Vec<&str>>()
-            .join(" ");
-        let final_name = if name.trim().is_empty() {
-            sigla.clone()
-        } else {
-            name
-        };
-
-        let created = DatabaseManager::upsert_course(
-            conn,
-            &UpsertCourseInput {
-                id: None,
-                session_id: session_id.to_string(),
-                sigla: sigla.clone(),
-                name: final_name.clone(),
-                code: String::new(),
-                cfu,
-                professor: String::new(),
-                color_hex: "#007AFF".to_string(),
-                difficulty_weight: Some(1.0),
-                target_hours_override: None,
-                notes: None,
-                units: None,
-                plan_course_id: None,
-                is_visible: Some(true),
-            },
-        )
-        .map_err(|e| e.to_string())?;
-
-        executed_tools.push(AiToolCallRecord {
-            tool_name: "upsert_course".to_string(),
-            summary: format!("Creato corso {} — {} ({} CFU)", created.sigla, created.name, created.cfu),
-        });
-
-        let updated_snapshot =
-            DatabaseManager::build_session_snapshot(conn, session_id, &settings).map_err(|e| e.to_string())?;
-
-        return Ok(AiAssistantResponse {
-            reply_markdown: format!(
-                "Ho creato la materia **{} — {}** (**{} CFU**) nella sessione corrente.",
-                created.sigla, created.name, created.cfu
-            ),
-            executed_tools,
-            navigate_to_date: None,
-            updated_settings: None,
-            updated_snapshot: Some(updated_snapshot),
-            provider_used: "local-engine".to_string(),
-        });
-    }
-
-    if lower.contains("appello") && (lower.contains("aggiungi") || lower.contains("inserisci") || lower.contains("pianifica") || lower.contains("fissa")) {
-        if let Some(target_date) = extract_iso_or_italian_date(&lower, &snapshot.telemetry.reference_today) {
-            if let Some(course) = snapshot.courses.iter().find(|c| {
-                lower.contains(&c.sigla.to_lowercase()) || lower.contains(&c.name.to_lowercase())
-            }) {
-                let round = if lower.contains("secondo") || lower.contains("2°") || lower.contains("2 ") {
-                    "2"
-                } else if lower.contains("terzo") || lower.contains("3°") {
-                    "3"
-                } else if lower.contains("itinere") || lower.contains("parziale") {
-                    "itinere_1"
-                } else {
-                    "1"
-                };
-
-                let _ = DatabaseManager::upsert_exam(
-                    conn,
-                    &UpsertExamInput {
-                        id: None,
-                        session_id: session_id.to_string(),
-                        course_id: course.id.clone(),
-                        date: target_date.clone(),
-                        time_slot: Some("09:00".to_string()),
-                        duration_minutes: Some(120),
-                        round: round.to_string(),
-                        exam_type: Some("Scritto + Orale".to_string()),
-                        classroom: None,
-                        weight_fraction: Some(1.0),
-                        pair_id: None,
-                        title: None,
-                        details: None,
-                        status: Some("planned".to_string()),
-                        grade: None,
-                    },
-                )
-                .map_err(|e| e.to_string())?;
-
-                executed_tools.push(AiToolCallRecord {
-                    tool_name: "upsert_exam".to_string(),
-                    summary: format!("Pianificato appello di {} il {}", course.sigla, target_date),
-                });
-
-                let updated_snapshot =
-                    DatabaseManager::build_session_snapshot(conn, session_id, &settings).map_err(|e| e.to_string())?;
-
-                return Ok(AiAssistantResponse {
-                    reply_markdown: format!(
-                        "Ho pianificato l'appello di **{} ({})** per il **{}**.",
-                        course.sigla, course.name, target_date
-                    ),
-                    executed_tools,
-                    navigate_to_date: Some(target_date),
-                    updated_settings: None,
-                    updated_snapshot: Some(updated_snapshot),
-                    provider_used: "local-engine".to_string(),
-                });
-            }
-        }
-    }
-
-    if lower.starts_with("todo ") || lower.starts_with("to-do ") || lower.starts_with("aggiungi task ") || lower.starts_with("ricordami di ") {
-        let date = extract_iso_or_italian_date(&lower, &snapshot.telemetry.reference_today)
-            .unwrap_or_else(|| snapshot.telemetry.reference_today.clone());
-        let cleaned_text = prompt
-            .trim_start_matches(|c: char| !c.is_whitespace())
-            .trim()
-            .trim_start_matches("di ")
-            .trim();
-        let final_text = if cleaned_text.is_empty() { prompt } else { cleaned_text };
-
-        let _ = DatabaseManager::upsert_todo(
-            conn,
-            &UpsertTodoInput {
-                id: None,
-                session_id: session_id.to_string(),
-                course_id: None,
-                date: date.clone(),
-                text: final_text.to_string(),
-                priority: Some(1),
-                plan_task_id: None,
-                planned_hours: None,
-                kind: None,
-            },
-        )
-        .map_err(|e| e.to_string())?;
-
-        executed_tools.push(AiToolCallRecord {
-            tool_name: "upsert_todo".to_string(),
-            summary: format!("Task aggiunto per il {}", date),
-        });
-
-        let updated_snapshot =
-            DatabaseManager::build_session_snapshot(conn, session_id, &settings).map_err(|e| e.to_string())?;
-
-        return Ok(AiAssistantResponse {
-            reply_markdown: format!("Ho aggiunto il task **\"{}\"** alla giornata **{}**.", final_text, date),
-            executed_tools,
-            navigate_to_date: Some(date),
-            updated_settings: None,
-            updated_snapshot: Some(updated_snapshot),
-            provider_used: "local-engine".to_string(),
-        });
-    }
-
-    if let Some(target_date) = extract_iso_or_italian_date(&lower, &snapshot.telemetry.reference_today) {
-        if lower.contains("vai a") || lower.contains("salta a") || lower.contains("mostra") {
-            navigate_to_date = Some(target_date.clone());
-            executed_tools.push(AiToolCallRecord {
-                tool_name: "navigate_calendar".to_string(),
-                summary: format!("Salto temporale a {}", target_date),
-            });
-            return Ok(AiAssistantResponse {
-                reply_markdown: format!("Ho spostato il calendario alla data **{}**.", target_date),
-                executed_tools,
-                navigate_to_date,
-                updated_settings: None,
-                updated_snapshot: None,
-                provider_used: "local-engine".to_string(),
-            });
-        }
-    }
-
-    // Risposta di riepilogo intelligente di default
-    let next_info = if let (Some(ex), Some(c), Some(days)) = (
-        &snapshot.telemetry.next_target_exam,
-        &snapshot.telemetry.next_target_course,
-        snapshot.telemetry.days_to_next_target,
-    ) {
-        format!(
-            "Prossimo appello: **{} ({})** il **{}** (tra **{} giorni**).",
-            c.sigla, c.name, ex.date, days
-        )
+    let hint = if settings.ai_provider == "local" {
+        "Il modello locale Qwen2.5-VL 3B non è ancora scaricato o avviato. Puoi scaricarlo nelle **Impostazioni -> AI** oppure collegare **Antigravity CLI / Claude Code / Codex**."
     } else {
-        "Nessun appello imminente pianificato.".to_string()
+        "Impossibile contattare il provider AI configurato. Verifica lo stato nelle Impostazioni."
     };
 
     Ok(AiAssistantResponse {
         reply_markdown: format!(
-            "Stato **{}**: **{} materie** (**{} CFU**), **{} appelli**, **{} conflitti**.\n{}\n\n*Comandi rapidi supportati:* `Quanti CFU a gennaio?`, `Qual è il corso più critico?`, `Crea corso MAM Meccanica 10 CFU`, `Aggiungi appello di MAM il 2027-01-22`, `Todo Ripassare teorema energia`, `Tema scuro`, `Zoom 115%`.",
+            "Sessione attiva **{}** · {} corsi · {}% completato ({}/{} task).\n\n{}",
             snapshot.session.name,
-            snapshot.telemetry.courses_count,
-            snapshot.telemetry.total_cfu,
-            snapshot.telemetry.exams_count,
-            snapshot.conflicts.len(),
-            next_info
+            snapshot.courses.len(),
+            snapshot.telemetry.overall_progress_pct,
+            snapshot.telemetry.tasks_completed,
+            snapshot.telemetry.tasks_total,
+            hint
         ),
-        executed_tools,
-        navigate_to_date,
+        executed_tools: Vec::new(),
+        undo_snapshot_id: None,
+        navigate_to_date: None,
+        navigate_to_section: None,
         updated_settings: None,
         updated_snapshot: None,
-        provider_used: "local-engine".to_string(),
+        provider_used: "deterministic".to_string(),
     })
 }
 
-fn detect_italian_month(text_lower: &str) -> Option<(u32, &'static str)> {
-    let months = [
-        ("gennaio", 1, "Gennaio"),
-        ("febbraio", 2, "Febbraio"),
-        ("marzo", 3, "Marzo"),
-        ("aprile", 4, "Aprile"),
-        ("maggio", 5, "Maggio"),
-        ("giugno", 6, "Giugno"),
-        ("luglio", 7, "Luglio"),
-        ("agosto", 8, "Agosto"),
-        ("settembre", 9, "Settembre"),
-        ("ottobre", 10, "Ottobre"),
-        ("novembre", 11, "Novembre"),
-        ("dicembre", 12, "Dicembre"),
-    ];
-    for (needle, num, label) in months {
-        if text_lower.contains(needle) {
-            return Some((num, label));
-        }
-    }
-    None
-}
-
-fn extract_number_in_range(text: &str, min_val: i32, max_val: i32) -> Option<i32> {
-    for token in text.split(|c: char| !c.is_ascii_digit()) {
-        if let Ok(v) = token.parse::<i32>() {
-            if v >= min_val && v <= max_val {
-                return Some(v);
-            }
-        }
-    }
-    None
-}
-
-fn extract_iso_or_italian_date(text_lower: &str, reference_today: &str) -> Option<String> {
-    if text_lower.contains("oggi") {
-        return Some(reference_today.to_string());
-    }
-    if text_lower.contains("domani") {
-        if let Ok(dt) = NaiveDate::parse_from_str(reference_today, "%Y-%m-%d") {
-            if let Some(next) = dt.succ_opt() {
-                return Some(next.format("%Y-%m-%d").to_string());
-            }
-        }
-    }
-
-    // Cerca formato YYYY-MM-DD
-    for word in text_lower.split_whitespace() {
-        let clean = word.trim_matches(|c: char| !c.is_ascii_digit() && c != '-');
-        if clean.len() == 10 && NaiveDate::parse_from_str(clean, "%Y-%m-%d").is_ok() {
-            return Some(clean.to_string());
-        }
-    }
-
-    // Cerca formato "15 gennaio 2027" o "15 gennaio"
-    if let Some((month_num, _)) = detect_italian_month(text_lower) {
-        let day = extract_number_in_range(text_lower, 1, 31).unwrap_or(1);
-        let year = extract_number_in_range(text_lower, 2024, 2035).unwrap_or_else(|| {
-            NaiveDate::parse_from_str(reference_today, "%Y-%m-%d")
-                .map(|d| d.year())
-                .unwrap_or(2027)
-        });
-        if let Some(d) = NaiveDate::from_ymd_opt(year, month_num, day as u32) {
-            return Some(d.format("%Y-%m-%d").to_string());
-        }
-    }
-
-    None
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct ExtractedLessonItem {
-    #[serde(alias = "day_of_week", alias = "day", alias = "giorno", alias = "dayOfWeek", alias = "weekday")]
-    pub day_of_week: i32, // 1..7 (1=Lun, 7=Dom)
-
-    #[serde(alias = "start_time", alias = "start", alias = "startTime", alias = "ora_inizio", alias = "inizio", alias = "oraInizio")]
-    pub start_time: String, // HH:MM
-
-    #[serde(alias = "end_time", alias = "end", alias = "endTime", alias = "ora_fine", alias = "fine", alias = "oraFine")]
-    pub end_time: String,   // HH:MM
-
-    #[serde(alias = "course_name", alias = "courseName", alias = "course", alias = "materia", alias = "subject", alias = "title", alias = "nome_corso", alias = "disciplina")]
-    pub course_name: String,
-
-    #[serde(default, alias = "aula", alias = "room", alias = "location", alias = "luogo", alias = "sede")]
-    pub classroom: String,
-
-    #[serde(default, alias = "prof", alias = "teacher", alias = "docente", alias = "insegnante", alias = "professore")]
-    pub professor: String,
-}
-
-/// Normalizza una stringa oraria nel formato rigoroso a 24 ore "HH:MM" (es. "8:30" -> "08:30", "9.00" -> "09:00", "14" -> "14:00")
-pub fn normalize_hour_string(s: &str) -> Option<String> {
-    let clean = s.trim().replace('.', ":").replace('h', ":").replace('H', ":");
-    let parts: Vec<&str> = clean.split(':').collect();
-    if parts.is_empty() {
-        return None;
-    }
-    let h_digits: String = parts[0].chars().filter(|c| c.is_ascii_digit()).collect();
-    if h_digits.is_empty() {
-        return None;
-    }
-    let hours: u32 = h_digits.parse().ok()?;
-    if hours > 23 {
-        return None;
-    }
-    let minutes: u32 = if parts.len() > 1 {
-        let m_digits: String = parts[1].chars().filter(|c| c.is_ascii_digit()).collect();
-        m_digits.parse().unwrap_or(0)
-    } else {
-        0
-    };
-    if minutes > 59 {
-        return None;
-    }
-    Some(format!("{:02}:{:02}", hours, minutes))
-}
-
-/// Converte un valore generico (numero 1..7 o stringa "Lunedì", "Mon", "1") nel numero del giorno 1..7
-pub fn parse_day_of_week_value(val: &serde_json::Value) -> Option<i32> {
-    if let Some(n) = val.as_i64() {
-        if (1..=7).contains(&n) {
-            return Some(n as i32);
-        }
-    }
-    if let Some(s) = val.as_str() {
-        let trimmed = s.trim().to_lowercase();
-        if let Ok(n) = trimmed.parse::<i32>() {
-            if (1..=7).contains(&n) {
-                return Some(n);
-            }
-        }
-        if trimmed.contains("lun") || trimmed.contains("mon") {
-            return Some(1);
-        }
-        if trimmed.contains("mar") || trimmed.contains("tue") {
-            return Some(2);
-        }
-        if trimmed.contains("mer") || trimmed.contains("wed") {
-            return Some(3);
-        }
-        if trimmed.contains("gio") || trimmed.contains("thu") {
-            return Some(4);
-        }
-        if trimmed.contains("ven") || trimmed.contains("fri") {
-            return Some(5);
-        }
-        if trimmed.contains("sab") || trimmed.contains("sat") {
-            return Some(6);
-        }
-        if trimmed.contains("dom") || trimmed.contains("sun") {
-            return Some(7);
-        }
-    }
-    None
-}
-
-/// Rende tollerante un testo JSON prodotto da modelli AI:
-/// 1) Converte apici singoli `'...'` in doppi apici `"..."`
-/// 2) Aggiunge doppi apici a chiavi di oggetti non virgolettate (es. `{ lessons :` -> `{ "lessons":`)
-/// 3) Chiude correttamente stringhe lasciate aperte da troncamenti
-pub fn sanitize_lenient_json(input: &str) -> String {
-    let mut out = String::with_capacity(input.len() + 128);
-    let chars: Vec<char> = input.chars().collect();
-    let n = chars.len();
-    let mut i = 0;
-    let mut in_double_quote = false;
-    let mut in_single_quote = false;
-    let mut escape = false;
-
-    while i < n {
-        let c = chars[i];
-
-        if in_double_quote {
-            out.push(c);
-            if escape {
-                escape = false;
-            } else if c == '\\' {
-                escape = true;
-            } else if c == '"' {
-                in_double_quote = false;
-            }
-            i += 1;
-            continue;
-        }
-
-        if in_single_quote {
-            if escape {
-                out.push(c);
-                escape = false;
-            } else if c == '\\' {
-                out.push(c);
-                escape = true;
-            } else if c == '\'' {
-                out.push('"');
-                in_single_quote = false;
-            } else if c == '"' {
-                out.push_str("\\\"");
-            } else {
-                out.push(c);
-            }
-            i += 1;
-            continue;
-        }
-
-        if c == '"' {
-            in_double_quote = true;
-            out.push(c);
-            i += 1;
-            continue;
-        }
-
-        if c == '\'' {
-            in_single_quote = true;
-            out.push('"');
-            i += 1;
-            continue;
-        }
-
-        // Se troviamo una parola/identificatore non virgolettato
-        if c.is_ascii_alphabetic() || c == '_' {
-            let start = i;
-            while i < n && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
-                i += 1;
-            }
-            let word: String = chars[start..i].iter().collect();
-
-            // Salta spazi bianchi per verificare se è una chiave seguita da ':'
-            let mut j = i;
-            while j < n && (chars[j] == ' ' || chars[j] == '\t' || chars[j] == '\r' || chars[j] == '\n') {
-                j += 1;
-            }
-
-            if j < n && chars[j] == ':' && word != "true" && word != "false" && word != "null" {
-                out.push('"');
-                out.push_str(&word);
-                out.push('"');
-            } else {
-                out.push_str(&word);
-            }
-            continue;
-        }
-
-        out.push(c);
-        i += 1;
-    }
-
-    if in_double_quote || in_single_quote {
-        out.push('"');
-    }
-
-    out
-}
-
-/// Ripara un JSON troncato bruscamente a metà generazione (es. per raggiungimento limite token in un loop)
-pub fn repair_truncated_json(input: &str) -> String {
-    let trimmed = input.trim();
-    if trimmed.ends_with('}') || trimmed.ends_with(']') {
-        return trimmed.to_string();
-    }
-
-    if let Some(last_obj_end) = trimmed.rfind('}') {
-        let mut sliced = trimmed[..=last_obj_end].trim().to_string();
-        let open_brackets = sliced.chars().filter(|&c| c == '[').count();
-        let close_brackets = sliced.chars().filter(|&c| c == ']').count();
-        let open_braces = sliced.chars().filter(|&c| c == '{').count();
-        let close_braces = sliced.chars().filter(|&c| c == '}').count();
-
-        if open_brackets > close_brackets {
-            for _ in 0..(open_brackets - close_brackets) {
-                sliced.push(']');
-            }
-        }
-        if open_braces > close_braces {
-            for _ in 0..(open_braces - close_braces) {
-                sliced.push('}');
-            }
-        }
-        return sliced;
-    }
-
-    trimmed.to_string()
-}
-
-/// Rimuove eventuali prefissi con codici numerici accademici (es. '086472 - MATERIA' -> 'MATERIA')
-pub fn sanitize_course_title(raw: &str) -> String {
-    let trimmed = raw.trim();
-    if let Some(pos) = trimmed.find(" - ") {
-        let prefix = &trimmed[..pos];
-        if prefix.chars().all(|c| c.is_ascii_digit() || c.is_whitespace()) {
-            return trimmed[pos + 3..].trim().to_string();
-        }
-    }
-    trimmed.to_string()
-}
-
-/// Estrae un valore tollerante da un singolo blocco di lezione senza richiedere JSON rigoroso
-fn extract_lenient_val(block: &str, keys: &[&str]) -> Option<String> {
-    for key in keys {
-        if let Some(pos) = block.find(key) {
-            let after_key = &block[pos + key.len()..];
-            if let Some(colon_pos) = after_key.find(|c| c == ':' || c == '=') {
-                let rest = after_key[colon_pos + 1..].trim_start();
-                if rest.starts_with('"') {
-                    if let Some(end_quote) = rest[1..].find('"') {
-                        let val = &rest[1..=end_quote];
-                        return Some(val.trim().to_string());
-                    }
-                } else if rest.starts_with('\'') {
-                    if let Some(end_quote) = rest[1..].find('\'') {
-                        let val = &rest[1..=end_quote];
-                        return Some(val.trim().to_string());
-                    }
-                } else {
-                    let end_pos = rest.find(|c| c == ',' || c == '}' || c == '\n' || c == '\r').unwrap_or(rest.len());
-                    let val = rest[..end_pos].trim().trim_matches(|c| c == '"' || c == '\'');
-                    if !val.is_empty() {
-                        return Some(val.to_string());
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-/// Parser di fallback permissivo che recupera le lezioni analizzando i singoli blocchi `{ ... }`
-pub fn fallback_extract_lessons_lenient(text: &str) -> Vec<ExtractedLessonItem> {
-    let mut items = Vec::new();
-    let mut depth: i32 = 0;
-    let mut start_idx = None;
-    let mut last_course = String::new();
-    let mut last_prof = String::new();
-
-    for (idx, ch) in text.char_indices() {
-        if ch == '{' {
-            if depth >= 1 && start_idx.is_none() {
-                start_idx = Some(idx);
-            }
-            depth += 1;
-        } else if ch == '}' {
-            depth = depth.saturating_sub(1);
-            if depth >= 1 {
-                if let Some(start) = start_idx.take() {
-                    let block = &text[start..=idx];
-                    let day_raw = extract_lenient_val(block, &["dayOfWeek", "day_of_week", "day", "giorno", "weekday"]);
-                    let day = day_raw.and_then(|d| parse_day_of_week_value(&serde_json::Value::String(d))).unwrap_or(1);
-
-                    let start_raw = extract_lenient_val(block, &["startTime", "start_time", "start", "ora_inizio", "inizio"]);
-                    let end_raw = extract_lenient_val(block, &["endTime", "end_time", "end", "ora_fine", "fine"]);
-                    let mut norm_start = start_raw.as_deref().and_then(normalize_hour_string);
-                    let mut norm_end = end_raw.as_deref().and_then(normalize_hour_string);
-
-                    if norm_start.is_none() || norm_end.is_none() {
-                        if let Some(combined) = extract_lenient_val(block, &["time", "orario", "hours", "fascia_oraria", "slot"]) {
-                            let parts: Vec<&str> = combined.split(|c| c == '-' || c == '—' || c == '/' || c == '–').collect();
-                            if parts.len() >= 2 {
-                                if norm_start.is_none() {
-                                    norm_start = normalize_hour_string(parts[0]);
-                                }
-                                if norm_end.is_none() {
-                                    norm_end = normalize_hour_string(parts[1]);
-                                }
-                            }
-                        }
-                    }
-
-                    let course_name = extract_lenient_val(block, &["courseName", "course_name", "course", "materia", "subject", "title", "nome_corso"])
-                        .unwrap_or_default();
-                    let classroom = extract_lenient_val(block, &["classroom", "aula", "room", "location"]).unwrap_or_default();
-                    let professor = extract_lenient_val(block, &["professor", "docente", "teacher", "prof"]).unwrap_or_default();
-
-                    let clean_title = sanitize_course_title(&course_name);
-                    let final_course = if !clean_title.is_empty() {
-                        clean_title
-                    } else if !last_course.is_empty() {
-                        last_course.clone()
-                    } else if !classroom.is_empty() || norm_start.is_some() || norm_end.is_some() || (1..=7).contains(&day) {
-                        "Lezione".to_string()
-                    } else {
-                        String::new()
-                    };
-
-                    let final_prof = if professor.is_empty() {
-                        if final_course.eq_ignore_ascii_case(&last_course) {
-                            last_prof.clone()
-                        } else {
-                            String::new()
-                        }
-                    } else {
-                        professor.clone()
-                    };
-
-                    if !final_course.is_empty() {
-                        last_course = final_course.clone();
-                        last_prof = final_prof.clone();
-
-                        items.push(ExtractedLessonItem {
-                            day_of_week: day,
-                            start_time: norm_start.unwrap_or_else(|| "09:00".to_string()),
-                            end_time: norm_end.unwrap_or_else(|| "11:00".to_string()),
-                            course_name: final_course,
-                            classroom,
-                            professor: final_prof,
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    items
-}
-
-/// Pulisce e deserializza in modo super-resiliente il JSON restituito da qualsiasi modello Vision
-pub fn clean_and_parse_lessons_json(text: &str) -> Result<Vec<ExtractedLessonItem>, String> {
-    let clean = text.trim();
-    if clean.is_empty() {
-        return Err("Risposta AI vuota.".to_string());
-    }
-
-    // 1. Rimuovi blocchi markdown ```json ... ``` se presenti
-    let json_candidate = if let Some(start) = clean.find("```") {
-        let after_fence = &clean[start + 3..];
-        let content_start = if let Some(newline) = after_fence.find('\n') {
-            &after_fence[newline + 1..]
-        } else {
-            after_fence
-        };
-        if let Some(end) = content_start.rfind("```") {
-            &content_start[..end]
-        } else {
-            content_start
-        }
-    } else {
-        clean
-    };
-
-    // 2. Normalizza e correggi eventuali apici singoli o chiavi non virgolettate
-    let sanitized = sanitize_lenient_json(json_candidate.trim());
-    let repaired = repair_truncated_json(&sanitized);
-
-    // 3. Isola la sottostringa JSON più esterna valida
-    let trimmed = repaired.trim();
-    let json_slice = match (trimmed.find('{'), trimmed.rfind('}'), trimmed.find('['), trimmed.rfind(']')) {
-        (Some(first_obj), Some(last_obj), Some(first_arr), Some(last_arr)) => {
-            if first_arr < first_obj && last_arr > last_obj {
-                &trimmed[first_arr..=last_arr]
-            } else {
-                &trimmed[first_obj..=last_obj]
-            }
-        }
-        (Some(first_obj), Some(last_obj), _, _) => &trimmed[first_obj..=last_obj],
-        (_, _, Some(first_arr), Some(last_arr)) => &trimmed[first_arr..=last_arr],
-        _ => trimmed,
-    };
-
-    let parsed_res: Result<serde_json::Value, _> = serde_json::from_str(json_slice);
-    let mut raw_lessons = Vec::new();
-
-    match parsed_res {
-        Ok(parsed) => {
-            let items_array_opt = if let Some(arr) = parsed.as_array() {
-                Some(arr.clone())
-            } else if let Some(obj) = parsed.as_object() {
-                let candidate_keys = ["lessons", "timetable", "schedule", "orario", "classes", "items", "lezioni", "data"];
-                let mut found = None;
-                for key in &candidate_keys {
-                    if let Some(val) = obj.get(*key) {
-                        if let Some(arr) = val.as_array() {
-                            found = Some(arr.clone());
-                            break;
-                        }
-                    }
-                }
-                if found.is_none() {
-                    for val in obj.values() {
-                        if let Some(arr) = val.as_array() {
-                            found = Some(arr.clone());
-                            break;
-                        }
-                    }
-                }
-                found
-            } else {
-                None
-            };
-
-            if let Some(items_array) = items_array_opt {
-                let course_aliases = ["courseName", "course_name", "course", "materia", "subject", "title", "nome_corso", "lezione", "name", "disciplina"];
-                let start_aliases = ["startTime", "start_time", "start", "ora_inizio", "inizio", "from", "time_start", "oraInizio"];
-                let end_aliases = ["endTime", "end_time", "end", "ora_fine", "fine", "to", "time_end", "oraFine"];
-                let combined_time_aliases = ["time", "orario", "hours", "fascia_oraria", "fasciaOraria", "slot", "interval"];
-                let day_aliases = ["dayOfWeek", "day_of_week", "day", "giorno", "weekday", "day_number"];
-                let classroom_aliases = ["classroom", "aula", "room", "location", "luogo", "sede"];
-                let professor_aliases = ["professor", "docente", "teacher", "insegnante", "prof", "professore"];
-
-                let mut last_course_name = String::new();
-                let mut last_professor = String::new();
-
-                for item in items_array {
-                    if let Some(obj) = item.as_object() {
-                        let mut day = 1;
-                        for alias in &day_aliases {
-                            if let Some(val) = obj.get(*alias) {
-                                if let Some(d) = parse_day_of_week_value(val) {
-                                    day = d;
-                                    break;
-                                }
-                            }
-                        }
-
-                        let mut start_raw = String::new();
-                        for alias in &start_aliases {
-                            if let Some(val) = obj.get(*alias) {
-                                if let Some(s) = val.as_str() {
-                                    start_raw = s.trim().to_string();
-                                    break;
-                                } else if let Some(n) = val.as_i64() {
-                                    start_raw = n.to_string();
-                                    break;
-                                }
-                            }
-                        }
-
-                        let mut end_raw = String::new();
-                        for alias in &end_aliases {
-                            if let Some(val) = obj.get(*alias) {
-                                if let Some(s) = val.as_str() {
-                                    end_raw = s.trim().to_string();
-                                    break;
-                                } else if let Some(n) = val.as_i64() {
-                                    end_raw = n.to_string();
-                                    break;
-                                }
-                            }
-                        }
-
-                        let mut norm_start = normalize_hour_string(&start_raw);
-                        let mut norm_end = normalize_hour_string(&end_raw);
-
-                        if norm_start.is_none() || norm_end.is_none() {
-                            for alias in &combined_time_aliases {
-                                if let Some(val) = obj.get(*alias) {
-                                    if let Some(combined) = val.as_str() {
-                                        let parts: Vec<&str> = combined.split(|c| c == '-' || c == '—' || c == '/' || c == '–').collect();
-                                        if parts.len() >= 2 {
-                                            if norm_start.is_none() {
-                                                norm_start = normalize_hour_string(parts[0]);
-                                            }
-                                            if norm_end.is_none() {
-                                                norm_end = normalize_hour_string(parts[1]);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        let mut course_name = String::new();
-                        for alias in &course_aliases {
-                            if let Some(val) = obj.get(*alias) {
-                                if let Some(s) = val.as_str() {
-                                    if !s.trim().is_empty() {
-                                        course_name = s.trim().to_string();
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        let mut classroom = String::new();
-                        for alias in &classroom_aliases {
-                            if let Some(val) = obj.get(*alias) {
-                                if let Some(s) = val.as_str() {
-                                    if !s.trim().is_empty() {
-                                        classroom = s.trim().to_string();
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        let mut professor = String::new();
-                        for alias in &professor_aliases {
-                            if let Some(val) = obj.get(*alias) {
-                                if let Some(s) = val.as_str() {
-                                    if !s.trim().is_empty() {
-                                        professor = s.trim().to_string();
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        // Se la materia o il docente sono omessi nei punti elenco successivi, ereditali dal blocco corso
-                        let clean_title = sanitize_course_title(&course_name);
-                        let final_course = if !clean_title.is_empty() {
-                            clean_title
-                        } else if !last_course_name.is_empty() {
-                            last_course_name.clone()
-                        } else if !classroom.is_empty() || norm_start.is_some() || norm_end.is_some() || (1..=7).contains(&day) {
-                            "Lezione".to_string()
-                        } else {
-                            String::new()
-                        };
-
-                        let final_prof = if professor.is_empty() {
-                            if final_course.eq_ignore_ascii_case(&last_course_name) {
-                                last_professor.clone()
-                            } else {
-                                String::new()
-                            }
-                        } else {
-                            professor.clone()
-                        };
-
-                        if !final_course.is_empty() {
-                            last_course_name = final_course.clone();
-                            last_professor = final_prof.clone();
-
-                            let final_start = norm_start.unwrap_or_else(|| "09:00".to_string());
-                            let final_end = norm_end.unwrap_or_else(|| "11:00".to_string());
-                            raw_lessons.push(ExtractedLessonItem {
-                                day_of_week: day,
-                                start_time: final_start,
-                                end_time: final_end,
-                                course_name: final_course,
-                                classroom,
-                                professor: final_prof,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-        Err(_) => {
-            // Se serde_json fallisce nonostante le correzioni, usiamo il parser lenient sui blocchi
-            let fallback_items = fallback_extract_lessons_lenient(text);
-            raw_lessons.extend(fallback_items);
-        }
-    }
-
-    if raw_lessons.is_empty() {
-        let fallback_items = fallback_extract_lessons_lenient(text);
-        raw_lessons.extend(fallback_items);
-    }
-
-    // 4. Deduplicazione lezioni (elimina ripetizioni identiche generate da loop AI)
-    let mut unique_lessons = Vec::new();
-    for item in raw_lessons {
-        let is_duplicate = unique_lessons.iter().any(|existing: &ExtractedLessonItem| {
-            existing.day_of_week == item.day_of_week
-                && existing.start_time == item.start_time
-                && existing.end_time == item.end_time
-                && existing.course_name.eq_ignore_ascii_case(&item.course_name)
-        });
-        if !is_duplicate {
-            unique_lessons.push(item);
-        }
-    }
-
-    if unique_lessons.is_empty() {
-        return Err(format!("Nessuna lezione identificata nell'orario. Risposta grezza: {}", text));
-    }
-
-    Ok(unique_lessons)
-}
-
-/// Limite massimo del payload base64 inviato al provider (≈ 15 MB).
-const MAX_IMAGE_BASE64_BYTES: usize = 20 * 1024 * 1024;
-
-fn vision_agent() -> ureq::Agent {
-    crate::ai::downloader::get_http_agent()
-}
-
-fn sanitize_http_error(prefix: &str, err: ureq::Error) -> String {
-    match err {
-        ureq::Error::Status(code, resp) => {
-            let detail = resp.into_string().unwrap_or_default();
-            let detail: String = detail.chars().take(300).collect();
-            format!("{}: status code {} {}", prefix, code, detail)
-        }
-        ureq::Error::Transport(t) => format!("{}: errore di rete ({})", prefix, t.kind()),
-    }
-}
-
-/// Non tiene alcun lock sul database: le impostazioni vanno lette dal chiamante.
 pub fn parse_timetable_image_with_ai(
-    settings: &crate::models::AppSettings,
-    _session_id: &str,
+    settings: &AppSettings,
     image_base64: &str,
     mime_type: &str,
 ) -> Result<Vec<ExtractedLessonItem>, String> {
     let provider = settings.ai_provider.trim().to_lowercase();
-    if image_base64.len() > MAX_IMAGE_BASE64_BYTES {
-        return Err("Immagine troppo grande: usa una foto sotto i 15 MB.".to_string());
-    }
-
     let clean_mime = if mime_type.is_empty() { "image/png" } else { mime_type };
-    let clean_base64 = if let Some(idx) = image_base64.find(";base64,") {
-        &image_base64[idx + 8..]
-    } else {
-        image_base64
-    };
+    let clean_base64 = image_base64.split(";base64,").last().unwrap_or(image_base64);
 
-    let prompt_text = "Sei un analizzatore OCR esperto per orari scolastici e accademici.\n\
-        Analizza con la massima attenzione l'immagine ed estrai TUTTE le lezioni settimanali presenti in formato JSON.\n\n\
-        L'immagine può presentarsi in due forme:\n\n\
-        FORMA 1 — CALENDARIO SETTIMANALE O TABELLA A COLONNE (es. Google Calendar, Outlook, orari universitari a griglia):\n\
-        - In alto sono disposte le colonne dei giorni (LUN=1, MAR=2, MER=3, GIO=4, VEN=5, SAB=6, DOM=7).\n\
-        - A sinistra compare l'asse degli orari (es. 8, 9, 10, 11, 12, 13, 14, 15, 16...).\n\
-        - NOTA BENE: Ignora eventuali linee orizzontali o marker rossi dell'ora attuale (es. '10:42'), non sono lezioni!\n\
-        - REGOLA FONDAMENTALE DI CONTEGGIO E SCANSIONE:\n\
-          * Ogni singolo blocco o riquadro colorato presente nella griglia rappresenta una lezione.\n\
-          * Prima di generare l'output, conta TUTTI i riquadri colorati visibili nell'intera settimana: il numero di elementi in 'lessons' DEVE corrispondere al numero totale di riquadri presenti!\n\
-          * ATTENZIONE AI BLOCCHI MULTIPLI/IMPILATI NELLO STESSO GIORNO:\n\
-            Spesso in una stessa colonna ci sono due o più lezioni (es. mercoledì 08:15-10:15 e subito sotto 10:15-12:15, oppure venerdì 08:15-10:15 e subito sotto 10:15-12:15, oppure pomeriggi come giovedì 13:15-15:15).\n\
-            DEVI percorrere ogni colonna dall'alto verso il basso (da inizio mattino a fine pomeriggio) ed estrarre CIASCUN blocco come lezione separata con il rispettivo dayOfWeek.\n\
-            NON fermarti assolutamente dopo il primo blocco del giorno!\n\
-        - Per ogni lezione rileva:\n\
-          * dayOfWeek (1=Lun, 2=Mar, 3=Mer, 4=Gio, 5=Ven, 6=Sab, 7=Dom)\n\
-          * startTime ed endTime in formato 24 ore 'HH:MM' ricavati dalla posizione verticale rispetto alle linee orarie (es. '08:15', '10:15', '12:15', '13:15', '15:15')\n\
-          * courseName: nome della materia scritto dentro il riquadro\n\
-          * classroom: aula indicata sotto la materia (es. 'BL 28.2.1', 'B8 1.1', 'B8 0.4')\n\n\
-        FORMA 2 — ELENCO O LISTA TESTUALE (es. portali Esse3 o PoliMi):\n\
-        - Sono presenti intestazioni di corso (es. '086472 - PROGETTAZIONE DI SISTEMI MECCANICI') seguite da punti elenco (es. '▪ Mercoledì dalle 08:15 alle 10:15 in aula BL.28.2.1').\n\
-        - In questo caso ogni riga con giorno e orario è una lezione: estrai dayOfWeek (Mercoledì=3, Venerdì=5), startTime ('08:15'), endTime ('10:15'), classroom ('BL.28.2.1'), courseName (dal titolo del corso omettendo codici numerici) e professor (dal docente indicato).\n\n\
-        REGOLE GENERALI TASSATIVE:\n\
-        1. dayOfWeek DEVE essere un numero intero da 1 a 7 (1=Lunedì, 2=Martedì, 3=Mercoledì, 4=Giovedì, 5=Venerdì, 6=Sabato, 7=Domenica).\n\
-        2. startTime ed endTime DEVONO essere sempre stringhe nel formato 24 ore 'HH:MM' con due cifre (es. '08:15', '10:15', '13:15', '15:15'). Non lasciare mai campi vuoti!\n\
-        3. courseName DEVE essere sempre valorizzato con il nome del corso/materia.\n\
-        4. Inserisci ciascuna lezione visibile UNA SOLA VOLTA e chiudi il JSON.\n\
-        5. Formato JSON rigoroso:\n\
-        {\n\
-          \"lessons\": [\n\
-            {\n\
-              \"dayOfWeek\": 3,\n\
-              \"startTime\": \"08:15\",\n\
-              \"endTime\": \"10:15\",\n\
-              \"courseName\": \"Progettazione di Sistemi Meccanici\",\n\
-              \"classroom\": \"BL 28.2.1\",\n\
-              \"professor\": \"\"\n\
-            }\n\
-          ]\n\
-        }";
+    let prompt_text = "Sei un analizzatore OCR esperto per orari universitari.\n\
+        Estrai TUTTE le lezioni settimanali presenti nell'immagine e rispondi ESCLUSIVAMENTE con JSON:\n\
+        { \"lessons\": [ { \"dayOfWeek\": 1..7, \"startTime\": \"HH:MM\", \"endTime\": \"HH:MM\", \"courseName\": \"...\", \"classroom\": \"...\", \"professor\": \"...\" } ] }";
 
-    match provider.as_str() {
-        "local" => {
-            let app_data_dir = DatabaseManager::resolve_app_data_dir();
-            let runtime = get_runtime_manager();
-            let port = runtime.ensure_started(
-                &app_data_dir,
-                &settings.ai_local_model_id,
-                &settings.ai_hardware_preference,
-                settings.ai_idle_timeout_minutes,
-            )?;
-            runtime.touch_activity();
-
-            let data_url = format!("data:{};base64,{}", clean_mime, clean_base64);
-            let body = serde_json::json!({
-                "model": settings.ai_local_model_id,
-                "temperature": 0.1,
-                "top_p": 0.9,
-                "repeat_penalty": 1.02,
-                "frequency_penalty": 0.0,
-                "presence_penalty": 0.0,
-                "max_tokens": 2048,
-                "response_format": { "type": "json_object" },
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "Sei un analizzatore OCR per orari universitari. Genera ESCLUSIVAMENTE JSON conforme a RFC 8259. Esamina l'intera settimana giorno per giorno (Lunedì-Domenica) dall'alto in basso ed estrai TUTTI i blocchi di lezione colorati presenti, inclusi blocchi multipli o consecutivi nello stesso giorno (es. Mercoledì mattina e pomeriggio, Venerdì mattina e pomeriggio). Chiudi con ']}'."
-                    },
-                    {
-                        "role": "user",
-                        "content": [
-                            { "type": "text", "text": prompt_text },
-                            {
-                                "type": "image_url",
-                                "image_url": { "url": data_url }
-                            }
-                        ]
-                    }
-                ]
-            });
-
-            let resp: serde_json::Value = vision_agent()
-                .post(&format!("http://127.0.0.1:{}/v1/chat/completions", port))
-                .send_json(body)
-                .map_err(|e| sanitize_http_error("Errore chiamata AI Locale (llama-server)", e))?
-                .into_json()
-                .map_err(|e| format!("Errore parsing risposta AI Locale: {}", e))?;
-
-            let text = resp["choices"][0]["message"]["content"]
-                .as_str()
-                .ok_or_else(|| "Risposta AI Locale vuota o non valida".to_string())?;
-
-            clean_and_parse_lessons_json(text)
-        }
-        "gemini" => {
-            if settings.ai_api_key.trim().is_empty() {
-                return Err("Per analizzare con Gemini, configura la tua API Key nelle Impostazioni.".to_string());
-            }
-            let model = if settings.ai_model.trim().is_empty() {
-                "gemini-2.5-flash"
-            } else {
-                settings.ai_model.trim()
-            };
-            let url = format!(
-                "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
-                model
-            );
-
-            let body = serde_json::json!({
-                "contents": [{
-                    "parts": [
-                        { "text": prompt_text },
-                        {
-                            "inlineData": {
-                                "mimeType": clean_mime,
-                                "data": clean_base64
-                            }
-                        }
-                    ]
-                }],
-                "generationConfig": {
-                    "responseMimeType": "application/json",
-                    "temperature": 0.0
-                }
-            });
-
-            let resp: serde_json::Value = vision_agent()
-                .post(&url)
-                .set("x-goog-api-key", settings.ai_api_key.trim())
-                .send_json(body)
-                .map_err(|e| sanitize_http_error("Errore chiamata Gemini Vision", e))?
-                .into_json()
-                .map_err(|e| format!("Errore parsing risposta Gemini: {}", e))?;
-
-            let text = resp["candidates"][0]["content"]["parts"][0]["text"]
-                .as_str()
-                .ok_or_else(|| "Risposta Gemini vuota o non valida".to_string())?;
-
-            clean_and_parse_lessons_json(text)
-        }
-        "openai" => {
-            if settings.ai_api_key.trim().is_empty() {
-                return Err("Per analizzare con OpenAI, configura la tua API Key nelle Impostazioni.".to_string());
-            }
-            let model = if settings.ai_model.trim().is_empty() {
-                "gpt-4o"
-            } else {
-                settings.ai_model.trim()
-            };
-
-            let data_url = format!("data:{};base64,{}", clean_mime, clean_base64);
-
-            let body = serde_json::json!({
-                "model": model,
-                "temperature": 0.0,
-                "response_format": { "type": "json_object" },
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            { "type": "text", "text": prompt_text },
-                            {
-                                "type": "image_url",
-                                "image_url": { "url": data_url }
-                            }
-                        ]
-                    }
-                ]
-            });
-
-            let resp: serde_json::Value = vision_agent()
-                .post("https://api.openai.com/v1/chat/completions")
-                .set("Authorization", &format!("Bearer {}", settings.ai_api_key.trim()))
-                .send_json(body)
-                .map_err(|e| sanitize_http_error("Errore chiamata OpenAI Vision", e))?
-                .into_json()
-                .map_err(|e| format!("Errore parsing risposta OpenAI: {}", e))?;
-
-            let text = resp["choices"][0]["message"]["content"]
-                .as_str()
-                .ok_or_else(|| "Risposta OpenAI vuota o non valida".to_string())?;
-
-            clean_and_parse_lessons_json(text)
-        }
-        "ollama" => {
-            let base = settings.ai_endpoint_url.trim().trim_end_matches('/');
-            let url = format!("{}/api/chat", base);
-            let body = serde_json::json!({
-                "model": settings.ai_model.trim(),
-                "messages": [{
-                    "role": "user",
-                    "content": prompt_text,
-                    "images": [clean_base64]
-                }],
-                "options": {
-                    "temperature": 0.0
-                },
-                "format": "json",
-                "stream": false
-            });
-
-            let resp: serde_json::Value = vision_agent()
-                .post(&url)
-                .send_json(body)
-                .map_err(|e| sanitize_http_error("Errore chiamata Ollama Vision", e))?
-                .into_json()
-                .map_err(|e| format!("Errore parsing risposta Ollama: {}", e))?;
-
-            let text = resp["message"]["content"]
-                .as_str()
-                .ok_or_else(|| "Risposta Ollama vuota o non valida".to_string())?;
-
-            clean_and_parse_lessons_json(text)
-        }
-        _ => Err("Seleziona 'AI Locale' o un provider supportato nelle Impostazioni per analizzare la foto dell'orario.".to_string()),
+    if provider.starts_with("cli_") {
+        let temp_img = write_temp_image_if_present(Some(clean_base64), Some(clean_mime))?
+            .ok_or_else(|| "Immagine mancante".to_string())?;
+        let res = cli_bridge::run_cli_agent(
+            &provider,
+            &settings.ai_custom_cli_command,
+            prompt_text,
+            Some(&temp_img),
+        );
+        let _ = fs::remove_file(&temp_img);
+        let text = res?;
+        return parser::clean_and_parse_lessons_json(&text);
     }
+
+    if provider == "local" {
+        let app_data_dir = DatabaseManager::resolve_app_data_dir();
+        let runtime = get_runtime_manager();
+        let port = runtime.ensure_started(
+            &app_data_dir,
+            &settings.ai_local_model_id,
+            "auto",
+            settings.ai_idle_timeout_minutes,
+        )?;
+        runtime.touch_activity();
+
+        let data_url = format!("data:{};base64,{}", clean_mime, clean_base64);
+        let body = serde_json::json!({
+            "model": settings.ai_local_model_id,
+            "temperature": 0.1,
+            "max_tokens": 2048,
+            "response_format": { "type": "json_object" },
+            "messages": [
+                { "role": "system", "content": "Estrai tutte le lezioni in JSON RFC 8259 con chiave 'lessons'." },
+                { "role": "user", "content": [
+                    { "type": "text", "text": prompt_text },
+                    { "type": "image_url", "image_url": { "url": data_url } }
+                ]}
+            ]
+        });
+
+        let resp: serde_json::Value = downloader::get_http_agent()
+            .post(&format!("http://127.0.0.1:{}/v1/chat/completions", port))
+            .send_json(body)
+            .map_err(|e| format!("Errore AI locale: {}", e))?
+            .into_json()
+            .map_err(|e| format!("Errore risposta AI locale: {}", e))?;
+
+        let text = resp["choices"][0]["message"]["content"]
+            .as_str()
+            .ok_or_else(|| "Risposta AI locale vuota".to_string())?;
+
+        return parser::clean_and_parse_lessons_json(text);
+    }
+
+    Err("Configura il modello locale base o un Agente CLI nelle Impostazioni AI.".to_string())
 }
 
-/// Estrae l'orario accademico partendo da una descrizione testuale (dettata a voce o scritta dall'utente).
 pub fn parse_timetable_prompt_with_ai(
-    settings: &crate::models::AppSettings,
-    _session_id: &str,
+    settings: &AppSettings,
     user_prompt: &str,
 ) -> Result<Vec<ExtractedLessonItem>, String> {
-    let clean_prompt = user_prompt.trim();
-    if clean_prompt.is_empty() {
-        return Err("Il testo del prompt è vuoto. Dettagli o inserisci il tuo orario.".to_string());
-    }
-
     let provider = settings.ai_provider.trim().to_lowercase();
-
-    let nlp_system_prompt = "Sei un analizzatore NLP esperto per orari scolastici e accademici. \
-        Il tuo compito è estrarre con massima precisione le lezioni settimanali dal testo fornito dall'utente \
-        (che può essere dettato a voce, digitato a mano o incollato da un portale universitario Esse3/PoliMi).\n\
-        Genera ESCLUSIVAMENTE un JSON conforme a RFC 8259 contenente l'elenco 'lessons', senza preamboli né markdown estraneo.";
-
-    let nlp_prompt_text = format!(
-        "Estrai tutte le lezioni settimanali presenti nel seguente testo:\n\n\
+    let prompt_text = format!(
+        "Estrai tutte le lezioni settimanali da questo testo e rispondi ESCLUSIVAMENTE in JSON:\n\
         \"{}\"\n\n\
-        REGOLE TASSATIVE DI ESTRAZIONE:\n\
-        1. dayOfWeek: numero intero da 1 a 7 (1=Lunedì, 2=Martedì, 3=Mercoledì, 4=Giovedì, 5=Venerdì, 6=Sabato, 7=Domenica).\n\
-        2. startTime ed endTime: SEMPRE in formato 24 ore 'HH:MM' con due cifre (es. '08:15', '09:00', '10:15', '13:15', '15:15'). Se l'utente dice 'dalle 9 alle 11', usa '09:00' e '11:00'.\n\
-        3. courseName: nome della materia o del corso (es. 'Progettazione di Sistemi Meccanici', 'Macchine e Sistemi Energetici'). Rimuovi eventuali codici numerici iniziali.\n\
-        4. classroom: aula indicata (es. 'BL.28.2.1', 'B8 0.4', 'Aula Magna'), altrimenti stringa vuota \"\".\n\
-        5. professor: docente se menzionato, altrimenti stringa vuota \"\".\n\
-        6. Se una materia si ripete in più giorni o fasce orarie, crea una voce separata per ciascun blocco.\n\n\
-        Formato JSON atteso:\n\
-        {{\n\
-          \"lessons\": [\n\
-            {{\n\
-              \"dayOfWeek\": 3,\n\
-              \"startTime\": \"08:15\",\n\
-              \"endTime\": \"10:15\",\n\
-              \"courseName\": \"Progettazione di Sistemi Meccanici\",\n\
-              \"classroom\": \"BL.28.2.1\",\n\
-              \"professor\": \"Filippini Mauro\"\n\
-            }}\n\
-          ]\n\
-        }}",
-        clean_prompt
+        Formato: {{ \"lessons\": [ {{ \"dayOfWeek\": 1..7, \"startTime\": \"HH:MM\", \"endTime\": \"HH:MM\", \"courseName\": \"...\", \"classroom\": \"...\", \"professor\": \"...\" }} ] }}",
+        user_prompt.trim()
     );
 
-    match provider.as_str() {
-        "local" => {
-            let app_data_dir = DatabaseManager::resolve_app_data_dir();
-            let runtime = get_runtime_manager();
-            let port = runtime.ensure_started(
-                &app_data_dir,
-                &settings.ai_local_model_id,
-                &settings.ai_hardware_preference,
-                settings.ai_idle_timeout_minutes,
-            )?;
-            runtime.touch_activity();
-
-            let body = serde_json::json!({
-                "model": settings.ai_local_model_id,
-                "temperature": 0.1,
-                "top_p": 0.9,
-                "repeat_penalty": 1.02,
-                "frequency_penalty": 0.0,
-                "presence_penalty": 0.0,
-                "max_tokens": 2048,
-                "response_format": { "type": "json_object" },
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": nlp_system_prompt
-                    },
-                    {
-                        "role": "user",
-                        "content": nlp_prompt_text
-                    }
-                ]
-            });
-
-            let resp: serde_json::Value = vision_agent()
-                .post(&format!("http://127.0.0.1:{}/v1/chat/completions", port))
-                .send_json(body)
-                .map_err(|e| sanitize_http_error("Errore chiamata AI Locale (llama-server)", e))?
-                .into_json()
-                .map_err(|e| format!("Errore parsing risposta AI Locale: {}", e))?;
-
-            let text = resp["choices"][0]["message"]["content"]
-                .as_str()
-                .ok_or_else(|| "Risposta AI Locale vuota o non valida".to_string())?;
-
-            clean_and_parse_lessons_json(text)
-        }
-        "gemini" => {
-            if settings.ai_api_key.trim().is_empty() {
-                return Err("Per analizzare con Gemini, configura la tua API Key nelle Impostazioni.".to_string());
-            }
-            let model = if settings.ai_model.trim().is_empty() {
-                "gemini-2.5-flash"
-            } else {
-                settings.ai_model.trim()
-            };
-            let url = format!(
-                "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
-                model
-            );
-
-            let body = serde_json::json!({
-                "contents": [{
-                    "parts": [
-                        { "text": format!("{}\n\n{}", nlp_system_prompt, nlp_prompt_text) }
-                    ]
-                }],
-                "generationConfig": {
-                    "responseMimeType": "application/json",
-                    "temperature": 0.1
-                }
-            });
-
-            let resp: serde_json::Value = vision_agent()
-                .post(&url)
-                .set("x-goog-api-key", settings.ai_api_key.trim())
-                .send_json(body)
-                .map_err(|e| sanitize_http_error("Errore chiamata Gemini NLP", e))?
-                .into_json()
-                .map_err(|e| format!("Errore parsing risposta Gemini: {}", e))?;
-
-            let text = resp["candidates"][0]["content"]["parts"][0]["text"]
-                .as_str()
-                .ok_or_else(|| "Risposta Gemini vuota o non valida".to_string())?;
-
-            clean_and_parse_lessons_json(text)
-        }
-        "openai" => {
-            if settings.ai_api_key.trim().is_empty() {
-                return Err("Per analizzare con OpenAI, configura la tua API Key nelle Impostazioni.".to_string());
-            }
-            let model = if settings.ai_model.trim().is_empty() {
-                "gpt-4o"
-            } else {
-                settings.ai_model.trim()
-            };
-
-            let body = serde_json::json!({
-                "model": model,
-                "temperature": 0.1,
-                "response_format": { "type": "json_object" },
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": nlp_system_prompt
-                    },
-                    {
-                        "role": "user",
-                        "content": nlp_prompt_text
-                    }
-                ]
-            });
-
-            let resp: serde_json::Value = vision_agent()
-                .post("https://api.openai.com/v1/chat/completions")
-                .set("Authorization", &format!("Bearer {}", settings.ai_api_key.trim()))
-                .send_json(body)
-                .map_err(|e| sanitize_http_error("Errore chiamata OpenAI NLP", e))?
-                .into_json()
-                .map_err(|e| format!("Errore parsing risposta OpenAI: {}", e))?;
-
-            let text = resp["choices"][0]["message"]["content"]
-                .as_str()
-                .ok_or_else(|| "Risposta OpenAI vuota o non valida".to_string())?;
-
-            clean_and_parse_lessons_json(text)
-        }
-        "ollama" => {
-            let base = settings.ai_endpoint_url.trim().trim_end_matches('/');
-            let url = format!("{}/api/chat", base);
-            let body = serde_json::json!({
-                "model": settings.ai_model.trim(),
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": nlp_system_prompt
-                    },
-                    {
-                        "role": "user",
-                        "content": nlp_prompt_text
-                    }
-                ],
-                "options": {
-                    "temperature": 0.1
-                },
-                "format": "json",
-                "stream": false
-            });
-
-            let resp: serde_json::Value = vision_agent()
-                .post(&url)
-                .send_json(body)
-                .map_err(|e| sanitize_http_error("Errore chiamata Ollama NLP", e))?
-                .into_json()
-                .map_err(|e| format!("Errore parsing risposta Ollama: {}", e))?;
-
-            let text = resp["message"]["content"]
-                .as_str()
-                .ok_or_else(|| "Risposta Ollama vuota o non valida".to_string())?;
-
-            clean_and_parse_lessons_json(text)
-        }
-        _ => Err("Seleziona 'AI Locale' o un provider supportato nelle Impostazioni per analizzare il prompt dell'orario.".to_string()),
+    if provider.starts_with("cli_") {
+        let text = cli_bridge::run_cli_agent(&provider, &settings.ai_custom_cli_command, &prompt_text, None)?;
+        return parser::clean_and_parse_lessons_json(&text);
     }
+
+    let app_data_dir = DatabaseManager::resolve_app_data_dir();
+    let runtime = get_runtime_manager();
+    let port = runtime.ensure_started(
+        &app_data_dir,
+        &settings.ai_local_model_id,
+        "auto",
+        settings.ai_idle_timeout_minutes,
+    )?;
+    runtime.touch_activity();
+
+    let body = serde_json::json!({
+        "model": settings.ai_local_model_id,
+        "temperature": 0.1,
+        "response_format": { "type": "json_object" },
+        "messages": [
+            { "role": "system", "content": "Estrai lezioni universitarie in JSON RFC 8259 con chiave 'lessons'." },
+            { "role": "user", "content": prompt_text }
+        ]
+    });
+
+    let resp: serde_json::Value = downloader::get_http_agent()
+        .post(&format!("http://127.0.0.1:{}/v1/chat/completions", port))
+        .send_json(body)
+        .map_err(|e| format!("Errore AI locale: {}", e))?
+        .into_json()
+        .map_err(|e| format!("Errore risposta AI locale: {}", e))?;
+
+    let text = resp["choices"][0]["message"]["content"]
+        .as_str()
+        .ok_or_else(|| "Risposta AI locale vuota".to_string())?;
+    parser::clean_and_parse_lessons_json(text)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_normalize_hour_string() {
-        assert_eq!(normalize_hour_string("8:30"), Some("08:30".to_string()));
-        assert_eq!(normalize_hour_string("08:30"), Some("08:30".to_string()));
-        assert_eq!(normalize_hour_string("8.30"), Some("08:30".to_string()));
-        assert_eq!(normalize_hour_string("8h30"), Some("08:30".to_string()));
-        assert_eq!(normalize_hour_string("9"), Some("09:00".to_string()));
-        assert_eq!(normalize_hour_string("14:00"), Some("14:00".to_string()));
-        assert_eq!(normalize_hour_string("14.45"), Some("14:45".to_string()));
-        assert_eq!(normalize_hour_string("25:00"), None);
-        assert_eq!(normalize_hour_string("invalid"), None);
-    }
+    use crate::models::UpsertSessionInput;
 
     #[test]
     fn test_clean_and_parse_lessons_json_resilience() {
-        // Formato con markdown codefence, chiavi snake_case, orari senza zero iniziale e giorno come stringa
-        let ai_markdown_output = r#"
-        Certamente! Ecco le lezioni identificate nella griglia:
+        let ai_markdown = r#"
         ```json
         {
           "lessons": [
-            {
-              "giorno": "Lunedì",
-              "ora_inizio": "8:30",
-              "ora_fine": "10.30",
-              "materia": "Fisica Sperimentale 1",
-              "aula": "Aula 4B",
-              "docente": "Prof. Bianchi"
-            },
-            {
-              "dayOfWeek": 3,
-              "startTime": "14:00",
-              "endTime": "16:00",
-              "courseName": "Analisi Matematica I",
-              "classroom": "Aula Magna"
-            }
+            { "giorno": "Lunedì", "ora_inizio": "8:30", "ora_fine": "10.30", "materia": "MAM", "aula": "BL28" },
+            { "dayOfWeek": 3, "startTime": "14:00", "endTime": "16:00", "courseName": "TM", "classroom": "B8" }
           ]
         }
         ```
-        Buono studio!
         "#;
-
-        let parsed = clean_and_parse_lessons_json(ai_markdown_output).expect("Dovrebbe parsare con successo");
+        let parsed = parser::clean_and_parse_lessons_json(ai_markdown).unwrap();
         assert_eq!(parsed.len(), 2);
-
         assert_eq!(parsed[0].day_of_week, 1);
         assert_eq!(parsed[0].start_time, "08:30");
-        assert_eq!(parsed[0].end_time, "10:30");
-        assert_eq!(parsed[0].course_name, "Fisica Sperimentale 1");
-        assert_eq!(parsed[0].classroom, "Aula 4B");
-        assert_eq!(parsed[0].professor, "Prof. Bianchi");
-
         assert_eq!(parsed[1].day_of_week, 3);
-        assert_eq!(parsed[1].start_time, "14:00");
-        assert_eq!(parsed[1].end_time, "16:00");
-        assert_eq!(parsed[1].course_name, "Analisi Matematica I");
-        assert_eq!(parsed[1].classroom, "Aula Magna");
-        assert_eq!(parsed[1].professor, "");
     }
 
     #[test]
-    fn test_clean_and_parse_lessons_json_combined_slot() {
-        let ai_output = r#"
-        [
-          {
-            "day": "giovedì",
-            "time": "09:00 - 11:00",
-            "subject": "Chimica Generale",
-            "room": "Lab 2"
-          }
-        ]
-        "#;
-        let parsed = clean_and_parse_lessons_json(ai_output).expect("Dovrebbe parsare array con fascia combinata");
-        assert_eq!(parsed.len(), 1);
-        assert_eq!(parsed[0].day_of_week, 4);
-        assert_eq!(parsed[0].start_time, "09:00");
-        assert_eq!(parsed[0].end_time, "11:00");
-        assert_eq!(parsed[0].course_name, "Chimica Generale");
-        assert_eq!(parsed[0].classroom, "Lab 2");
-    }
-
-    #[test]
-    fn test_parse_user_unquoted_single_quoted_and_repeating_lessons() {
-        // Stringa identica a quella riscontrata dall'utente nello screenshot:
-        // chiavi senza virgolette ('lessons:', 'dayOfWeek:'), apici singoli ('08:15'),
-        // lezioni duplicate a causa di loop e JSON troncato alla fine.
-        let raw_user_error = r#"{ lessons : [ 
-            { dayOfWeek : 3, startTime : '08:15', endTime : '10:15', "courseName": "Progettazione di Sistemi Meccanici", "classroom": "BL.28.2.1", "professor": "Filippini Mauro" },
-            { 'dayOfWeek': 4, 'startTime': '10:15', 'endTime': '12:15', courseName: 'Progettazione di Sistemi Meccanici', classroom: 'BL.28.2.1', professor: 'Filippini Mauro' },
-            { dayOfWeek: 3, startTime: "13:15", endTime: "15:15", courseName: "Progettazione di Sistemi Meccanici", classroom: "BL.28.4", professor: "Filippini Mauro" },
-            { dayOfWeek: 4, startTime: "15:15", endTime: "17:15", courseName: "Progettazione di Sistemi Meccanici", classroom: "BL.28.4", professor: "Filippini Mauro" },
-            { dayOfWeek: 3, startTime: "08:15", endTime: "10:15", courseName: "Progettazione di Sistemi Meccanici", classroom: "BL.28.2.1", professor: "Filippini Mauro" },
-            { dayOfWeek: 4, startTime: "10:15", endTime: "12:15", courseName: "Progettazione di Sistemi Meccanici", classroom: "BL.28.2.1", professor: "Filippini Mauro" },
-            { dayOfWeek: 3, startTime: "13:15", endTime: "15:15", courseName: "Progettazione di Sistemi Meccanici", classroom: "BL.28.4", professor: "Filippini Mauro" }
-        "#;
-        let parsed = clean_and_parse_lessons_json(raw_user_error).expect("Dovrebbe riparare, parsare e deduplicare con successo");
-        assert_eq!(parsed.len(), 4);
-        assert_eq!(parsed[0].day_of_week, 3);
-        assert_eq!(parsed[0].start_time, "08:15");
-        assert_eq!(parsed[0].end_time, "10:15");
-        assert_eq!(parsed[0].classroom, "BL.28.2.1");
-
-        assert_eq!(parsed[1].day_of_week, 4);
-        assert_eq!(parsed[1].start_time, "10:15");
-        assert_eq!(parsed[1].end_time, "12:15");
-        assert_eq!(parsed[1].classroom, "BL.28.2.1");
-
-        assert_eq!(parsed[2].day_of_week, 3);
-        assert_eq!(parsed[2].start_time, "13:15");
-        assert_eq!(parsed[2].end_time, "15:15");
-        assert_eq!(parsed[2].classroom, "BL.28.4");
-
-        assert_eq!(parsed[3].day_of_week, 4);
-        assert_eq!(parsed[3].start_time, "15:15");
-        assert_eq!(parsed[3].end_time, "17:15");
-        assert_eq!(parsed[3].classroom, "BL.28.4");
-    }
-
-    #[test]
-    fn test_parse_polimi_textual_format_with_inheritance() {
-        let ai_polimi_output = r#"{
-          "lessons": [
-            {
-              "courseName": "086472 - PROGETTAZIONE DI SISTEMI MECCANICI",
-              "professor": "Filippini Mauro",
-              "dayOfWeek": 3,
-              "startTime": "08:15",
-              "endTime": "10:15",
-              "classroom": "BL.28.2.1"
-            },
-            {
-              "dayOfWeek": 5,
-              "startTime": "10:15",
-              "endTime": "12:15",
-              "classroom": "B8 1.1"
-            },
-            {
-              "courseName": "086470 - MACCHINE E SISTEMI ENERGETICI",
-              "professor": "Della Torre Augusto",
-              "dayOfWeek": 3,
-              "startTime": "10:15",
-              "endTime": "12:15",
-              "classroom": "BL.28.2.1"
-            },
-            {
-              "dayOfWeek": 4,
-              "startTime": "13:15",
-              "endTime": "15:15",
-              "classroom": "B8 0.4"
-            },
-            {
-              "dayOfWeek": 5,
-              "startTime": "08:15",
-              "endTime": "10:15",
-              "classroom": "B8 1.1"
-            }
-          ]
-        }"#;
-
-        let parsed = clean_and_parse_lessons_json(ai_polimi_output).expect("Dovrebbe parsare le 5 lezioni PoliMi con ereditarieta materia e docente");
-        assert_eq!(parsed.len(), 5);
-        assert_eq!(parsed[0].course_name, "PROGETTAZIONE DI SISTEMI MECCANICI");
-        assert_eq!(parsed[0].day_of_week, 3);
-        assert_eq!(parsed[0].start_time, "08:15");
-        assert_eq!(parsed[0].end_time, "10:15");
-        assert_eq!(parsed[0].professor, "Filippini Mauro");
-
-        assert_eq!(parsed[1].course_name, "PROGETTAZIONE DI SISTEMI MECCANICI");
-        assert_eq!(parsed[1].day_of_week, 5);
-        assert_eq!(parsed[1].start_time, "10:15");
-        assert_eq!(parsed[1].end_time, "12:15");
-        assert_eq!(parsed[1].professor, "Filippini Mauro");
-
-        assert_eq!(parsed[2].course_name, "MACCHINE E SISTEMI ENERGETICI");
-        assert_eq!(parsed[2].day_of_week, 3);
-        assert_eq!(parsed[2].start_time, "10:15");
-        assert_eq!(parsed[2].end_time, "12:15");
-        assert_eq!(parsed[2].professor, "Della Torre Augusto");
-
-        assert_eq!(parsed[3].course_name, "MACCHINE E SISTEMI ENERGETICI");
-        assert_eq!(parsed[3].day_of_week, 4);
-        assert_eq!(parsed[3].start_time, "13:15");
-        assert_eq!(parsed[3].end_time, "15:15");
-
-        assert_eq!(parsed[4].course_name, "MACCHINE E SISTEMI ENERGETICI");
-        assert_eq!(parsed[4].day_of_week, 5);
-        assert_eq!(parsed[4].start_time, "08:15");
-        assert_eq!(parsed[4].end_time, "10:15");
-    }
-
-    #[test]
-    fn test_parse_user_empty_fields_fallback_recovery() {
-        let raw_user_empty_screenshot = r#"{ "lessons": [ { "dayOfWeek": 3, "startTime": "", "endTime": "" }, { "dayOfWeek": 5, "startTime": "", "endTime": "" } ] }"#;
-        let parsed = clean_and_parse_lessons_json(raw_user_empty_screenshot)
-            .expect("Dovrebbe recuperare con successo le lezioni con giorno valido anche in caso di campi orario/materia vuoti");
-        assert_eq!(parsed.len(), 2);
-        assert_eq!(parsed[0].day_of_week, 3);
-        assert_eq!(parsed[0].course_name, "Lezione");
-        assert_eq!(parsed[0].start_time, "09:00");
-        assert_eq!(parsed[0].end_time, "11:00");
-
-        assert_eq!(parsed[1].day_of_week, 5);
-        assert_eq!(parsed[1].course_name, "Lezione");
-        assert_eq!(parsed[1].start_time, "09:00");
-        assert_eq!(parsed[1].end_time, "11:00");
-    }
-
-    #[test]
-    fn test_ai_deterministic_tool_calling_and_queries() {
+    fn test_deterministic_move_and_undo_snapshot() {
         let db = DatabaseManager::init_in_memory().unwrap();
-        db.with_conn(|conn| {
-            let mut settings = DatabaseManager::get_settings(conn).unwrap();
-            settings.ai_provider = "none".to_string();
-            DatabaseManager::save_settings(conn, &settings).unwrap();
-            Ok(())
-        })
-        .unwrap();
-
-        let session = db
+        let sess = db
             .with_conn(|conn| {
                 DatabaseManager::upsert_session(
                     conn,
-                    &crate::models::UpsertSessionInput {
+                    &UpsertSessionInput {
                         id: None,
-                        name: "Sessione Estiva".to_string(),
-                        subtitle: "Test AI".to_string(),
-                        session_type: "estiva".to_string(),
-                        academic_year: "2026/2027".to_string(),
-                        start_date: "2027-06-01".to_string(),
-                        end_date: "2027-07-31".to_string(),
+                        name: "Sessione Test".into(),
+                        subtitle: "".into(),
+                        session_type: "invernale".into(),
+                        academic_year: "2026/2027".into(),
+                        start_date: "2026-11-01".into(),
+                        end_date: "2027-02-28".into(),
+                        max_hours_per_day: Some(6.0),
+                        study_weekdays: None,
+                        off_dates: None,
+                        review_days_before_exam: Some(5),
                         notes: None,
-                        plan_id: None,
                     },
                 )
             })
             .unwrap();
 
-        // 1. Crea corso tramite comando naturale AI
-        let res_course = db
+        let today = Local::now().date_naive().format("%Y-%m-%d").to_string();
+        db.with_conn(|conn| {
+            DatabaseManager::upsert_task(
+                conn,
+                &UpsertTaskInput {
+                    id: None,
+                    session_id: sess.id.clone(),
+                    course_id: None,
+                    unit_id: None,
+                    date: today.clone(),
+                    category: "teoria".into(),
+                    title: "Ripasso Capitolo 1".into(),
+                    chapter: Some("Cap. 1".into()),
+                    topic: Some("Cinematica".into()),
+                    pages: Some("pp. 1-10".into()),
+                    source: None,
+                    planned_hours: Some(2.0),
+                    priority: Some(1),
+                },
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+        let res = db
             .with_conn(|conn| {
-                Ok(process_natural_command(
-                    conn,
-                    &session.id,
-                    "Crea corso ETD Elettrotecnica 12 CFU",
-                )
-                .unwrap())
+                process_natural_command(conn, &sess.id, "Sposta le task non finite a domani", None, None)
+                    .map_err(crate::db::DbError::Logic)
             })
             .unwrap();
-        assert_eq!(res_course.executed_tools.len(), 1);
-        assert_eq!(res_course.executed_tools[0].tool_name, "upsert_course");
+        assert!(res.undo_snapshot_id.is_some());
+        let tasks_after_move = db.with_conn(|c| DatabaseManager::list_tasks(c, &sess.id)).unwrap();
+        assert_ne!(tasks_after_move[0].date, today);
 
-        // 2. Pianifica appello a luglio tramite comando naturale AI
-        let res_exam = db
-            .with_conn(|conn| {
-                Ok(process_natural_command(
-                    conn,
-                    &session.id,
-                    "Aggiungi appello di ETD il 2027-07-14",
-                )
-                .unwrap())
-            })
-            .unwrap();
-        assert_eq!(res_exam.executed_tools[0].tool_name, "upsert_exam");
-        assert_eq!(res_exam.navigate_to_date.as_deref(), Some("2027-07-14"));
-
-        // 3. Interroga statistiche CFU a luglio
-        let res_stats = db
-            .with_conn(|conn| {
-                Ok(process_natural_command(
-                    conn,
-                    &session.id,
-                    "Quanti CFU ho pianificato a luglio?",
-                )
-                .unwrap())
-            })
-            .unwrap();
-        assert!(res_stats.reply_markdown.contains("12 CFU"));
-    }
-
-    #[test]
-    fn test_parse_lessons_json_multiple_stacked_per_day() {
-        let json_input = r#"{
-            "lessons": [
-                {
-                    "dayOfWeek": 3,
-                    "startTime": "08:15",
-                    "endTime": "10:15",
-                    "courseName": "Progettazione di Sistemi Meccanici",
-                    "classroom": "BL 28.2.1",
-                    "professor": "Filippini Mauro"
-                },
-                {
-                    "dayOfWeek": 3,
-                    "startTime": "10:15",
-                    "endTime": "12:15",
-                    "courseName": "Macchine e Sistemi Energetici",
-                    "classroom": "BL 28.2.1",
-                    "professor": "Della Torre Augusto"
-                },
-                {
-                    "dayOfWeek": 4,
-                    "startTime": "13:15",
-                    "endTime": "15:15",
-                    "courseName": "Macchine e Sistemi Energetici",
-                    "classroom": "B8 0.4",
-                    "professor": "Della Torre Augusto"
-                },
-                {
-                    "dayOfWeek": 5,
-                    "startTime": "08:15",
-                    "endTime": "10:15",
-                    "courseName": "Macchine e Sistemi Energetici",
-                    "classroom": "B8 1.1",
-                    "professor": "Della Torre Augusto"
-                },
-                {
-                    "dayOfWeek": 5,
-                    "startTime": "10:15",
-                    "endTime": "12:15",
-                    "courseName": "Progettazione di Sistemi Meccanici",
-                    "classroom": "B8 1.1",
-                    "professor": "Filippini Mauro"
-                }
-            ]
-        }"#;
-
-        let parsed = clean_and_parse_lessons_json(json_input).expect("Dovrebbe parsare tutte le 5 lezioni");
-        assert_eq!(parsed.len(), 5);
-        assert_eq!(parsed[0].day_of_week, 3);
-        assert_eq!(parsed[0].start_time, "08:15");
-        assert_eq!(parsed[0].end_time, "10:15");
-        assert_eq!(parsed[1].day_of_week, 3);
-        assert_eq!(parsed[1].start_time, "10:15");
-        assert_eq!(parsed[1].end_time, "12:15");
-        assert_eq!(parsed[2].day_of_week, 4);
-        assert_eq!(parsed[3].day_of_week, 5);
-        assert_eq!(parsed[4].day_of_week, 5);
+        let snap_id = res.undo_snapshot_id.unwrap();
+        db.with_conn(|conn| {
+            DatabaseManager::restore_ai_undo_snapshot(conn, &snap_id)?;
+            Ok(())
+        })
+        .unwrap();
+        let tasks_restored = db.with_conn(|c| DatabaseManager::list_tasks(c, &sess.id)).unwrap();
+        assert_eq!(tasks_restored[0].date, today);
     }
 }

@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use serde::{Deserialize, Serialize};
 use crate::plan::model::{PlanPayload, PlanTask};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,6 +13,7 @@ pub struct PlanDiffSummary {
     pub removed_tasks: Vec<TaskChangeItem>,
     pub moved_tasks: Vec<TaskMoveItem>,
     pub conflicts: Vec<TaskConflictItem>,
+    pub quizzes_count: usize,
     pub exams_changed: Vec<ExamChangeItem>,
     pub courses_changed: Vec<CourseChangeItem>,
 }
@@ -23,9 +24,9 @@ pub struct TaskChangeItem {
     pub task_id: String,
     pub course_id: String,
     pub date: String,
-    pub text: String,
+    pub title: String,
     pub planned_hours: f64,
-    pub kind: String,
+    pub category: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,7 +34,7 @@ pub struct TaskChangeItem {
 pub struct TaskMoveItem {
     pub task_id: String,
     pub course_id: String,
-    pub text: String,
+    pub title: String,
     pub old_date: String,
     pub new_date: String,
     pub planned_hours: f64,
@@ -47,9 +48,9 @@ pub struct TaskConflictItem {
     pub base_date: String,
     pub my_date: String,
     pub their_date: String,
-    pub base_text: String,
-    pub my_text: String,
-    pub their_text: String,
+    pub base_title: String,
+    pub my_title: String,
+    pub their_title: String,
     pub is_completed: bool,
 }
 
@@ -80,9 +81,8 @@ pub struct CourseChangeItem {
 pub struct DbTaskState {
     pub plan_task_id: String,
     pub date: String,
-    pub text: String,
+    pub title: String,
     pub done: bool,
-    pub planned_hours: Option<f64>,
 }
 
 pub fn compute_plan_diff(
@@ -100,10 +100,10 @@ pub fn compute_plan_diff(
     let is_initial = base.is_none();
     let old_rev = base.map(|b| b.revision).unwrap_or(0);
     let new_rev = theirs.revision;
+    let quizzes_count: usize = theirs.days.iter().map(|d| d.quizzes.len()).sum();
 
-    // Map tasks in `theirs`
     let mut their_tasks_by_id: HashMap<String, (&PlanTask, &str)> = HashMap::new();
-    let mut their_alias_map: HashMap<String, String> = HashMap::new(); // alias -> canonical id
+    let mut their_alias_map: HashMap<String, String> = HashMap::new();
     for day in &theirs.days {
         for task in &day.tasks {
             their_tasks_by_id.insert(task.id.clone(), (task, &day.date));
@@ -113,14 +113,12 @@ pub fn compute_plan_diff(
         }
     }
 
-    // Map tasks in `mine`
     let mut my_tasks_by_id: HashMap<String, &DbTaskState> = HashMap::new();
     for t in mine_tasks {
         my_tasks_by_id.insert(t.plan_task_id.clone(), t);
     }
 
     if let Some(base_plan) = base {
-        // Map tasks in `base`
         let mut base_tasks_by_id: HashMap<String, (&PlanTask, &str)> = HashMap::new();
         for day in &base_plan.days {
             for task in &day.tasks {
@@ -128,85 +126,78 @@ pub fn compute_plan_diff(
             }
         }
 
-        // 1. Identify removed tasks (in base, not in theirs and not aliased)
         for (bid, (btask, bdate)) in &base_tasks_by_id {
-            let still_exists = their_tasks_by_id.contains_key(bid) || their_alias_map.contains_key(bid);
+            let still_exists =
+                their_tasks_by_id.contains_key(bid) || their_alias_map.contains_key(bid);
             if !still_exists {
                 removed_tasks.push(TaskChangeItem {
                     task_id: (*bid).clone(),
                     course_id: btask.course_id.clone(),
                     date: (*bdate).to_string(),
-                    text: btask.text.clone(),
+                    title: btask.title.clone(),
                     planned_hours: btask.planned_hours,
-                    kind: btask.kind.clone(),
+                    category: btask.category.clone(),
                 });
             }
         }
 
-        // 2. Compare tasks in theirs with base and mine
         for (tid, (ttask, tdate)) in &their_tasks_by_id {
-            // Find in base (directly or via alias)
-            let base_entry = base_tasks_by_id.get(tid).or_else(|| {
-                ttask.aliases.iter().find_map(|a| base_tasks_by_id.get(a))
-            });
+            let base_entry = base_tasks_by_id
+                .get(tid)
+                .or_else(|| ttask.aliases.iter().find_map(|a| base_tasks_by_id.get(a)));
 
             match base_entry {
                 None => {
-                    // Added task
                     added_tasks.push(TaskChangeItem {
                         task_id: (*tid).clone(),
                         course_id: ttask.course_id.clone(),
                         date: (*tdate).to_string(),
-                        text: ttask.text.clone(),
+                        title: ttask.title.clone(),
                         planned_hours: ttask.planned_hours,
-                        kind: ttask.kind.clone(),
+                        category: ttask.category.clone(),
                     });
                 }
                 Some((btask, bdate)) => {
-                    // Check if mine has local changes
-                    let mine_entry = my_tasks_by_id.get(tid).or_else(|| {
-                        ttask.aliases.iter().find_map(|a| my_tasks_by_id.get(a))
-                    });
+                    let mine_entry = my_tasks_by_id
+                        .get(tid)
+                        .or_else(|| ttask.aliases.iter().find_map(|a| my_tasks_by_id.get(a)));
 
                     let t_date_changed = *tdate != *bdate;
-                    let t_text_changed = ttask.text != btask.text;
+                    let t_title_changed = ttask.title != btask.title;
 
                     if let Some(mtask) = mine_entry {
                         let m_date_changed = mtask.date != *bdate;
-                        let m_text_changed = mtask.text != btask.text;
+                        let m_title_changed = mtask.title != btask.title;
 
                         if (m_date_changed && t_date_changed && mtask.date != *tdate)
-                            || (m_text_changed && t_text_changed && mtask.text != ttask.text)
+                            || (m_title_changed && t_title_changed && mtask.title != ttask.title)
                         {
-                            // Conflict!
                             conflicts.push(TaskConflictItem {
                                 task_id: (*tid).clone(),
                                 course_id: ttask.course_id.clone(),
                                 base_date: (*bdate).to_string(),
                                 my_date: mtask.date.clone(),
                                 their_date: (*tdate).to_string(),
-                                base_text: btask.text.clone(),
-                                my_text: mtask.text.clone(),
-                                their_text: ttask.text.clone(),
+                                base_title: btask.title.clone(),
+                                my_title: mtask.title.clone(),
+                                their_title: ttask.title.clone(),
                                 is_completed: mtask.done,
                             });
                         } else if t_date_changed && !m_date_changed {
-                            // Clean move
                             moved_tasks.push(TaskMoveItem {
                                 task_id: (*tid).clone(),
                                 course_id: ttask.course_id.clone(),
-                                text: ttask.text.clone(),
+                                title: ttask.title.clone(),
                                 old_date: (*bdate).to_string(),
                                 new_date: (*tdate).to_string(),
                                 planned_hours: ttask.planned_hours,
                             });
                         }
                     } else if t_date_changed {
-                        // Not in mine, moved in theirs
                         moved_tasks.push(TaskMoveItem {
                             task_id: (*tid).clone(),
                             course_id: ttask.course_id.clone(),
-                            text: ttask.text.clone(),
+                            title: ttask.title.clone(),
                             old_date: (*bdate).to_string(),
                             new_date: (*tdate).to_string(),
                             planned_hours: ttask.planned_hours,
@@ -216,7 +207,6 @@ pub fn compute_plan_diff(
             }
         }
 
-        // Compare exams
         let base_exams: HashMap<String, &crate::plan::model::PlanExam> =
             base_plan.exams.iter().map(|e| (e.id.clone(), e)).collect();
         for te in &theirs.exams {
@@ -245,7 +235,6 @@ pub fn compute_plan_diff(
             }
         }
 
-        // Compare courses
         let base_courses: HashMap<String, &crate::plan::model::PlanCourse> =
             base_plan.courses.iter().map(|c| (c.id.clone(), c)).collect();
         for tc in &theirs.courses {
@@ -272,16 +261,15 @@ pub fn compute_plan_diff(
             }
         }
     } else {
-        // Initial import: all tasks are added
         for day in &theirs.days {
             for task in &day.tasks {
                 added_tasks.push(TaskChangeItem {
                     task_id: task.id.clone(),
                     course_id: task.course_id.clone(),
                     date: day.date.clone(),
-                    text: task.text.clone(),
+                    title: task.title.clone(),
                     planned_hours: task.planned_hours,
-                    kind: task.kind.clone(),
+                    category: task.category.clone(),
                 });
             }
         }
@@ -317,6 +305,7 @@ pub fn compute_plan_diff(
         removed_tasks,
         moved_tasks,
         conflicts,
+        quizzes_count,
         exams_changed,
         courses_changed,
     }

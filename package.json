@@ -1,8 +1,8 @@
 {
   "name": "mysession",
   "private": true,
-  "version": "1.0.60",
-  "description": "MySession — Gestione Sessioni Accademiche & Calendario Infinito (Tauri v2 + Svelte 5)",
+  "version": "2.0.0",
+  "description": "MySession v2.00 — Suite Desktop Bento per Sessioni Accademiche, Piano Operativo, Quiz & AI",
   "author": "Riccardo Bettini",
   "type": "module",
   "scripts": {

@@ -1,363 +1,278 @@
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { ipc } from "../api/ipc";
 import type {
   AcademicSession,
-  AiAssistantResponse,
-  BootstrapPayload,
-  Course,
-  ConflictItem,
-  CreateItinerePairInput,
-  Exam,
-  GenericEvent,
   HolidayInfo,
+  PendingPlanNotification,
+  PlanDiffSummary,
   SessionSnapshot,
+  SubmitQuizAttemptInput,
+  UpsertCalendarEventInput,
   UpsertCourseInput,
   UpsertExamInput,
-  UpsertGenericEventInput,
-  UpsertProfileInput,
   UpsertSessionInput,
-  UpsertTodoInput,
-  UpsertTodoSubItemInput,
-  UserProfile,
-  WeeklyLesson,
-  UpsertWeeklyLessonInput,
-  ExtractedLessonItem
+  UpsertStudyUnitInput,
+  UpsertTaskInput,
+  UpsertTaskSubItemInput,
+  UpsertWeeklyLessonInput
 } from "../types/domain";
-import { APP_VERSION } from "../constants/version";
-import { getTodayIso } from "../utils/calendar";
+import { navStore } from "./navigation.svelte";
 import { themeStore } from "./theme.svelte";
+import { updaterStore } from "./updater.svelte";
 
-class SessionWorkspaceStore {
-  appVersion = $state<string>(APP_VERSION);
+class SessionStore {
+  isBootstrapping = $state<boolean>(true);
+  isBusy = $state<boolean>(false);
   dbPath = $state<string>("");
-  isSessionLocked = $state<boolean>(
-    typeof localStorage !== "undefined" && localStorage.getItem("mysession_lock_to_session_v2") !== null
-      ? localStorage.getItem("mysession_lock_to_session_v2") === "true"
-      : false
-  );
-  profile = $state<UserProfile>({
-    id: 1,
-    studentName: "",
-    university: "",
-    faculty: "",
-    degreeCourse: "",
-    enrollmentYear: null,
-    onboardingCompleted: false,
-    createdAt: "",
-    updatedAt: ""
-  });
-
   sessions = $state<AcademicSession[]>([]);
   activeSnapshot = $state<SessionSnapshot | null>(null);
   holidays = $state<HolidayInfo[]>([]);
-  todayIso = $state<string>(getTodayIso());
-  isLoading = $state<boolean>(true);
-  lastError = $state<string | null>(null);
+  pendingPlans = $state<PendingPlanNotification[]>([]);
 
-  activeSession = $derived<AcademicSession | null>(
-    this.activeSnapshot?.session ?? this.sessions[0] ?? null
-  );
+  private unlistenPlans: UnlistenFn | null = null;
 
-  isSystemSession = $derived<boolean>(
-    Boolean(
-      this.activeSession?.isSystem ||
-      this.activeSession?.id === "session_generale"
-    )
-  );
+  activeSession = $derived<AcademicSession | null>(this.activeSnapshot?.session ?? null);
 
-  courses = $derived<Course[]>(this.activeSnapshot?.courses ?? []);
-  exams = $derived<Exam[]>(this.activeSnapshot?.exams ?? []);
-  genericEvents = $derived<GenericEvent[]>(this.activeSnapshot?.genericEvents ?? []);
-  weeklyLessons = $derived<WeeklyLesson[]>(this.activeSnapshot?.weeklyLessons ?? []);
-  conflicts = $derived<ConflictItem[]>(this.activeSnapshot?.conflicts ?? []);
-  ignoredConflicts = $derived<ConflictItem[]>(this.activeSnapshot?.ignoredConflicts ?? []);
-
-  toggleSessionLock(force?: boolean): boolean {
-    this.isSessionLocked = force !== undefined ? force : !this.isSessionLocked;
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem("mysession_lock_to_session_v2", String(this.isSessionLocked));
-      localStorage.setItem("mysession_lock_to_session", String(this.isSessionLocked));
-    }
-    return this.isSessionLocked;
-  }
-
-  applyBootstrapPayload(payload: BootstrapPayload): void {
-    this.appVersion = payload.appVersion;
-    this.dbPath = payload.dbPath;
-    this.profile = payload.profile;
-    this.sessions = payload.sessions;
-    this.activeSnapshot = payload.activeSnapshot;
-    if (payload.activeSnapshot?.telemetry.referenceToday) {
-      this.todayIso = payload.activeSnapshot.telemetry.referenceToday;
-    }
-  }
-
-  async bootstrap(): Promise<BootstrapPayload | null> {
-    this.isLoading = true;
-    this.lastError = null;
+  async bootstrap(): Promise<void> {
+    this.isBootstrapping = true;
     try {
-      const [payload, hols] = await Promise.all([
-        ipc.bootstrapApp(),
-        ipc.getHolidaysRange(2023, 2033)
-      ]);
-      this.holidays = hols;
-      this.applyBootstrapPayload(payload);
+      const payload = await ipc.bootstrapApp();
+      this.dbPath = payload.dbPath;
+      this.sessions = payload.sessions;
+      this.activeSnapshot = payload.activeSnapshot;
+      this.pendingPlans = payload.pendingPlans ?? [];
       await themeStore.init(payload.settings);
-      return payload;
-    } catch (e) {
-      this.lastError = e instanceof Error ? e.message : String(e);
-      themeStore.applyDomAttributes();
-      return null;
+
+      const year = new Date().getFullYear();
+      this.holidays = await ipc.getHolidaysRange(year - 1, year + 2);
+
+      this.unlistenPlans?.();
+      this.unlistenPlans = await listen<PendingPlanNotification[]>("plan://pending", (ev) => {
+        if (Array.isArray(ev.payload)) {
+          this.pendingPlans = ev.payload;
+        }
+      });
+
+      setTimeout(() => {
+        void updaterStore.checkForUpdates(true);
+      }, 2500);
+    } catch (err) {
+      navStore.showToast(`Errore avvio: ${String(err)}`, "error");
     } finally {
-      this.isLoading = false;
+      this.isBootstrapping = false;
     }
   }
 
   async refreshActiveSnapshot(): Promise<void> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) return;
+    const sid = this.activeSnapshot?.session.id ?? themeStore.settings.activeSessionId;
+    if (!sid) {
+      this.activeSnapshot = null;
+      return;
+    }
+    this.activeSnapshot = await ipc.getSessionSnapshot(sid);
+  }
+
+  async selectSession(sessionId: string): Promise<void> {
+    this.isBusy = true;
     try {
-      this.activeSnapshot = await ipc.getSessionSnapshot(sessionId);
-    } catch (e) {
-      this.lastError = e instanceof Error ? e.message : String(e);
+      const snap = await ipc.setActiveAcademicSession(sessionId);
+      this.activeSnapshot = snap;
+      themeStore.settings = { ...themeStore.settings, activeSessionId: snap.session.id };
+      navStore.isSessionPopoverOpen = false;
+    } catch (err) {
+      navStore.showToast(`Impossibile cambiare sessione: ${String(err)}`, "error");
+    } finally {
+      this.isBusy = false;
     }
   }
 
-  async upsertProfile(input: UpsertProfileInput): Promise<UserProfile> {
-    const updated = await ipc.upsertUserProfile(input);
-    this.profile = updated;
-    return updated;
+  async createOrUpdateSession(input: UpsertSessionInput): Promise<AcademicSession | null> {
+    this.isBusy = true;
+    try {
+      const sess = await ipc.upsertAcademicSession(input);
+      const snap = await ipc.setActiveAcademicSession(sess.id);
+      const exists = this.sessions.some((s) => s.id === sess.id);
+      this.sessions = exists
+        ? this.sessions.map((s) => (s.id === sess.id ? sess : s))
+        : [sess, ...this.sessions];
+      this.activeSnapshot = snap;
+      themeStore.settings = { ...themeStore.settings, activeSessionId: sess.id };
+      navStore.showToast(`Sessione "${sess.name}" salvata`, "success");
+      return sess;
+    } catch (err) {
+      navStore.showToast(`Errore salvataggio sessione: ${String(err)}`, "error");
+      return null;
+    } finally {
+      this.isBusy = false;
+    }
   }
 
-  async setActiveSession(sessionId: string): Promise<BootstrapPayload> {
-    const payload = await ipc.setActiveAcademicSession(sessionId);
-    this.applyBootstrapPayload(payload);
-    return payload;
+  async deleteSession(sessionId: string): Promise<void> {
+    this.isBusy = true;
+    try {
+      const boot = await ipc.deleteAcademicSession(sessionId);
+      this.sessions = boot.sessions;
+      this.activeSnapshot = boot.activeSnapshot;
+      themeStore.settings = boot.settings;
+      navStore.showToast("Sessione eliminata", "info");
+    } catch (err) {
+      navStore.showToast(`Errore eliminazione: ${String(err)}`, "error");
+    } finally {
+      this.isBusy = false;
+    }
   }
 
-  async upsertSession(input: UpsertSessionInput): Promise<BootstrapPayload> {
-    const payload = await ipc.upsertAcademicSession(input);
-    this.applyBootstrapPayload(payload);
-    return payload;
-  }
-
-  async deleteSession(sessionId: string): Promise<BootstrapPayload> {
-    const payload = await ipc.deleteAcademicSession(sessionId);
-    this.applyBootstrapPayload(payload);
-    return payload;
-  }
-
-  async upsertCourse(input: UpsertCourseInput): Promise<SessionSnapshot> {
-    const snap = await ipc.upsertCourse(input);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async deleteCourse(courseId: string): Promise<SessionSnapshot | null> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) return null;
-    const snap = await ipc.deleteCourse(sessionId, courseId);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async toggleStudyUnit(unitId: string, isCompleted: boolean): Promise<SessionSnapshot | null> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) return null;
-    const snap = await ipc.toggleStudyUnit(sessionId, unitId, isCompleted);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async assignStudyUnitDate(
-    unitId: string,
-    assignedDate: string | null
-  ): Promise<SessionSnapshot | null> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) return null;
-    const snap = await ipc.assignStudyUnitDate(sessionId, unitId, assignedDate);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async upsertExam(input: UpsertExamInput): Promise<SessionSnapshot> {
-    const snap = await ipc.upsertExam(input);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async createItinerePair(input: CreateItinerePairInput): Promise<SessionSnapshot> {
-    const snap = await ipc.createItinerePair(input);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async deleteExam(examId: string, deletePair = false): Promise<SessionSnapshot | null> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) return null;
-    const snap = await ipc.deleteExam(sessionId, examId, deletePair);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async upsertGenericEvent(input: UpsertGenericEventInput): Promise<SessionSnapshot> {
-    const snap = await ipc.upsertGenericEvent(input);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async deleteGenericEvent(eventId: string): Promise<SessionSnapshot | null> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) return null;
-    const snap = await ipc.deleteGenericEvent(sessionId, eventId);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async upsertTodo(input: UpsertTodoInput): Promise<SessionSnapshot> {
-    const snap = await ipc.upsertTodo(input);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async toggleTodo(todoId: string, _done?: boolean): Promise<SessionSnapshot | null> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) return null;
-    const snap = await ipc.toggleTodo(sessionId, todoId);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async deleteTodo(todoId: string): Promise<SessionSnapshot | null> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) return null;
-    const snap = await ipc.deleteTodo(sessionId, todoId);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async upsertTodoSubItem(input: UpsertTodoSubItemInput): Promise<SessionSnapshot | null> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) return null;
-    const snap = await ipc.upsertTodoSubItem(sessionId, input);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async toggleTodoSubItem(subitemId: string): Promise<SessionSnapshot | null> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) return null;
-    const snap = await ipc.toggleTodoSubItem(sessionId, subitemId);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async deleteTodoSubItem(subitemId: string): Promise<SessionSnapshot | null> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) return null;
-    const snap = await ipc.deleteTodoSubItem(sessionId, subitemId);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async saveDailyNote(date: string, contentMarkdown: string): Promise<SessionSnapshot | null> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) return null;
-    const snap = await ipc.saveDailyNote(sessionId, date, contentMarkdown);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async ignoreConflict(conflictKey: string): Promise<SessionSnapshot | null> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) return null;
-    const snap = await ipc.ignoreConflict(sessionId, conflictKey);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async restoreConflict(conflictKey: string): Promise<SessionSnapshot | null> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) return null;
-    const snap = await ipc.restoreConflict(sessionId, conflictKey);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async ignoreAllConflicts(conflictKeys: string[]): Promise<SessionSnapshot | null> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) return null;
-    const snap = await ipc.ignoreAllConflicts(sessionId, conflictKeys);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async restoreAllConflicts(): Promise<SessionSnapshot | null> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) return null;
-    const snap = await ipc.restoreAllConflicts(sessionId);
-    this.activeSnapshot = snap;
-    return snap;
-  }
-
-  async upsertWeeklyLesson(input: UpsertWeeklyLessonInput): Promise<WeeklyLesson> {
-    const lesson = await ipc.upsertWeeklyLesson(input);
+  // Courses & Units
+  async upsertCourse(input: UpsertCourseInput): Promise<void> {
+    await ipc.upsertCourse(input);
     await this.refreshActiveSnapshot();
-    return lesson;
   }
 
-  async deleteWeeklyLesson(lessonId: string): Promise<boolean> {
-    const res = await ipc.deleteWeeklyLesson(lessonId);
+  async deleteCourse(courseId: string): Promise<void> {
+    await ipc.deleteCourse(courseId);
     await this.refreshActiveSnapshot();
-    return res;
   }
 
-  async projectLessonsToCalendar(startDate?: string, endDate?: string): Promise<number> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) throw new Error("Nessuna sessione attiva.");
-    const start = startDate || this.activeSession?.startDate || this.todayIso;
-    const end = endDate || this.activeSession?.endDate || this.todayIso;
-    const count = await ipc.projectLessonsToCalendar(sessionId, start, end);
+  async upsertStudyUnit(input: UpsertStudyUnitInput): Promise<void> {
+    await ipc.upsertStudyUnit(input);
+    await this.refreshActiveSnapshot();
+  }
+
+  async toggleStudyUnit(unitId: string, completed: boolean): Promise<void> {
+    await ipc.toggleStudyUnit(unitId, completed);
+    await this.refreshActiveSnapshot();
+  }
+
+  // Exams
+  async upsertExam(input: UpsertExamInput): Promise<void> {
+    await ipc.upsertExam(input);
+    await this.refreshActiveSnapshot();
+  }
+
+  async deleteExam(examId: string): Promise<void> {
+    await ipc.deleteExam(examId);
+    await this.refreshActiveSnapshot();
+  }
+
+  // Operational Blocks, Tasks & Subitems
+  async toggleOperationalBlock(blockId: string, done: boolean): Promise<void> {
+    await ipc.toggleOperationalBlock(blockId, done);
+    await this.refreshActiveSnapshot();
+  }
+
+  async upsertTask(input: UpsertTaskInput): Promise<void> {
+    await ipc.upsertTask(input);
+    await this.refreshActiveSnapshot();
+  }
+
+  async toggleTask(taskId: string, done: boolean): Promise<void> {
+    await ipc.toggleTask(taskId, done);
+    await this.refreshActiveSnapshot();
+  }
+
+  async deleteTask(taskId: string): Promise<void> {
+    await ipc.deleteTask(taskId);
+    await this.refreshActiveSnapshot();
+  }
+
+  async upsertTaskSubitem(input: UpsertTaskSubItemInput): Promise<void> {
+    await ipc.upsertTaskSubitem(input);
+    await this.refreshActiveSnapshot();
+  }
+
+  async toggleTaskSubitem(subitemId: string, done: boolean): Promise<void> {
+    await ipc.toggleTaskSubitem(subitemId, done);
+    await this.refreshActiveSnapshot();
+  }
+
+  async deleteTaskSubitem(subitemId: string): Promise<void> {
+    await ipc.deleteTaskSubitem(subitemId);
+    await this.refreshActiveSnapshot();
+  }
+
+  // Quizzes
+  async submitQuizAttempt(input: SubmitQuizAttemptInput): Promise<void> {
+    await ipc.submitQuizAttempt(input);
+    await this.refreshActiveSnapshot();
+  }
+
+  // Weekly Lessons & Calendar Events & Notes
+  async upsertWeeklyLesson(input: UpsertWeeklyLessonInput): Promise<void> {
+    await ipc.upsertWeeklyLesson(input);
+    await this.refreshActiveSnapshot();
+  }
+
+  async deleteWeeklyLesson(lessonId: string): Promise<void> {
+    await ipc.deleteWeeklyLesson(lessonId);
+    await this.refreshActiveSnapshot();
+  }
+
+  async projectLessonsToCalendar(startDate: string, endDate: string): Promise<number> {
+    if (!this.activeSnapshot) return 0;
+    const count = await ipc.projectLessonsToCalendar(this.activeSnapshot.session.id, startDate, endDate);
     await this.refreshActiveSnapshot();
     return count;
   }
 
-  async parseTimetableImage(imageBase64: string, mimeType: string): Promise<ExtractedLessonItem[]> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) throw new Error("Nessuna sessione attiva.");
-    return ipc.parseTimetableImage(sessionId, imageBase64, mimeType);
+  async upsertCalendarEvent(input: UpsertCalendarEventInput): Promise<void> {
+    await ipc.upsertCalendarEvent(input);
+    await this.refreshActiveSnapshot();
   }
 
-  async parseTimetablePrompt(prompt: string): Promise<ExtractedLessonItem[]> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) throw new Error("Nessuna sessione attiva.");
-    return ipc.parseTimetablePrompt(sessionId, prompt);
+  async deleteCalendarEvent(eventId: string): Promise<void> {
+    await ipc.deleteCalendarEvent(eventId);
+    await this.refreshActiveSnapshot();
   }
 
-  async executeAiCommand(prompt: string): Promise<AiAssistantResponse> {
-    const sessionId = this.activeSession?.id;
-    if (!sessionId) {
-      throw new Error("Crea o seleziona prima una sessione accademica attiva.");
+  async saveDailyNote(date: string, markdown: string): Promise<void> {
+    if (!this.activeSnapshot) return;
+    await ipc.saveDailyNote(this.activeSnapshot.session.id, date, markdown);
+    await this.refreshActiveSnapshot();
+  }
+
+  // Study Plan Folder Sync
+  async setPlanFolder(folderPath: string): Promise<PendingPlanNotification[]> {
+    const pending = await ipc.setPlanFolder(folderPath);
+    themeStore.settings = { ...themeStore.settings, planFolder: folderPath };
+    this.pendingPlans = pending;
+    return pending;
+  }
+
+  async scanPendingPlans(): Promise<PendingPlanNotification[]> {
+    const pending = await ipc.scanPendingPlans();
+    this.pendingPlans = pending;
+    return pending;
+  }
+
+  async previewPlan(filePath: string): Promise<PlanDiffSummary> {
+    return await ipc.previewPlanUpdate(filePath);
+  }
+
+  async applyPlan(
+    filePath: string,
+    conflictResolutions: Record<string, string> = {},
+    targetSessionId: string | null = null
+  ): Promise<void> {
+    this.isBusy = true;
+    try {
+      const snap = await ipc.applyPlanUpdate(filePath, conflictResolutions, targetSessionId);
+      const boot = await ipc.bootstrapApp();
+      this.sessions = boot.sessions;
+      this.activeSnapshot = snap;
+      this.pendingPlans = boot.pendingPlans;
+      themeStore.settings = { ...boot.settings, activeSessionId: snap.session.id };
+      navStore.pendingPlanModal = null;
+      navStore.showToast(`Piano "${snap.session.name}" importato!`, "success");
+    } catch (err) {
+      navStore.showToast(`Errore importazione piano: ${String(err)}`, "error");
+    } finally {
+      this.isBusy = false;
     }
-    const response = await ipc.executeAiCommand(sessionId, prompt);
-    if (response.updatedSnapshot) {
-      this.activeSnapshot = response.updatedSnapshot;
-    }
-    if (response.updatedSettings) {
-      await themeStore.init(response.updatedSettings);
-    }
-    return response;
   }
 
-  async exportBackupJson(): Promise<string> {
-    return ipc.exportBackupJson();
-  }
-
-  async importBackupJson(jsonPayload: string): Promise<BootstrapPayload> {
-    const payload = await ipc.importBackupJson(jsonPayload);
-    this.applyBootstrapPayload(payload);
-    await themeStore.init(payload.settings);
-    return payload;
+  destroy(): void {
+    this.unlistenPlans?.();
   }
 }
 
-export const sessionStore = new SessionWorkspaceStore();
+export const sessionStore = new SessionStore();

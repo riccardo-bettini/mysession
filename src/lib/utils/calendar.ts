@@ -1,102 +1,64 @@
 import type {
+  CalendarEvent,
   ConflictItem,
   Course,
   DailyNote,
+  DailyOperationalPlan,
+  DailyQuiz,
   Exam,
-  GenericEvent,
   HolidayInfo,
   SessionSnapshot,
-  StudyUnit,
-  TodoItem
+  TaskItem
 } from "../types/domain";
 
 export const MESI_ITALIANI: readonly string[] = [
-  "Gennaio",
-  "Febbraio",
-  "Marzo",
-  "Aprile",
-  "Maggio",
-  "Giugno",
-  "Luglio",
-  "Agosto",
-  "Settembre",
-  "Ottobre",
-  "Novembre",
-  "Dicembre"
+  "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+  "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"
 ] as const;
 
 export const MESI_ITALIANI_SHORT: readonly string[] = [
-  "Gen",
-  "Feb",
-  "Mar",
-  "Apr",
-  "Mag",
-  "Giu",
-  "Lug",
-  "Ago",
-  "Set",
-  "Ott",
-  "Nov",
-  "Dic"
+  "Gen", "Feb", "Mar", "Apr", "Mag", "Giu",
+  "Lug", "Ago", "Set", "Ott", "Nov", "Dic"
 ] as const;
 
-// Indici standard JS Date.getDay(): 0 = Dom, 1 = Lun, ..., 6 = Sab
 const WEEKDAY_SHORT_BY_JS: readonly string[] = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
+const WEEKDAY_MINI_BY_JS: readonly string[] = ["D", "L", "M", "M", "G", "V", "S"];
 const WEEKDAY_LONG_BY_JS: readonly string[] = [
-  "Domenica",
-  "Lunedì",
-  "Martedì",
-  "Mercoledì",
-  "Giovedì",
-  "Venerdì",
-  "Sabato"
+  "Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"
 ];
 
 export interface WeekdayHeader {
   jsDay: number;
   shortLabel: string;
+  miniLabel: string;
   longLabel: string;
-  isWeeklyHoliday: boolean;
 }
 
 export interface CalendarDayCell {
   isoDate: string;
   year: number;
-  month: number; // 1..12
-  day: number; // 1..31
-  jsWeekday: number; // 0..6
+  month: number;
+  day: number;
+  jsWeekday: number;
   isCurrentMonth: boolean;
   isToday: boolean;
-  isWeeklyHoliday: boolean;
-}
-
-export interface VirtualMonthItem {
-  index: number;
-  key: string; // "YYYY-MM"
-  year: number;
-  month: number; // 1..12
-  title: string; // es. "Gennaio 2027"
-  shortTitle: string; // es. "Gen '27"
-  rowCount: number; // 5 o 6 righe
 }
 
 export interface DayAggregatedData {
   isoDate: string;
   holiday: HolidayInfo | null;
   exams: Exam[];
-  genericEvents: GenericEvent[];
-  studyUnits: StudyUnit[];
-  todos: TodoItem[];
+  events: CalendarEvent[];
+  tasks: TaskItem[];
+  quizzes: DailyQuiz[];
+  operationalPlan: DailyOperationalPlan | null;
   note: DailyNote | null;
   conflicts: ConflictItem[];
-  workloadHours: number;
+  plannedHours: number;
 }
 
 export function toIsoDate(year: number, month1Based: number, day: number): string {
-  const y = String(year).padStart(4, "0");
-  const m = String(month1Based).padStart(2, "0");
-  const d = String(day).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  return `${String(year).padStart(4, "0")}-${String(month1Based).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 export function getTodayIso(): string {
@@ -116,15 +78,18 @@ export function parseIsoDate(isoDate: string): { year: number; month: number; da
 export function formatItalianDateLong(isoDate: string): string {
   const { year, month, day } = parseIsoDate(isoDate);
   const dt = new Date(year, month - 1, day);
-  const wName = WEEKDAY_LONG_BY_JS[dt.getDay()] ?? "";
-  const mName = MESI_ITALIANI[month - 1] ?? "";
-  return `${wName} ${day} ${mName} ${year}`;
+  return `${WEEKDAY_LONG_BY_JS[dt.getDay()] ?? ""} ${day} ${MESI_ITALIANI[month - 1] ?? ""} ${year}`;
 }
 
 export function formatItalianDateShort(isoDate: string): string {
   const { month, day } = parseIsoDate(isoDate);
-  const mShort = MESI_ITALIANI_SHORT[month - 1] ?? "";
-  return `${day} ${mShort}`;
+  return `${day} ${MESI_ITALIANI_SHORT[month - 1] ?? ""}`;
+}
+
+export function formatWeekdayShort(isoDate: string): string {
+  const { year, month, day } = parseIsoDate(isoDate);
+  const dt = new Date(year, month - 1, day);
+  return WEEKDAY_SHORT_BY_JS[dt.getDay()] ?? "";
 }
 
 export function addDaysIso(isoDate: string, deltaDays: number): string {
@@ -133,86 +98,60 @@ export function addDaysIso(isoDate: string, deltaDays: number): string {
   return toIsoDate(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
 }
 
-export function addMonths(
-  year: number,
-  month1Based: number,
-  deltaMonths: number
-): { year: number; month: number } {
+export function addMonths(year: number, month1Based: number, deltaMonths: number): { year: number; month: number } {
   const total = year * 12 + (month1Based - 1) + deltaMonths;
-  const nextYear = Math.floor(total / 12);
-  const nextMonth = (total % 12) + 1;
-  return { year: nextYear, month: nextMonth };
+  return { year: Math.floor(total / 12), month: (((total % 12) + 12) % 12) + 1 };
 }
 
 export function diffDaysIso(fromIso: string, toIso: string): number {
   const a = parseIsoDate(fromIso);
   const b = parseIsoDate(toIso);
-  const utcA = Date.UTC(a.year, a.month - 1, a.day);
-  const utcB = Date.UTC(b.year, b.month - 1, b.day);
-  return Math.round((utcB - utcA) / 86_400_000);
+  return Math.round((Date.UTC(b.year, b.month - 1, b.day) - Date.UTC(a.year, a.month - 1, a.day)) / 86_400_000);
 }
 
-export function getWeekdayHeaders(
-  startDayOfWeek = 1,
-  weeklyHolidayDay = 0
-): WeekdayHeader[] {
+export function getWeekdayHeaders(startDayOfWeek = 1): WeekdayHeader[] {
+  const start = ((startDayOfWeek % 7) + 7) % 7;
   const headers: WeekdayHeader[] = [];
   for (let i = 0; i < 7; i++) {
-    const jsDay = (startDayOfWeek + i) % 7;
+    const jsDay = (start + i) % 7;
     headers.push({
       jsDay,
       shortLabel: WEEKDAY_SHORT_BY_JS[jsDay],
-      longLabel: WEEKDAY_LONG_BY_JS[jsDay],
-      isWeeklyHoliday: weeklyHolidayDay >= 0 && jsDay === weeklyHolidayDay
+      miniLabel: WEEKDAY_MINI_BY_JS[jsDay],
+      longLabel: WEEKDAY_LONG_BY_JS[jsDay]
     });
   }
   return headers;
-}
-
-export function getMonthRowCount(
-  year: number,
-  month1Based: number,
-  startDayOfWeek = 1
-): number {
-  const firstDayJs = new Date(year, month1Based - 1, 1).getDay();
-  const leadingOffset = (firstDayJs - startDayOfWeek + 7) % 7;
-  const daysInMonth = new Date(year, month1Based, 0).getDate();
-  return Math.ceil((leadingOffset + daysInMonth) / 7);
 }
 
 export function buildMonthGrid(
   year: number,
   month1Based: number,
   startDayOfWeek = 1,
-  weeklyHolidayDay = 0,
   todayIso = getTodayIso()
 ): CalendarDayCell[] {
-  const firstOfMonth = new Date(year, month1Based - 1, 1);
-  const firstDayJs = firstOfMonth.getDay();
-  const leadingOffset = (firstDayJs - startDayOfWeek + 7) % 7;
+  const start = ((startDayOfWeek % 7) + 7) % 7;
+  const firstDayJs = new Date(year, month1Based - 1, 1).getDay();
+  const leadingOffset = (firstDayJs - start + 7) % 7;
   const daysInMonth = new Date(year, month1Based, 0).getDate();
   const rowCount = Math.ceil((leadingOffset + daysInMonth) / 7);
   const totalCells = rowCount * 7;
 
   const cells: CalendarDayCell[] = [];
   for (let i = 0; i < totalCells; i++) {
-    const dayOffset = i - leadingOffset + 1;
-    const cellDate = new Date(year, month1Based - 1, dayOffset);
+    const cellDate = new Date(year, month1Based - 1, i - leadingOffset + 1);
     const cYear = cellDate.getFullYear();
     const cMonth = cellDate.getMonth() + 1;
     const cDay = cellDate.getDate();
-    const jsWeekday = cellDate.getDay();
     const isoDate = toIsoDate(cYear, cMonth, cDay);
-
     cells.push({
       isoDate,
       year: cYear,
       month: cMonth,
       day: cDay,
-      jsWeekday,
+      jsWeekday: cellDate.getDay(),
       isCurrentMonth: cYear === year && cMonth === month1Based,
-      isToday: isoDate === todayIso,
-      isWeeklyHoliday: weeklyHolidayDay >= 0 && jsWeekday === weeklyHolidayDay
+      isToday: isoDate === todayIso
     });
   }
   return cells;
@@ -221,13 +160,12 @@ export function buildMonthGrid(
 export function buildWeekGrid(
   anchorIso: string,
   startDayOfWeek = 1,
-  weeklyHolidayDay = 0,
   todayIso = getTodayIso()
 ): CalendarDayCell[] {
+  const start = ((startDayOfWeek % 7) + 7) % 7;
   const { year, month, day } = parseIsoDate(anchorIso);
-  const anchorDate = new Date(year, month - 1, day);
-  const anchorJsDay = anchorDate.getDay();
-  const offsetToStart = (anchorJsDay - startDayOfWeek + 7) % 7;
+  const anchorJsDay = new Date(year, month - 1, day).getDay();
+  const offsetToStart = (anchorJsDay - start + 7) % 7;
 
   const cells: CalendarDayCell[] = [];
   for (let i = 0; i < 7; i++) {
@@ -235,90 +173,18 @@ export function buildWeekGrid(
     const cYear = cellDate.getFullYear();
     const cMonth = cellDate.getMonth() + 1;
     const cDay = cellDate.getDate();
-    const jsWeekday = cellDate.getDay();
     const isoDate = toIsoDate(cYear, cMonth, cDay);
-
     cells.push({
       isoDate,
       year: cYear,
       month: cMonth,
       day: cDay,
-      jsWeekday,
+      jsWeekday: cellDate.getDay(),
       isCurrentMonth: cMonth === month,
-      isToday: isoDate === todayIso,
-      isWeeklyHoliday: weeklyHolidayDay >= 0 && jsWeekday === weeklyHolidayDay
+      isToday: isoDate === todayIso
     });
   }
   return cells;
-}
-
-/**
- * Costruisce una finestra virtualizzata continua di mesi (es. 96 mesi = 8 anni)
- * centrata attorno all'anno/mese di riferimento, per lo scorrimento infinito a 120/180 Hz.
- */
-export function buildVirtualMonthList(
-  anchorYear: number,
-  anchorMonth1Based: number,
-  monthsBefore = 36,
-  monthsAfter = 60,
-  startDayOfWeek = 1
-): VirtualMonthItem[] {
-  const list: VirtualMonthItem[] = [];
-  let idx = 0;
-  for (let delta = -monthsBefore; delta <= monthsAfter; delta++) {
-    const { year, month } = addMonths(anchorYear, anchorMonth1Based, delta);
-    const key = `${year}-${String(month).padStart(2, "0")}`;
-    const mName = MESI_ITALIANI[month - 1] ?? "";
-    const mShort = MESI_ITALIANI_SHORT[month - 1] ?? "";
-    const rowCount = getMonthRowCount(year, month, startDayOfWeek);
-
-    list.push({
-      index: idx++,
-      key,
-      year,
-      month,
-      title: `${mName} ${year}`,
-      shortTitle: `${mShort} '${String(year).slice(-2)}`,
-      rowCount
-    });
-  }
-  return list;
-}
-
-/**
- * Costruisce la lista virtualizzata vincolata rigorosamente al periodo della sessione attiva
- * (dal mese d'inizio al mese di fine), impedendo lo scorrimento al di fuori dei limiti stabiliti.
- */
-export function buildSessionVirtualMonthList(
-  startDateIso: string,
-  endDateIso: string,
-  startDayOfWeek = 1
-): VirtualMonthItem[] {
-  const start = parseIsoDate(startDateIso);
-  const end = parseIsoDate(endDateIso);
-
-  const totalMonths = (end.year - start.year) * 12 + (end.month - start.month);
-  const count = Math.max(1, totalMonths + 1);
-
-  const list: VirtualMonthItem[] = [];
-  for (let i = 0; i < count; i++) {
-    const { year, month } = addMonths(start.year, start.month, i);
-    const key = `${year}-${String(month).padStart(2, "0")}`;
-    const mName = MESI_ITALIANI[month - 1] ?? "";
-    const mShort = MESI_ITALIANI_SHORT[month - 1] ?? "";
-    const rowCount = getMonthRowCount(year, month, startDayOfWeek);
-
-    list.push({
-      index: i,
-      key,
-      year,
-      month,
-      title: `${mName} ${year}`,
-      shortTitle: `${mShort} '${String(year).slice(-2)}`,
-      rowCount
-    });
-  }
-  return list;
 }
 
 export function indexSnapshotByDate(
@@ -338,12 +204,13 @@ export function indexSnapshotByDate(
         isoDate,
         holiday: null,
         exams: [],
-        genericEvents: [],
-        studyUnits: [],
-        todos: [],
+        events: [],
+        tasks: [],
+        quizzes: [],
+        operationalPlan: null,
         note: null,
         conflicts: [],
-        workloadHours: 0
+        plannedHours: 0
       };
       byDate.set(isoDate, entry);
     }
@@ -363,35 +230,29 @@ export function indexSnapshotByDate(
   }
 
   for (const ex of snapshot.exams) {
-    const course = courseById.get(ex.courseId);
-    if (!course || course.isVisible !== false) {
-      ensureDay(ex.date).exams.push(ex);
-    }
+    ensureDay(ex.date).exams.push(ex);
   }
 
-  for (const ev of snapshot.genericEvents) {
-    if (!ev.courseId || courseById.get(ev.courseId)?.isVisible !== false) {
-      ensureDay(ev.date).genericEvents.push(ev);
-    }
+  for (const ev of snapshot.calendarEvents) {
+    ensureDay(ev.date).events.push(ev);
   }
 
-  for (const unit of snapshot.studyUnits) {
-    if (unit.assignedDate) {
-      const course = courseById.get(unit.courseId);
-      if (!course || course.isVisible !== false) {
-        ensureDay(unit.assignedDate).studyUnits.push(unit);
-      }
-    }
+  for (const t of snapshot.tasks) {
+    const day = ensureDay(t.date);
+    day.tasks.push(t);
+    day.plannedHours = Math.round((day.plannedHours + t.plannedHours) * 10) / 10;
   }
 
-  for (const td of snapshot.todos) {
-    if (!td.courseId || courseById.get(td.courseId)?.isVisible !== false) {
-      ensureDay(td.date).todos.push(td);
-    }
+  for (const q of snapshot.quizzes) {
+    ensureDay(q.date).quizzes.push(q);
+  }
+
+  for (const op of snapshot.operationalPlans) {
+    ensureDay(op.date).operationalPlan = op;
   }
 
   for (const nt of snapshot.dailyNotes) {
-    if (nt.contentMarkdown && nt.contentMarkdown.trim().length > 0) {
+    if (nt.contentMarkdown?.trim()) {
       ensureDay(nt.date).note = nt;
     }
   }
@@ -403,30 +264,5 @@ export function indexSnapshotByDate(
     }
   }
 
-  const workloadMap = snapshot.telemetry?.dailyWorkloadMap ?? {};
-  for (const [iso, hours] of Object.entries(workloadMap)) {
-    ensureDay(iso).workloadHours = hours;
-  }
-
   return { byDate, courseById };
-}
-
-export function formatExamRoundLabel(round: string): string {
-  switch (round) {
-    case "1":
-    case "1° Appello":
-      return "1° Appello";
-    case "2":
-    case "2° Appello":
-      return "2° Appello";
-    case "3":
-    case "3° Appello":
-      return "3° Appello";
-    case "itinere_1":
-      return "1ª Prova in Itinere";
-    case "itinere_2":
-      return "2ª Prova in Itinere";
-    default:
-      return round || "Appello";
-  }
 }

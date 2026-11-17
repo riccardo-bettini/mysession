@@ -10,7 +10,7 @@ use db::DatabaseManager;
 use tauri::Manager;
 use win32::{apply_window_backdrop_and_theme, install_window_subclass};
 
-pub const APP_VERSION: &str = "1.0.47";
+pub const APP_VERSION: &str = "2.00";
 pub const APP_AUTHOR: &str = "Riccardo Bettini";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -26,7 +26,7 @@ pub fn run() {
                 .expect("Impossibile risolvere la directory %APPDATA% del sistema operativo");
 
             let db_manager = DatabaseManager::init_in_dir(&app_data_dir)
-                .expect("Impossibile inizializzare il database SQLite in %APPDATA%");
+                .expect("Impossibile inizializzare il database SQLite v2.00 in %APPDATA%");
 
             let initial_settings = db_manager
                 .with_conn(|conn| DatabaseManager::get_settings(conn))
@@ -50,7 +50,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::health_check,
             commands::bootstrap_app,
-            commands::upsert_user_profile,
             commands::get_app_settings,
             commands::save_app_settings,
             commands::apply_window_material,
@@ -62,50 +61,45 @@ pub fn run() {
             commands::delete_academic_session,
             commands::upsert_course,
             commands::delete_course,
+            commands::upsert_study_unit,
             commands::toggle_study_unit,
-            commands::assign_study_unit_date,
             commands::upsert_exam,
-            commands::create_itinere_pair,
             commands::delete_exam,
-            commands::upsert_generic_event,
-            commands::delete_generic_event,
-            commands::upsert_todo,
-            commands::toggle_todo,
-            commands::delete_todo,
-            commands::upsert_todo_subitem,
-            commands::toggle_todo_subitem,
-            commands::delete_todo_subitem,
+            commands::toggle_operational_block,
+            commands::upsert_task,
+            commands::toggle_task,
+            commands::delete_task,
+            commands::upsert_task_subitem,
+            commands::toggle_task_subitem,
+            commands::delete_task_subitem,
+            commands::submit_quiz_attempt,
+            commands::upsert_weekly_lesson,
+            commands::delete_weekly_lesson,
+            commands::upsert_calendar_event,
+            commands::delete_calendar_event,
             commands::save_daily_note,
-            commands::ignore_conflict,
-            commands::restore_conflict,
-            commands::ignore_all_conflicts,
-            commands::restore_all_conflicts,
             commands::get_holidays_range,
-            commands::export_backup_json,
-            commands::import_backup_json,
-            commands::execute_ai_command,
+            commands::project_lessons_to_calendar,
             commands::set_plan_folder,
             commands::scan_pending_plans,
             commands::preview_plan_update,
             commands::apply_plan_update,
-            commands::set_course_visibility,
-            commands::get_weekly_lessons,
-            commands::upsert_weekly_lesson,
-            commands::delete_weekly_lesson,
-            commands::project_lessons_to_calendar,
-            commands::parse_timetable_image,
-            commands::parse_timetable_prompt,
             commands::open_folder_in_explorer,
             commands::relaunch_app,
-            commands::get_system_hardware_info,
-            commands::get_ai_models_status,
-            commands::start_ai_model_download,
-            commands::cancel_ai_model_download,
-            commands::delete_ai_model,
-            commands::get_ai_runtime_status,
-            commands::stop_ai_runtime,
-            commands::start_ai_runtime,
+            commands::ai::get_system_hardware_info,
+            commands::ai::get_cli_agents_status,
+            commands::ai::get_ai_models_status,
+            commands::ai::start_ai_model_download,
+            commands::ai::cancel_ai_model_download,
+            commands::ai::delete_ai_model,
+            commands::ai::get_ai_runtime_status,
+            commands::ai::stop_ai_runtime,
+            commands::ai::start_ai_runtime,
+            commands::ai::execute_ai_command,
+            commands::ai::undo_ai_action,
+            commands::ai::parse_timetable_image,
+            commands::ai::parse_timetable_prompt,
         ])
         .run(tauri::generate_context!())
-        .expect("Errore critico durante l'avvio di MySession (Tauri v2)");
+        .expect("Errore critico durante l'avvio di MySession v2.00");
 }

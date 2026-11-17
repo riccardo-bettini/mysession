@@ -1,9 +1,9 @@
-use std::collections::{HashMap, HashSet};
-use chrono::Utc;
-use rusqlite::{params, Connection, OptionalExtension};
-use uuid::Uuid;
 use crate::db::DbResult;
 use crate::plan::model::PlanPayload;
+use chrono::Utc;
+use rusqlite::{params, Connection, OptionalExtension};
+use std::collections::{HashMap, HashSet};
+use uuid::Uuid;
 
 pub struct ApplyResult {
     pub session_id: String,
@@ -12,6 +12,7 @@ pub struct ApplyResult {
     pub units_synced: usize,
     pub exams_synced: usize,
     pub tasks_synced: usize,
+    pub quizzes_synced: usize,
 }
 
 pub fn apply_study_plan(
@@ -19,17 +20,51 @@ pub fn apply_study_plan(
     theirs: &PlanPayload,
     theirs_raw_json: &str,
     source_path: &str,
-    conflict_resolutions: &HashMap<String, String>, // task_id -> "keep_mine" | "use_theirs"
+    conflict_resolutions: &HashMap<String, String>,
     target_session_id: Option<&str>,
 ) -> DbResult<ApplyResult> {
     let tx = conn.transaction()?;
     let now_iso = Utc::now().to_rfc3339();
 
-    // 1. Resolve or create academic session
+    let weekdays_json =
+        serde_json::to_string(&theirs.constraints.study_weekdays).unwrap_or_else(|_| "[1,2,3,4,5]".into());
+    let off_dates_json =
+        serde_json::to_string(&theirs.constraints.off_dates).unwrap_or_else(|_| "[]".into());
+
+    // 1. Resolve or create Academic Session
     let session_id: String = if let Some(target_id) = target_session_id {
         tx.execute(
-            "UPDATE academic_sessions SET plan_id = ?1 WHERE id = ?2",
-            params![&theirs.plan_id, target_id],
+            r#"
+            UPDATE academic_sessions
+            SET plan_id = ?1,
+                name = ?2,
+                subtitle = ?3,
+                session_type = ?4,
+                academic_year = ?5,
+                start_date = ?6,
+                end_date = ?7,
+                max_hours_per_day = ?8,
+                study_weekdays_json = ?9,
+                off_dates_json = ?10,
+                review_days_before_exam = ?11,
+                notes = ?12
+            WHERE id = ?13
+            "#,
+            params![
+                &theirs.plan_id,
+                theirs.session.name.trim(),
+                theirs.session.subtitle.trim(),
+                theirs.session.session_type.trim(),
+                theirs.session.academic_year.trim(),
+                theirs.session.start_date.trim(),
+                theirs.session.end_date.trim(),
+                theirs.constraints.max_hours_per_day,
+                &weekdays_json,
+                &off_dates_json,
+                theirs.constraints.review_days_before_exam,
+                theirs.session.notes.trim(),
+                target_id
+            ],
         )?;
         target_id.to_string()
     } else {
@@ -43,7 +78,6 @@ pub fn apply_study_plan(
 
         match existing_id {
             Some(id) => {
-                // Update session dates/name if needed
                 tx.execute(
                     r#"
                     UPDATE academic_sessions
@@ -53,8 +87,12 @@ pub fn apply_study_plan(
                         academic_year = ?4,
                         start_date = ?5,
                         end_date = ?6,
-                        notes = ?7
-                    WHERE id = ?8
+                        max_hours_per_day = ?7,
+                        study_weekdays_json = ?8,
+                        off_dates_json = ?9,
+                        review_days_before_exam = ?10,
+                        notes = ?11
+                    WHERE id = ?12
                     "#,
                     params![
                         theirs.session.name.trim(),
@@ -63,6 +101,10 @@ pub fn apply_study_plan(
                         theirs.session.academic_year.trim(),
                         theirs.session.start_date.trim(),
                         theirs.session.end_date.trim(),
+                        theirs.constraints.max_hours_per_day,
+                        &weekdays_json,
+                        &off_dates_json,
+                        theirs.constraints.review_days_before_exam,
                         theirs.session.notes.trim(),
                         &id
                     ],
@@ -74,24 +116,28 @@ pub fn apply_study_plan(
                 tx.execute(
                     r#"
                     INSERT INTO academic_sessions (
-                        id, name, subtitle, session_type, academic_year,
-                        start_date, end_date, notes, created_at, plan_id
-                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                        id, plan_id, name, subtitle, session_type, academic_year,
+                        start_date, end_date, max_hours_per_day, study_weekdays_json,
+                        off_dates_json, review_days_before_exam, notes, created_at
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
                     "#,
                     params![
                         &new_id,
+                        &theirs.plan_id,
                         theirs.session.name.trim(),
                         theirs.session.subtitle.trim(),
                         theirs.session.session_type.trim(),
                         theirs.session.academic_year.trim(),
                         theirs.session.start_date.trim(),
                         theirs.session.end_date.trim(),
+                        theirs.constraints.max_hours_per_day,
+                        &weekdays_json,
+                        &off_dates_json,
+                        theirs.constraints.review_days_before_exam,
                         theirs.session.notes.trim(),
-                        &now_iso,
-                        &theirs.plan_id
+                        &now_iso
                     ],
                 )?;
-                // Set as active session
                 tx.execute(
                     "UPDATE app_settings SET active_session_id = ?1 WHERE id = 1",
                     params![&new_id],
@@ -123,20 +169,22 @@ pub fn apply_study_plan(
                         professor = ?4,
                         color_hex = ?5,
                         difficulty_weight = ?6,
-                        target_hours_override = ?7,
-                        notes = ?8,
-                        plan_course_id = ?9,
-                        sort_order = ?10
-                    WHERE id = ?11
+                        target_hours = ?7,
+                        is_active = ?8,
+                        notes = ?9,
+                        plan_course_id = ?10,
+                        sort_order = ?11
+                    WHERE id = ?12
                     "#,
                     params![
                         course.name.trim(),
                         course.code.trim(),
-                        course.cfu.round().max(1.0) as i32,
+                        course.cfu.max(0.0),
                         course.professor.trim(),
                         course.color_hex.trim(),
-                        course.difficulty_weight.clamp(0.5, 2.0),
+                        course.difficulty_weight.clamp(0.5, 2.5),
                         course.target_hours,
+                        if course.active { 1 } else { 0 },
                         course.notes.trim(),
                         &course.id,
                         idx as i32,
@@ -150,25 +198,25 @@ pub fn apply_study_plan(
                 tx.execute(
                     r#"
                     INSERT INTO courses (
-                        id, session_id, sigla, name, code, cfu, professor,
-                        color_hex, difficulty_weight, target_hours_override, notes,
-                        sort_order, plan_course_id, is_visible
-                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 1)
+                        id, session_id, plan_course_id, sigla, name, code, cfu, professor,
+                        color_hex, difficulty_weight, target_hours, is_active, notes, sort_order
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
                     "#,
                     params![
                         &new_cid,
                         &session_id,
+                        &course.id,
                         course.sigla.trim().to_uppercase(),
                         course.name.trim(),
                         course.code.trim(),
-                        course.cfu.round().max(1.0) as i32,
+                        course.cfu.max(0.0),
                         course.professor.trim(),
                         course.color_hex.trim(),
-                        course.difficulty_weight.clamp(0.5, 2.0),
+                        course.difficulty_weight.clamp(0.5, 2.5),
                         course.target_hours,
+                        if course.active { 1 } else { 0 },
                         course.notes.trim(),
-                        idx as i32,
-                        &course.id
+                        idx as i32
                     ],
                 )?;
                 new_cid
@@ -180,9 +228,8 @@ pub fn apply_study_plan(
     // 3. Sync Study Units
     let mut plan_unit_to_db_id: HashMap<String, String> = HashMap::new();
     for unit in &theirs.units {
-        let db_course_id = match plan_course_to_db_id.get(&unit.course_id) {
-            Some(id) => id,
-            None => continue,
+        let Some(db_course_id) = plan_course_to_db_id.get(&unit.course_id) else {
+            continue;
         };
 
         let existing_unit_id: Option<String> = tx
@@ -199,16 +246,22 @@ pub fn apply_study_plan(
                     r#"
                     UPDATE study_units
                     SET unit_number = ?1,
-                        title = ?2,
-                        description = ?3,
-                        estimated_hours = ?4
-                    WHERE id = ?5
+                        chapter = ?2,
+                        title = ?3,
+                        description = ?4,
+                        source = ?5,
+                        estimated_hours = ?6,
+                        priority = ?7
+                    WHERE id = ?8
                     "#,
                     params![
                         unit.unit_number,
+                        unit.chapter.trim(),
                         unit.title.trim(),
                         unit.description.trim(),
-                        unit.estimated_hours.max(0.5),
+                        unit.source.as_deref().unwrap_or("").trim(),
+                        unit.estimated_hours.max(0.0),
+                        unit.priority.unwrap_or(2),
                         &uid
                     ],
                 )?;
@@ -219,19 +272,22 @@ pub fn apply_study_plan(
                 tx.execute(
                     r#"
                     INSERT INTO study_units (
-                        id, course_id, session_id, unit_number, title, description,
-                        estimated_hours, is_completed, assigned_date, completed_at, plan_unit_id
-                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, NULL, NULL, ?8)
+                        id, course_id, session_id, plan_unit_id, unit_number, chapter,
+                        title, description, source, estimated_hours, priority, is_completed, completed_at
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, NULL)
                     "#,
                     params![
                         &new_uid,
                         db_course_id,
                         &session_id,
+                        &unit.id,
                         unit.unit_number,
+                        unit.chapter.trim(),
                         unit.title.trim(),
                         unit.description.trim(),
-                        unit.estimated_hours.max(0.5),
-                        &unit.id
+                        unit.source.as_deref().unwrap_or("").trim(),
+                        unit.estimated_hours.max(0.0),
+                        unit.priority.unwrap_or(2),
                     ],
                 )?;
                 new_uid
@@ -242,15 +298,14 @@ pub fn apply_study_plan(
 
     // 4. Sync Exams
     for exam in &theirs.exams {
-        let db_course_id = match plan_course_to_db_id.get(&exam.course_id) {
-            Some(id) => id,
-            None => continue,
+        let Some(db_course_id) = plan_course_to_db_id.get(&exam.course_id) else {
+            continue;
         };
 
         let existing_exam_id: Option<String> = tx
             .query_row(
-                "SELECT id FROM exams WHERE session_id = ?1 AND course_id = ?2 AND round = ?3 LIMIT 1",
-                params![&session_id, db_course_id, &exam.round],
+                "SELECT id FROM exams WHERE session_id = ?1 AND (plan_exam_id = ?2 OR (course_id = ?3 AND round = ?4)) LIMIT 1",
+                params![&session_id, &exam.id, db_course_id, &exam.round],
                 |row| row.get(0),
             )
             .optional()?;
@@ -260,19 +315,23 @@ pub fn apply_study_plan(
                 tx.execute(
                     r#"
                     UPDATE exams
-                    SET date = ?1,
-                        time_slot = ?2,
-                        duration_minutes = ?3,
-                        exam_type = ?4,
-                        classroom = ?5,
-                        title = ?6,
-                        status = ?7
-                    WHERE id = ?8
+                    SET plan_exam_id = ?1,
+                        date = ?2,
+                        time_slot = ?3,
+                        duration_minutes = ?4,
+                        round = ?5,
+                        exam_type = ?6,
+                        classroom = ?7,
+                        title = ?8,
+                        status = ?9
+                    WHERE id = ?10
                     "#,
                     params![
+                        &exam.id,
                         exam.date.trim(),
                         exam.time_slot.trim(),
                         exam.duration_minutes.max(30),
+                        exam.round.trim(),
                         exam.exam_type.trim(),
                         exam.classroom.trim(),
                         exam.title.trim(),
@@ -286,15 +345,15 @@ pub fn apply_study_plan(
                 tx.execute(
                     r#"
                     INSERT INTO exams (
-                        id, session_id, course_id, date, time_slot, duration_minutes,
-                        round, exam_type, classroom, weight_fraction, pair_id,
-                        title, details, status, grade
-                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1.0, NULL, ?10, '', ?11, NULL)
+                        id, session_id, course_id, plan_exam_id, date, time_slot,
+                        duration_minutes, round, exam_type, classroom, title, details, status, grade
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, '', ?12, NULL)
                     "#,
                     params![
                         &new_eid,
                         &session_id,
                         db_course_id,
+                        &exam.id,
                         exam.date.trim(),
                         exam.time_slot.trim(),
                         exam.duration_minutes.max(30),
@@ -309,34 +368,103 @@ pub fn apply_study_plan(
         }
     }
 
-    // 5. Sync Tasks into `todos`
-    // Map current DB todos with `plan_task_id`
-    struct ExistingTodo {
+    // 5. Sync Operational Plans & Blocks
+    let mut existing_blocks_done: HashMap<String, bool> = HashMap::new();
+    {
+        let mut stmt = tx.prepare(
+            "SELECT plan_block_id, done FROM operational_blocks WHERE session_id = ?1 AND plan_block_id IS NOT NULL",
+        )?;
+        let rows = stmt.query_map(params![&session_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)? != 0))
+        })?;
+        for r in rows {
+            let (bid, done) = r?;
+            existing_blocks_done.insert(bid, done);
+        }
+    }
+
+    tx.execute(
+        "DELETE FROM daily_operational_plans WHERE session_id = ?1",
+        params![&session_id],
+    )?;
+    tx.execute(
+        "DELETE FROM operational_blocks WHERE session_id = ?1 AND plan_block_id IS NOT NULL",
+        params![&session_id],
+    )?;
+
+    for day in &theirs.days {
+        tx.execute(
+            r#"
+            INSERT INTO daily_operational_plans (session_id, date, daily_goal, strategy_note)
+            VALUES (?1, ?2, ?3, ?4)
+            "#,
+            params![
+                &session_id,
+                &day.date,
+                day.operational_plan.daily_goal.trim(),
+                day.operational_plan.strategy_note.trim()
+            ],
+        )?;
+
+        for block in &day.operational_plan.blocks {
+            let db_course_id = plan_course_to_db_id.get(&block.course_id).cloned();
+            let done = existing_blocks_done.get(&block.id).copied().unwrap_or(false);
+            let new_bid = format!("opb_{}", Uuid::new_v4().simple());
+            tx.execute(
+                r#"
+                INSERT INTO operational_blocks (
+                    id, session_id, date, course_id, block_order, category, title,
+                    chapter, topic, pages, source, duration_hours, instructions, done, plan_block_id
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                "#,
+                params![
+                    &new_bid,
+                    &session_id,
+                    &day.date,
+                    db_course_id,
+                    block.order,
+                    &block.category,
+                    block.title.trim(),
+                    block.chapter.trim(),
+                    block.topic.trim(),
+                    block.pages.trim(),
+                    block.source.trim(),
+                    block.duration_hours,
+                    block.instructions.trim(),
+                    if done { 1 } else { 0 },
+                    &block.id
+                ],
+            )?;
+        }
+    }
+
+    // 6. Sync Tasks & Subtasks
+    struct ExistingTask {
         id: String,
         date: String,
-        text: String,
+        title: String,
         done: bool,
     }
 
-    let mut existing_todos: HashMap<String, ExistingTodo> = HashMap::new();
+    let mut existing_tasks: HashMap<String, ExistingTask> = HashMap::new();
     {
         let mut stmt = tx.prepare(
-            "SELECT id, plan_task_id, date, text, done FROM todos WHERE session_id = ?1 AND plan_task_id IS NOT NULL",
+            "SELECT id, plan_task_id, date, title, done FROM tasks WHERE session_id = ?1 AND plan_task_id IS NOT NULL",
         )?;
         let rows = stmt.query_map(params![&session_id], |row| {
             Ok((
                 row.get::<_, String>(1)?,
-                ExistingTodo {
+                ExistingTask {
                     id: row.get(0)?,
                     date: row.get(2)?,
-                    text: row.get(3)?,
+                    title: row.get(3)?,
                     done: row.get::<_, i32>(4)? != 0,
                 },
             ))
         })?;
         for r in rows {
             let (ptid, item) = r?;
-            existing_todos.insert(ptid, item);
+            existing_tasks.insert(ptid, item);
         }
     }
 
@@ -346,144 +474,159 @@ pub fn apply_study_plan(
         for task in &day.tasks {
             touched_plan_task_ids.insert(task.id.clone());
             let db_course_id = plan_course_to_db_id.get(&task.course_id);
+            let db_unit_id = task
+                .unit_id
+                .as_ref()
+                .and_then(|uid| plan_unit_to_db_id.get(uid));
 
-            // Find existing todo either by id or by alias
-            let existing = existing_todos.get(&task.id).or_else(|| {
-                task.aliases.iter().find_map(|a| existing_todos.get(a))
-            });
+            let existing = existing_tasks
+                .get(&task.id)
+                .or_else(|| task.aliases.iter().find_map(|a| existing_tasks.get(a)));
 
             let resolution = conflict_resolutions
                 .get(&task.id)
                 .map(String::as_str)
                 .unwrap_or("use_theirs");
 
-            let (target_date, target_text, target_done) = match existing {
+            let (target_date, target_title, target_done) = match existing {
                 Some(ext) => {
                     if resolution == "keep_mine" {
-                        (ext.date.clone(), ext.text.clone(), ext.done)
+                        (ext.date.clone(), ext.title.clone(), ext.done)
                     } else {
-                        (day.date.clone(), task.text.clone(), ext.done)
+                        (day.date.clone(), task.title.clone(), ext.done)
                     }
                 }
-                None => (day.date.clone(), task.text.clone(), false),
+                None => (day.date.clone(), task.title.clone(), false),
             };
 
-            let effective_todo_id = match existing {
+            let effective_task_id = match existing {
                 Some(ext) => {
                     tx.execute(
                         r#"
-                        UPDATE todos
+                        UPDATE tasks
                         SET plan_task_id = ?1,
                             course_id = ?2,
-                            date = ?3,
-                            text = ?4,
-                            done = ?5,
-                            priority = ?6,
-                            planned_hours = ?7,
-                            kind = ?8
-                        WHERE id = ?9
+                            unit_id = ?3,
+                            date = ?4,
+                            category = ?5,
+                            title = ?6,
+                            chapter = ?7,
+                            topic = ?8,
+                            pages = ?9,
+                            source = ?10,
+                            planned_hours = ?11,
+                            done = ?12,
+                            priority = ?13
+                        WHERE id = ?14
                         "#,
                         params![
                             &task.id,
                             db_course_id,
+                            db_unit_id,
                             &target_date,
-                            &target_text,
-                            if target_done { 1 } else { 0 },
-                            task.priority.unwrap_or(0),
+                            &task.category,
+                            &target_title,
+                            task.chapter.trim(),
+                            task.topic.trim(),
+                            task.pages.trim(),
+                            task.source.as_deref().unwrap_or("").trim(),
                             task.planned_hours,
-                            &task.kind,
+                            if target_done { 1 } else { 0 },
+                            task.priority.unwrap_or(2),
                             &ext.id
                         ],
                     )?;
                     ext.id.clone()
                 }
                 None => {
-                    let new_todo_id = format!("todo_{}", Uuid::new_v4().simple());
+                    let new_tid = format!("tsk_{}", Uuid::new_v4().simple());
                     tx.execute(
                         r#"
-                        INSERT INTO todos (
-                            id, session_id, course_id, date, text, done,
-                            priority, created_at, plan_task_id, planned_hours, kind
-                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                        INSERT INTO tasks (
+                            id, session_id, course_id, unit_id, date, category, title,
+                            chapter, topic, pages, source, planned_hours, done, priority,
+                            plan_task_id, created_at
+                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
                         "#,
                         params![
-                            &new_todo_id,
+                            &new_tid,
                             &session_id,
                             db_course_id,
+                            db_unit_id,
                             &target_date,
-                            &target_text,
-                            if target_done { 1 } else { 0 },
-                            task.priority.unwrap_or(0),
-                            &now_iso,
-                            &task.id,
+                            &task.category,
+                            &target_title,
+                            task.chapter.trim(),
+                            task.topic.trim(),
+                            task.pages.trim(),
+                            task.source.as_deref().unwrap_or("").trim(),
                             task.planned_hours,
-                            &task.kind
+                            if target_done { 1 } else { 0 },
+                            task.priority.unwrap_or(2),
+                            &task.id,
+                            &now_iso
                         ],
                     )?;
-                    new_todo_id
+                    new_tid
                 }
             };
 
-            // Sync Subtasks
-            struct ExistingSubItem {
-                id: String,
-                done: bool,
-            }
-            let mut existing_subitems: HashMap<String, ExistingSubItem> = HashMap::new();
+            // Sync subtasks
+            let mut existing_subs: HashMap<String, (String, bool)> = HashMap::new();
             {
                 let mut sstmt = tx.prepare(
-                    "SELECT id, plan_subtask_id, done FROM todo_subitems WHERE todo_id = ?1 AND plan_subtask_id IS NOT NULL",
+                    "SELECT id, plan_subtask_id, done FROM task_subitems WHERE task_id = ?1 AND plan_subtask_id IS NOT NULL",
                 )?;
-                let srows = sstmt.query_map(params![&effective_todo_id], |row| {
+                let srows = sstmt.query_map(params![&effective_task_id], |row| {
                     Ok((
                         row.get::<_, String>(1)?,
-                        ExistingSubItem {
-                            id: row.get(0)?,
-                            done: row.get::<_, i32>(2)? != 0,
-                        },
+                        (row.get::<_, String>(0)?, row.get::<_, i32>(2)? != 0),
                     ))
                 })?;
                 for sr in srows {
-                    let (psid, item) = sr?;
-                    existing_subitems.insert(psid, item);
+                    let (psid, pair) = sr?;
+                    existing_subs.insert(psid, pair);
                 }
             }
 
-            let mut touched_plan_subtask_ids: HashSet<String> = HashSet::new();
-
+            let mut touched_subs = HashSet::new();
             for (idx, sub) in task.subtasks.iter().enumerate() {
-                touched_plan_subtask_ids.insert(sub.id.clone());
-                let existing_sub = existing_subitems.get(&sub.id).or_else(|| {
-                    sub.aliases.iter().find_map(|a| existing_subitems.get(a))
-                });
-
-                match existing_sub {
-                    Some(ext_sub) => {
+                touched_subs.insert(sub.id.clone());
+                let ext_sub = existing_subs
+                    .get(&sub.id)
+                    .or_else(|| sub.aliases.iter().find_map(|a| existing_subs.get(a)));
+                match ext_sub {
+                    Some((sub_db_id, _)) => {
                         tx.execute(
                             r#"
-                            UPDATE todo_subitems
-                            SET plan_subtask_id = ?1,
-                                text = ?2,
-                                sort_order = ?3
-                            WHERE id = ?4
+                            UPDATE task_subitems
+                            SET plan_subtask_id = ?1, text = ?2, category = ?3, pages = ?4, sort_order = ?5
+                            WHERE id = ?6
                             "#,
-                            params![&sub.id, &sub.text, idx as i32, &ext_sub.id],
+                            params![
+                                &sub.id,
+                                &sub.text,
+                                sub.category.trim(),
+                                sub.pages.trim(),
+                                idx as i32,
+                                sub_db_id
+                            ],
                         )?;
                     }
                     None => {
                         let new_sub_id = format!("sub_{}", Uuid::new_v4().simple());
                         tx.execute(
                             r#"
-                            INSERT INTO todo_subitems (
-                                id, todo_id, text, done, sort_order, created_at, plan_subtask_id
-                            ) VALUES (?1, ?2, ?3, 0, ?4, ?5, ?6)
+                            INSERT INTO task_subitems (id, task_id, text, category, pages, done, sort_order, plan_subtask_id)
+                            VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)
                             "#,
                             params![
                                 &new_sub_id,
-                                &effective_todo_id,
+                                &effective_task_id,
                                 &sub.text,
+                                sub.category.trim(),
+                                sub.pages.trim(),
                                 idx as i32,
-                                &now_iso,
                                 &sub.id
                             ],
                         )?;
@@ -491,62 +634,160 @@ pub fn apply_study_plan(
                 }
             }
 
-            // Clean up plan subtasks that are no longer in the plan
-            for (psid, ext_sub) in existing_subitems {
-                if !touched_plan_subtask_ids.contains(&psid) {
-                    if ext_sub.done {
+            for (psid, (sub_db_id, done)) in existing_subs {
+                if !touched_subs.contains(&psid) {
+                    if done {
                         tx.execute(
-                            "UPDATE todo_subitems SET plan_subtask_id = NULL WHERE id = ?1",
-                            params![&ext_sub.id],
+                            "UPDATE task_subitems SET plan_subtask_id = NULL WHERE id = ?1",
+                            params![sub_db_id],
                         )?;
                     } else {
-                        tx.execute(
-                            "DELETE FROM todo_subitems WHERE id = ?1",
-                            params![&ext_sub.id],
-                        )?;
+                        tx.execute("DELETE FROM task_subitems WHERE id = ?1", params![sub_db_id])?;
                     }
                 }
             }
-
-            // Update parent done status if task has subtasks
-            if !task.subtasks.is_empty() {
-                let sub_counts: (i32, i32) = tx
-                    .query_row(
-                        r#"
-                        SELECT COUNT(*), SUM(CASE WHEN done = 1 THEN 1 ELSE 0 END)
-                        FROM todo_subitems WHERE todo_id = ?1
-                        "#,
-                        params![&effective_todo_id],
-                        |r| Ok((r.get(0)?, r.get::<_, Option<i32>>(1)?.unwrap_or(0))),
-                    )
-                    .unwrap_or((0, 0));
-
-                if sub_counts.0 > 0 {
-                    let all_done = sub_counts.0 == sub_counts.1;
-                    tx.execute(
-                        "UPDATE todos SET done = ?1 WHERE id = ?2",
-                        params![if all_done { 1 } else { 0 }, &effective_todo_id],
-                    )?;
-                }
-            }
         }
     }
 
-    // Handle removed tasks: if not done, delete. If done, unlink plan_task_id.
-    for (ptid, ext) in existing_todos {
+    for (ptid, ext) in existing_tasks {
         if !touched_plan_task_ids.contains(&ptid) {
             if ext.done {
                 tx.execute(
-                    "UPDATE todos SET plan_task_id = NULL WHERE id = ?1",
+                    "UPDATE tasks SET plan_task_id = NULL WHERE id = ?1",
                     params![&ext.id],
                 )?;
             } else {
-                tx.execute("DELETE FROM todos WHERE id = ?1", params![&ext.id])?;
+                tx.execute("DELETE FROM tasks WHERE id = ?1", params![&ext.id])?;
             }
         }
     }
 
-    // 6. Record in `plan_state`
+    // 7. Sync Daily Quizzes & Questions (preserving quiz_attempts!)
+    let mut existing_quizzes: HashMap<String, String> = HashMap::new();
+    {
+        let mut qstmt = tx.prepare(
+            "SELECT id, plan_quiz_id FROM daily_quizzes WHERE session_id = ?1 AND plan_quiz_id IS NOT NULL",
+        )?;
+        let qrows = qstmt.query_map(params![&session_id], |row| {
+            Ok((row.get::<_, String>(1)?, row.get::<_, String>(0)?))
+        })?;
+        for qr in qrows {
+            let (pqid, db_qid) = qr?;
+            existing_quizzes.insert(pqid, db_qid);
+        }
+    }
+
+    let mut touched_quizzes = HashSet::new();
+    let mut quizzes_synced = 0usize;
+
+    for day in &theirs.days {
+        for quiz in &day.quizzes {
+            let Some(db_course_id) = plan_course_to_db_id.get(&quiz.course_id) else {
+                continue;
+            };
+            touched_quizzes.insert(quiz.id.clone());
+            quizzes_synced += 1;
+
+            let existing_qid = existing_quizzes
+                .get(&quiz.id)
+                .or_else(|| quiz.aliases.iter().find_map(|a| existing_quizzes.get(a)));
+
+            let db_quiz_id = match existing_qid {
+                Some(qid) => {
+                    tx.execute(
+                        r#"
+                        UPDATE daily_quizzes
+                        SET plan_quiz_id = ?1, course_id = ?2, date = ?3, title = ?4, topic_summary = ?5
+                        WHERE id = ?6
+                        "#,
+                        params![
+                            &quiz.id,
+                            db_course_id,
+                            &day.date,
+                            quiz.title.trim(),
+                            quiz.topic_summary.trim(),
+                            qid
+                        ],
+                    )?;
+                    qid.clone()
+                }
+                None => {
+                    let new_qid = format!("quiz_{}", Uuid::new_v4().simple());
+                    tx.execute(
+                        r#"
+                        INSERT INTO daily_quizzes (id, session_id, course_id, date, title, topic_summary, plan_quiz_id)
+                        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                        "#,
+                        params![
+                            &new_qid,
+                            &session_id,
+                            db_course_id,
+                            &day.date,
+                            quiz.title.trim(),
+                            quiz.topic_summary.trim(),
+                            &quiz.id
+                        ],
+                    )?;
+                    new_qid
+                }
+            };
+
+            // Replace questions for this quiz cleanly
+            tx.execute(
+                "DELETE FROM quiz_questions WHERE quiz_id = ?1",
+                params![&db_quiz_id],
+            )?;
+
+            for (qidx, q) in quiz.questions.iter().enumerate() {
+                let new_qqid = format!("qq_{}", Uuid::new_v4().simple());
+                let options_json = serde_json::to_string(&q.options).unwrap_or_else(|_| "[]".into());
+                tx.execute(
+                    r#"
+                    INSERT INTO quiz_questions (
+                        id, quiz_id, question_order, question_type, category, chapter,
+                        topic, prompt, options_json, correct_index, explanation, plan_question_id
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                    "#,
+                    params![
+                        &new_qqid,
+                        &db_quiz_id,
+                        (qidx + 1) as i32,
+                        &q.question_type,
+                        &q.category,
+                        q.chapter.trim(),
+                        q.topic.trim(),
+                        q.prompt.trim(),
+                        &options_json,
+                        q.correct_index,
+                        q.explanation.trim(),
+                        &q.id
+                    ],
+                )?;
+            }
+        }
+    }
+
+    for (pqid, db_qid) in existing_quizzes {
+        if !touched_quizzes.contains(&pqid) {
+            let has_attempts: bool = tx
+                .query_row(
+                    "SELECT 1 FROM quiz_attempts WHERE quiz_id = ?1 LIMIT 1",
+                    params![&db_qid],
+                    |_| Ok(true),
+                )
+                .unwrap_or(false);
+            if has_attempts {
+                tx.execute(
+                    "UPDATE daily_quizzes SET plan_quiz_id = NULL WHERE id = ?1",
+                    params![&db_qid],
+                )?;
+            } else {
+                tx.execute("DELETE FROM daily_quizzes WHERE id = ?1", params![&db_qid])?;
+            }
+        }
+    }
+
+    // 8. Record in plan_state
     tx.execute(
         r#"
         INSERT INTO plan_state (
@@ -571,39 +812,21 @@ pub fn apply_study_plan(
         ],
     )?;
 
-    // 7. Auto-completion of study units if all linked tasks are done
+    // 9. Auto-complete study units whose tasks are all done
     for unit in &theirs.units {
         if let Some(db_unit_id) = plan_unit_to_db_id.get(&unit.id) {
-            // Find all tasks linked to this unit in the plan
-            let unit_task_ids: Vec<&str> = theirs
-                .days
-                .iter()
-                .flat_map(|d| &d.tasks)
-                .filter(|t| t.unit_id.as_deref() == Some(&unit.id))
-                .map(|t| t.id.as_str())
-                .collect();
-
-            if !unit_task_ids.is_empty() {
-                let mut all_done = true;
-                for tid in &unit_task_ids {
-                    let is_done: bool = tx
-                        .query_row(
-                            "SELECT done FROM todos WHERE plan_task_id = ?1 LIMIT 1",
-                            params![tid],
-                            |row| Ok(row.get::<_, i32>(0)? != 0),
-                        )
-                        .unwrap_or(false);
-                    if !is_done {
-                        all_done = false;
-                        break;
-                    }
-                }
-                if all_done {
-                    tx.execute(
-                        "UPDATE study_units SET is_completed = 1, completed_at = COALESCE(completed_at, ?1) WHERE id = ?2",
-                        params![&now_iso, db_unit_id],
-                    )?;
-                }
+            let counts: (i32, i32) = tx
+                .query_row(
+                    "SELECT COUNT(*), SUM(CASE WHEN done = 1 THEN 1 ELSE 0 END) FROM tasks WHERE unit_id = ?1",
+                    params![db_unit_id],
+                    |r| Ok((r.get(0)?, r.get::<_, Option<i32>>(1)?.unwrap_or(0))),
+                )
+                .unwrap_or((0, 0));
+            if counts.0 > 0 && counts.0 == counts.1 {
+                tx.execute(
+                    "UPDATE study_units SET is_completed = 1, completed_at = COALESCE(completed_at, ?1) WHERE id = ?2",
+                    params![&now_iso, db_unit_id],
+                )?;
             }
         }
     }
@@ -617,5 +840,6 @@ pub fn apply_study_plan(
         units_synced: theirs.units.len(),
         exams_synced: theirs.exams.len(),
         tasks_synced: touched_plan_task_ids.len(),
+        quizzes_synced,
     })
 }

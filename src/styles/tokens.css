@@ -1,76 +1,71 @@
-/* ==========================================================================
-   MySession Design System — Apple HIG + Windows 11 Mica/Acrylic Tokens
-   Rendering Target: 120/180 Hz (Composite-only animations, Subpixel 0.5px)
-   ========================================================================== */
-
 :root {
-  /* Font Stack Apple HIG */
-  --font-sans: "Inter", "SF Pro Text", "Segoe UI Variable Text", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-display: "Inter", "SF Pro Display", "Segoe UI Variable Display", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-mono: "SF Mono", "Cascadia Mono", "JetBrains Mono", ui-monospace, monospace;
+  --font-sans: "Plus Jakarta Sans", "Inter", "Segoe UI Variable Display", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
 
-  /* Fisica & Curve Armoniche (Zero curve lineari per le transizioni UI) */
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
-  --spring-snappy: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-morph: cubic-bezier(0.16, 1, 0.3, 1);
-  --spring-press: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --spring-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ui-scale: 1;
 
-  /* Raccordi Continuità di Curvatura G2 (Squircle Approximation) */
-  --radius-xs: 6px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
-  --radius-pill: 9999px;
+  --radius-card: 24px;
+  --radius-card-sm: 18px;
+  --radius-pill: 999px;
+  --radius-input: 14px;
 
-  /* Optical Tracking Apple HIG */
-  --tracking-tight: -0.015em;
-  --tracking-normal: -0.006em;
-  --tracking-wide: 0.015em;
-  --tracking-caps: 0.05em;
+  --accent: #7C5CFC;
+  --accent-soft: #DED6FA;
+  --accent-ink: #141418;
 
-  /* Ombre diffuse e profonde Apple (Soft multi-stop shadows) */
-  --shadow-popover: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 16px 32px -4px rgba(0, 0, 0, 0.22), inset 0 0.5px 0 rgba(255, 255, 255, 0.14);
-  --shadow-command: 0 2px 8px rgba(0, 0, 0, 0.06), 0 12px 28px rgba(0, 0, 0, 0.16), inset 0 0.5px 0 rgba(255, 255, 255, 0.18);
-  --shadow-pill: 0 1px 2px rgba(0, 0, 0, 0.05), inset 0 0.5px 0 rgba(255, 255, 255, 0.12);
-  --shadow-segment-active: 0 1px 3px rgba(0, 0, 0, 0.1), 0 0.5px 1px rgba(0, 0, 0, 0.06);
-  --shadow-modal: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 24px 60px -8px rgba(0, 0, 0, 0.4), inset 0 0.5px 0 rgba(255, 255, 255, 0.2);
-  --shadow-hud: 0 0 0 0.5px var(--hairline-border), 0 20px 50px -10px rgba(0, 0, 0, 0.45), inset 0 0.5px 0 rgba(255, 255, 255, 0.22);
+  --sidebar-bg: #141418;
+  --sidebar-icon: #8C8C9E;
+  --sidebar-icon-hover: #FFFFFF;
+  --sidebar-disc: #DDD5FA;
+  --sidebar-disc-ink: #141418;
 
-  /* Colori Semantici Default (Sovrascrivibili da AppSettings) */
-  --holiday-color: #ff3b30;
-  --sunday-color: #ff9500;
-  --cat-studio: #007aff;
-  --cat-scadenza: #ff9500;
-  --cat-lezione: #af52de;
-  --cat-personale: #34c759;
-  --conflict-critical: #ff453a;
-  --conflict-warning: #ff9f0a;
+  /* Light Mode (Video Bento Default) */
+  --bg-canvas: #F3F2F7;
+  --bg-surface: #FFFFFF;
+  --bg-surface-muted: #F7F6FB;
+  --bg-surface-dark: #141418;
+  --text-primary: #141418;
+  --text-secondary: #67667A;
+  --text-muted: #9897A9;
+  --text-on-dark: #FFFFFF;
+
+  --border-subtle: rgba(20, 20, 24, 0.06);
+  --border-strong: rgba(20, 20, 24, 0.12);
+  --shadow-card: 0 6px 24px rgba(18, 17, 32, 0.045);
+  --shadow-card-hover: 0 12px 32px rgba(18, 17, 32, 0.08);
+  --shadow-sidebar: 0 18px 42px rgba(14, 14, 22, 0.22);
+
+  --hero-gradient: linear-gradient(135deg, #E3DCFF 0%, #C6B5FC 52%, #F1DBFF 100%);
+  --skeleton-shimmer: #E9E6F5;
+
+  --cat-teoria: #3B82F6;
+  --cat-esercizi: #10B981;
+  --cat-temi-esame: #F59E0B;
+  --cat-dimostrazioni: #8B5CF6;
+  --cat-domande-orale: #EC4899;
+  --cat-ripasso: #6366F1;
+
+  --danger: #EF4444;
+  --warning: #F59E0B;
+  --success: #10B981;
 }
 
-/* Scrollbar minimale stile macOS overlay */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--hairline-border-strong) transparent;
-}
+html[data-theme="dark"] {
+  --bg-canvas: #0D0D11;
+  --bg-surface: #16161D;
+  --bg-surface-muted: #1E1E27;
+  --bg-surface-dark: #1E1E28;
+  --text-primary: #F4F4F8;
+  --text-secondary: #A6A6BA;
+  --text-muted: #707084;
+  --text-on-dark: #FFFFFF;
 
-*::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --shadow-card: 0 8px 26px rgba(0, 0, 0, 0.35);
+  --shadow-card-hover: 0 14px 36px rgba(0, 0, 0, 0.5);
+  --shadow-sidebar: 0 20px 44px rgba(0, 0, 0, 0.55);
 
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-*::-webkit-scrollbar-thumb {
-  background: var(--hairline-border-strong);
-  border-radius: 999px;
-}
-
-*::-webkit-scrollbar-thumb:hover {
-  background: var(--text-tertiary);
+  --hero-gradient: linear-gradient(135deg, #32285E 0%, #4C3894 55%, #5C327A 100%);
+  --skeleton-shimmer: #22222E;
 }

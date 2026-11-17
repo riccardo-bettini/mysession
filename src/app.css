@@ -1,96 +1,5 @@
 @import "./styles/tokens.css";
 
-:root,
-:root[data-theme="dark"] {
-  --ui-scale: 1;
-  color-scheme: dark;
-
-  /* Superfici traslucide Apple HIG + Windows 11 Mica/Acrylic (Dark Mode) */
-  --app-shell-bg: rgba(16, 16, 20, 0.72);
-  --toolbar-bg: rgba(24, 24, 30, 0.72);
-  --sidebar-bg: rgba(22, 22, 28, 0.64);
-  --popover-bg: rgba(32, 32, 40, 0.94);
-  --surface-elevated: rgba(34, 34, 42, 0.84);
-  --surface-card: rgba(40, 40, 50, 0.68);
-  --surface-pill: rgba(255, 255, 255, 0.065);
-  --surface-pill-hover: rgba(255, 255, 255, 0.115);
-  --surface-input: rgba(255, 255, 255, 0.075);
-  --surface-input-focus: rgba(255, 255, 255, 0.12);
-  --command-pill-bg: rgba(14, 14, 18, 0.58);
-  --segment-active-bg: rgba(255, 255, 255, 0.15);
-  --kbd-bg: rgba(255, 255, 255, 0.08);
-
-  /* Token Griglia Calendario Infinito (Dark Mode) */
-  --calendar-header-bg: rgba(24, 24, 30, 0.82);
-  --calendar-cell-bg: rgba(30, 30, 38, 0.42);
-  --calendar-cell-outside: rgba(18, 18, 24, 0.24);
-  --calendar-cell-hover: rgba(255, 255, 255, 0.065);
-  --calendar-cell-today: rgba(10, 132, 255, 0.11);
-  --calendar-cell-selected: rgba(10, 132, 255, 0.18);
-
-  /* Bordi subpixel da 0.5px */
-  --hairline-border: rgba(255, 255, 255, 0.12);
-  --hairline-border-strong: rgba(255, 255, 255, 0.19);
-
-  /* Tipografia ad alto contrasto (Vibrancy) */
-  --text-primary: #f5f5f7;
-  --text-secondary: #a1a1aa;
-  --text-tertiary: #71717a;
-
-  /* Accenti di sistema */
-  --accent-primary: #0a84ff;
-  --accent-soft: rgba(10, 132, 255, 0.18);
-  --accent-glow: rgba(10, 132, 255, 0.45);
-}
-
-:root[data-theme="light"] {
-  --app-shell-bg: rgba(244, 245, 249, 0.78);
-  --toolbar-bg: rgba(252, 252, 254, 0.76);
-  --sidebar-bg: rgba(247, 248, 252, 0.72);
-  --popover-bg: rgba(255, 255, 255, 0.96);
-  --surface-elevated: rgba(255, 255, 255, 0.92);
-  --surface-card: rgba(255, 255, 255, 0.88);
-  --surface-pill: rgba(15, 23, 42, 0.055);
-  --surface-pill-hover: rgba(15, 23, 42, 0.095);
-  --surface-input: rgba(15, 23, 42, 0.055);
-  --surface-input-focus: rgba(15, 23, 42, 0.09);
-  --command-pill-bg: rgba(255, 255, 255, 0.85);
-  --segment-active-bg: #ffffff;
-  --kbd-bg: rgba(15, 23, 42, 0.06);
-  color-scheme: light;
-
-  /* Token Griglia Calendario Infinito (Light Mode) */
-  --calendar-header-bg: rgba(250, 250, 253, 0.86);
-  --calendar-cell-bg: rgba(255, 255, 255, 0.64);
-  --calendar-cell-outside: rgba(236, 238, 244, 0.42);
-  --calendar-cell-hover: rgba(15, 23, 42, 0.045);
-  --calendar-cell-today: rgba(0, 102, 204, 0.08);
-  --calendar-cell-selected: rgba(0, 102, 204, 0.14);
-
-  --hairline-border: rgba(60, 60, 67, 0.13);
-  --hairline-border-strong: rgba(60, 60, 67, 0.22);
-
-  --text-primary: #1d1d1f;
-  --text-secondary: #515154;
-  --text-tertiary: #86868b;
-
-  --accent-primary: #0066cc;
-  --accent-soft: rgba(0, 102, 204, 0.12);
-  --accent-glow: rgba(0, 102, 204, 0.32);
-}
-
-:root[data-material="solid"][data-theme="dark"] {
-  --app-shell-bg: #121216;
-  --toolbar-bg: #1a1a20;
-  --sidebar-bg: #16161c;
-}
-
-:root[data-material="solid"][data-theme="light"] {
-  --app-shell-bg: #f5f5f7;
-  --toolbar-bg: #ffffff;
-  --sidebar-bg: #f0f1f5;
-}
-
 *,
 *::before,
 *::after {
@@ -103,188 +12,171 @@ body {
   padding: 0;
   width: 100%;
   height: 100%;
+  overflow: hidden;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
   font-family: var(--font-sans);
-  font-optical-sizing: auto;
+  font-size: calc(14px * var(--ui-scale));
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+}
+
+input,
+textarea,
+select,
+.selectable {
+  user-select: text;
+  font-family: inherit;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
   background: transparent;
-  color: var(--text-primary);
-  overflow: hidden;
+  color: inherit;
+  padding: 0;
 }
 
-/* Micro-interazioni a molla condivise Apple HIG (Emil Kowalski feedback) */
-.pressable {
-  will-change: transform;
-  transition:
-    transform 120ms var(--spring-press),
-    background-color 130ms ease,
-    border-color 130ms ease,
-    box-shadow 130ms ease,
-    color 130ms ease;
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-.pressable:active {
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(130, 128, 152, 0.26);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(130, 128, 152, 0.45);
+}
+
+.bento-card {
+  background: var(--bg-surface);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-card);
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.24s ease;
+}
+
+.bento-card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.bento-card-dark {
+  background: var(--bg-surface-dark);
+  color: var(--text-on-dark);
+  border-radius: var(--radius-card);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: var(--shadow-card);
+}
+
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 15px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 600;
+  transition: transform 0.16s ease, background-color 0.16s ease, color 0.16s ease, opacity 0.16s ease;
+}
+
+.pill-btn:active {
   transform: scale(0.97);
 }
 
-/* Stili Globali Form & Selettori Apple HIG (Win11 WebView2 Contrast Fix) */
-select {
-  appearance: none;
-  -webkit-appearance: none;
-  background-color: var(--surface-card);
+.pill-btn-primary {
+  background: var(--bg-surface-dark);
+  color: var(--text-on-dark);
+}
+
+html[data-theme="dark"] .pill-btn-primary {
+  background: var(--accent);
+  color: #FFFFFF;
+}
+
+.pill-btn-soft {
+  background: var(--bg-surface-muted);
   color: var(--text-primary);
-  border: 0.5px solid var(--hairline-border-strong);
-  border-radius: var(--radius-sm);
-  padding: 0.46rem 2rem 0.46rem 0.75rem;
-  font-family: var(--font-sans);
-  font-size: 0.82rem;
-  font-weight: 500;
-  cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0.65rem center;
-  background-size: 0.75rem;
-  transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+  border: 1px solid var(--border-subtle);
 }
 
-select:hover {
-  border-color: var(--accent-primary);
-  background-color: var(--surface-elevated);
+.pill-btn-soft:hover {
+  background: var(--border-subtle);
 }
 
-select option {
-  background-color: var(--popover-bg);
-  color: var(--text-primary);
-  padding: 0.45rem 0.65rem;
-}
-
-/* Pulsanti Standard Apple HIG */
-.btn-primary {
+.pill-filter {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  padding: 0.46rem 0.95rem;
-  border-radius: var(--radius-sm);
-  border: 0.5px solid transparent;
-  background: var(--accent-primary);
-  color: #ffffff;
-  font-family: var(--font-sans);
-  font-size: 0.82rem;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  font-size: 12.5px;
   font-weight: 600;
-  cursor: pointer;
-  transition: filter 140ms ease, transform 120ms var(--spring-press);
-}
-.btn-primary:hover:not(:disabled) {
-  filter: brightness(1.1);
-}
-.btn-primary:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  transition: background-color 0.18s ease, color 0.18s ease, transform 0.15s ease;
 }
 
-.btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  padding: 0.46rem 0.95rem;
-  border-radius: var(--radius-sm);
-  border: 0.5px solid var(--hairline-border-strong);
-  background: var(--surface-card);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, transform 120ms var(--spring-press);
-}
-.btn-secondary:hover:not(:disabled) {
-  background: var(--surface-pill-hover);
-  border-color: var(--hairline-border-strong);
+.pill-filter:hover {
   color: var(--text-primary);
 }
-.btn-secondary:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+
+.pill-filter.active {
+  background: var(--bg-surface-dark);
+  color: #FFFFFF;
+  border-color: transparent;
 }
 
-.btn-danger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  padding: 0.46rem 0.95rem;
-  border-radius: var(--radius-sm);
-  border: 0.5px solid rgba(255, 69, 58, 0.4);
-  background: rgba(255, 69, 58, 0.12);
-  color: #ff453a;
-  font-family: var(--font-sans);
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color 140ms ease, transform 120ms var(--spring-press);
-}
-.btn-danger:hover:not(:disabled) {
-  background: rgba(255, 69, 58, 0.22);
-}
-.btn-danger:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+html[data-theme="dark"] .pill-filter.active {
+  background: var(--accent);
+  color: #FFFFFF;
 }
 
-/* Focus ring accessibile rifinito macOS */
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--accent-primary), 0 0 0 4px var(--accent-soft);
-}
-
-/* Animazioni standard modali a molla Apple HIG */
-@keyframes backdropFade {
+@keyframes bentoMorphIn {
   from {
     opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.992);
   }
   to {
     opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
-@keyframes modalSheetEnter {
-  from {
-    opacity: 0;
-    transform: scale(0.96) translateY(-6px);
+.bento-enter {
+  animation: bentoMorphIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes skeletonPulse {
+  0%, 100% {
+    opacity: 0.65;
   }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
+  50% {
+    opacity: 0.95;
   }
 }
 
-/* Accessibilità: Reduced Motion & Reduced Transparency (Apple HIG §14) */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 120ms !important;
-  }
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  :root[data-theme="dark"] {
-    --app-shell-bg: #16161a;
-    --toolbar-bg: #1e1e24;
-    --sidebar-bg: #1a1a20;
-    --popover-bg: #24242c;
-  }
-  :root[data-theme="light"] {
-    --app-shell-bg: #f5f5f7;
-    --toolbar-bg: #ffffff;
-    --sidebar-bg: #f2f2f7;
-    --popover-bg: #ffffff;
-  }
+.skeleton-block {
+  background: var(--skeleton-shimmer);
+  border-radius: var(--radius-card);
+  animation: skeletonPulse 0.9s ease-in-out infinite;
 }

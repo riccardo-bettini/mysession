@@ -1,86 +1,53 @@
 export type ThemeChoice = "light" | "dark" | "auto";
 export type BackdropMaterial = "mica" | "acrylic" | "tabbed" | "solid";
-export type WindowControlsStyle = "macos-left" | "win11-right";
-export type WindowFrameStyle = "custom" | "standard";
-export type SidebarState = "expanded" | "compact";
-export type CalendarViewMode = "continuous" | "month" | "week" | "agenda";
+export type SectionId = "home" | "calendar" | "today" | "courses" | "quiz" | "progress" | "ai";
+export type TaskCategory = "teoria" | "esercizi" | "temi_esame" | "dimostrazioni" | "domande_orale" | "ripasso";
+export type AiProvider = "local" | "cli_agy" | "cli_claude" | "cli_codex" | "cli_custom";
 export type SessionType = "invernale" | "estiva" | "autunnale" | "custom";
-export type EventCategory = "studio" | "scadenza" | "lezione" | "personale";
-export type AiProvider = "local" | "gemini" | "openai" | "ollama";
-
-export interface UserProfile {
-  id: number;
-  studentName: string;
-  university: string;
-  faculty: string;
-  degreeCourse: string;
-  enrollmentYear: number | null;
-  onboardingCompleted: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
 
 export interface AppSettings {
   theme: ThemeChoice;
   backdropMaterial: BackdropMaterial;
-  windowControlsStyle: WindowControlsStyle;
-  windowFrameStyle: WindowFrameStyle;
   uiScale: number;
-  sidebarState: SidebarState;
-  defaultView: CalendarViewMode;
-  startDayOfWeek: number;
-  weeklyHolidayDay: number;
-  studyHoursPerCfu: number;
   accentColor: string;
-  holidayColor: string;
-  sundayColor: string;
-  catStudioColor: string;
-  catScadenzaColor: string;
-  catLezioneColor: string;
-  catPersonaleColor: string;
-  aiProvider: AiProvider;
-  aiApiKey: string;
-  aiEndpointUrl: string;
-  aiModel: string;
-  aiBarWidth: number;
-  aiLocalModelId: string;
-  aiIdleTimeoutMinutes: number;
-  aiBootStrategy: "on_demand" | "on_app_start" | "contextual";
-  aiHardwarePreference: "auto" | "gpu" | "cpu";
-  activeSessionId: string | null;
+  catTeoriaColor: string;
+  catEserciziColor: string;
+  catTemiEsameColor: string;
+  catDimostrazioniColor: string;
+  catDomandeOraleColor: string;
+  sidebarSections: SectionId[];
+  hiddenSections: SectionId[];
   planFolder: string;
+  activeSessionId: string | null;
+  studyHoursPerCfu: number;
+  startDayOfWeek: number;
+  aiProvider: AiProvider;
+  aiLocalModelId: string;
+  aiCustomCliCommand: string;
+  aiIdleTimeoutMinutes: number;
 }
 
 export interface AcademicSession {
   id: string;
+  planId?: string | null;
   name: string;
   subtitle: string;
   sessionType: SessionType;
   academicYear: string;
   startDate: string;
   endDate: string;
+  maxHoursPerDay: number;
+  studyWeekdays: number[];
+  offDates: string[];
+  reviewDaysBeforeExam: number;
   notes: string;
   createdAt: string;
-  planId?: string | null;
-  isSystem?: boolean;
-}
-
-export interface WeeklyLesson {
-  id: string;
-  sessionId: string;
-  courseId: string | null;
-  courseName: string;
-  dayOfWeek: number; // 1 = Lunedi .. 7 = Domenica
-  startTime: string; // HH:MM
-  endTime: string;   // HH:MM
-  classroom: string;
-  professor: string;
-  colorHex: string;
 }
 
 export interface Course {
   id: string;
   sessionId: string;
+  planCourseId?: string | null;
   sigla: string;
   name: string;
   code: string;
@@ -88,89 +55,165 @@ export interface Course {
   professor: string;
   colorHex: string;
   difficultyWeight: number;
-  targetHoursOverride: number | null;
+  targetHours: number | null;
+  isActive: boolean;
   notes: string;
   sortOrder: number;
-  planCourseId?: string | null;
-  isVisible: boolean;
 }
 
 export interface StudyUnit {
   id: string;
   courseId: string;
   sessionId: string;
+  planUnitId?: string | null;
   unitNumber: number;
+  chapter: string;
   title: string;
   description: string;
+  source: string;
   estimatedHours: number;
+  priority: number;
   isCompleted: boolean;
-  assignedDate: string | null;
   completedAt: string | null;
-  planUnitId?: string | null;
 }
 
 export interface Exam {
   id: string;
   sessionId: string;
   courseId: string;
+  planExamId?: string | null;
   date: string;
   timeSlot: string;
   durationMinutes: number;
   round: string;
   examType: string;
   classroom: string;
-  weightFraction: number;
-  pairId: string | null;
   title: string;
   details: string;
   status: "planned" | "passed" | "failed" | "withdrawn";
   grade: string | null;
 }
 
-export interface GenericEvent {
+export interface OperationalBlock {
+  id: string;
+  sessionId: string;
+  date: string;
+  courseId: string | null;
+  blockOrder: number;
+  category: TaskCategory;
+  title: string;
+  chapter: string;
+  topic: string;
+  pages: string;
+  source: string;
+  durationHours: number;
+  instructions: string;
+  done: boolean;
+  planBlockId?: string | null;
+}
+
+export interface DailyOperationalPlan {
+  sessionId: string;
+  date: string;
+  dailyGoal: string;
+  strategyNote: string;
+  blocks: OperationalBlock[];
+}
+
+export interface TaskSubItem {
+  id: string;
+  taskId: string;
+  text: string;
+  category: string;
+  pages: string;
+  done: boolean;
+  sortOrder: number;
+  planSubtaskId?: string | null;
+}
+
+export interface TaskItem {
+  id: string;
+  sessionId: string;
+  courseId: string | null;
+  unitId: string | null;
+  date: string;
+  category: TaskCategory;
+  title: string;
+  chapter: string;
+  topic: string;
+  pages: string;
+  source: string;
+  plannedHours: number;
+  done: boolean;
+  priority: number;
+  planTaskId?: string | null;
+  createdAt: string;
+  subtasks: TaskSubItem[];
+}
+
+export interface QuizQuestion {
+  id: string;
+  quizId: string;
+  questionOrder: number;
+  questionType: "multiple_choice" | "open_flashcard";
+  category: TaskCategory;
+  chapter: string;
+  topic: string;
+  prompt: string;
+  options: string[];
+  correctIndex: number | null;
+  explanation: string;
+  planQuestionId?: string | null;
+}
+
+export interface QuizAttempt {
+  id: string;
+  quizId: string;
+  sessionId: string;
+  courseId: string;
+  scorePct: number;
+  correctCount: number;
+  totalCount: number;
+  answersJson: string;
+  wrongQuestionIds: string[];
+  completedAt: string;
+}
+
+export interface DailyQuiz {
+  id: string;
+  sessionId: string;
+  courseId: string;
+  date: string;
+  title: string;
+  topicSummary: string;
+  planQuizId?: string | null;
+  questions: QuizQuestion[];
+  latestAttempt: QuizAttempt | null;
+  attemptsCount: number;
+}
+
+export interface WeeklyLesson {
+  id: string;
+  sessionId: string;
+  courseId: string | null;
+  courseName: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  classroom: string;
+  professor: string;
+  colorHex: string;
+}
+
+export interface CalendarEvent {
   id: string;
   sessionId: string;
   courseId: string | null;
   date: string;
   timeSlot: string;
   title: string;
-  category: EventCategory;
+  category: string;
   details: string;
-}
-
-export interface TodoSubItem {
-  id: string;
-  todoId: string;
-  text: string;
-  done: boolean;
-  sortOrder: number;
-  createdAt: string;
-  planSubtaskId?: string | null;
-}
-
-export interface TodoItem {
-  id: string;
-  sessionId: string;
-  courseId: string | null;
-  date: string;
-  text: string;
-  done: boolean;
-  priority: number;
-  createdAt: string;
-  planTaskId?: string | null;
-  plannedHours?: number | null;
-  kind?: string | null;
-  subtasks?: TodoSubItem[];
-}
-
-export interface PlanState {
-  planId: string;
-  sessionId: string;
-  appliedRevision: number;
-  baseJson: string;
-  pendingRevision: number | null;
-  sourcePath: string;
-  updatedAt: string;
 }
 
 export interface DailyNote {
@@ -188,7 +231,7 @@ export interface HolidayInfo {
 
 export interface ConflictItem {
   id: string;
-  kind: "direct_date_overlap" | "direct_time_overlap" | "insufficient_cfu_buffer";
+  kind: string;
   severity: "critical" | "warning";
   date: string;
   secondaryDate: string | null;
@@ -201,39 +244,37 @@ export interface ConflictItem {
   suggestion: string;
 }
 
-export interface CourseWorkloadMetric {
+export interface CategoryProgress {
+  category: TaskCategory;
+  totalTasks: number;
+  completedTasks: number;
+  plannedHours: number;
+  completedHours: number;
+  completionPct: number;
+}
+
+export interface CourseProgressMetric {
   courseId: string;
   sigla: string;
   name: string;
   colorHex: string;
   cfu: number;
+  professor: string;
+  nextExamDate: string | null;
+  daysUntilExam: number | null;
+  totalTasks: number;
+  completedTasks: number;
   totalUnits: number;
   completedUnits: number;
   completionPct: number;
-  remainingStudyHours: number;
-  nextExamDate: string | null;
-  daysUntilNextExam: number | null;
+  plannedHoursTotal: number;
+  completedHoursTotal: number;
+  quizzesTotal: number;
+  quizzesCompleted: number;
+  quizAverageScore: number | null;
   recommendedDailyHours: number;
   criticalityScore: number;
-}
-
-export interface HorizonPin {
-  examId: string;
-  courseId: string;
-  sigla: string;
-  colorHex: string;
-  date: string;
-  round: string;
-  title: string;
-  positionPct: number;
-  hasConflict: boolean;
-}
-
-export interface HorizonTick {
-  year: number;
-  month: number;
-  label: string;
-  positionPct: number;
+  categoryBreakdown: CategoryProgress[];
 }
 
 export interface TelemetrySummary {
@@ -244,18 +285,18 @@ export interface TelemetrySummary {
   coursesCount: number;
   examsCount: number;
   totalCfu: number;
-  completedUnitsTotal: number;
-  unitsTotal: number;
+  tasksTotal: number;
+  tasksCompleted: number;
+  quizzesTotal: number;
+  quizzesCompleted: number;
+  quizOverallAvgScore: number | null;
+  plannedHoursTotal: number;
+  completedHoursTotal: number;
   overallProgressPct: number;
-  mostCriticalCourseSigla: string | null;
-  recommendedHoursToday: number;
-  courseWorkloads: CourseWorkloadMetric[];
+  hoursLast7Days: [string, number][];
+  categoryTotals: CategoryProgress[];
+  courseProgress: CourseProgressMetric[];
   dailyWorkloadMap: Record<string, number>;
-  horizonStartDate: string;
-  horizonEndDate: string;
-  horizonTodayPct: number | null;
-  horizonPins: HorizonPin[];
-  horizonTicks: HorizonTick[];
 }
 
 export interface SessionSnapshot {
@@ -263,154 +304,33 @@ export interface SessionSnapshot {
   courses: Course[];
   studyUnits: StudyUnit[];
   exams: Exam[];
-  genericEvents: GenericEvent[];
-  todos: TodoItem[];
+  operationalPlans: DailyOperationalPlan[];
+  tasks: TaskItem[];
+  quizzes: DailyQuiz[];
+  quizAttempts: QuizAttempt[];
+  weeklyLessons: WeeklyLesson[];
+  calendarEvents: CalendarEvent[];
   dailyNotes: DailyNote[];
-  weeklyLessons?: WeeklyLesson[];
   conflicts: ConflictItem[];
-  ignoredConflicts?: ConflictItem[];
   telemetry: TelemetrySummary;
+}
+
+export interface PendingPlanNotification {
+  planId: string;
+  planName: string;
+  revision: number;
+  filePath: string;
+  isNewSession: boolean;
 }
 
 export interface BootstrapPayload {
   appVersion: string;
   dbPath: string;
-  profile: UserProfile;
   settings: AppSettings;
   sessions: AcademicSession[];
   activeSnapshot: SessionSnapshot | null;
+  pendingPlans: PendingPlanNotification[];
 }
-
-// ============================================================================
-// Input DTOs
-// ============================================================================
-
-export interface UpsertProfileInput {
-  studentName: string;
-  university: string;
-  faculty: string;
-  degreeCourse: string;
-  enrollmentYear?: number | null;
-  onboardingCompleted: boolean;
-}
-
-export interface UpsertSessionInput {
-  id?: string | null;
-  name: string;
-  subtitle: string;
-  sessionType: SessionType;
-  academicYear: string;
-  startDate: string;
-  endDate: string;
-  notes?: string | null;
-  planId?: string | null;
-}
-
-export interface StudyUnitDraft {
-  id?: string | null;
-  unitNumber: number;
-  title: string;
-  description?: string | null;
-  estimatedHours?: number | null;
-  isCompleted?: boolean | null;
-  assignedDate?: string | null;
-  planUnitId?: string | null;
-}
-
-export interface UpsertCourseInput {
-  id?: string | null;
-  sessionId: string;
-  sigla: string;
-  name: string;
-  code: string;
-  cfu: number;
-  professor: string;
-  colorHex: string;
-  difficultyWeight?: number | null;
-  targetHoursOverride?: number | null;
-  notes?: string | null;
-  units?: StudyUnitDraft[] | null;
-  planCourseId?: string | null;
-  isVisible?: boolean | null;
-}
-
-export interface UpsertExamInput {
-  id?: string | null;
-  sessionId: string;
-  courseId: string;
-  date: string;
-  timeSlot?: string | null;
-  durationMinutes?: number | null;
-  round: string;
-  examType?: string | null;
-  classroom?: string | null;
-  weightFraction?: number | null;
-  pairId?: string | null;
-  title?: string | null;
-  details?: string | null;
-  status?: "planned" | "passed" | "failed" | "withdrawn" | null;
-  grade?: string | null;
-}
-
-export interface CreateItinerePairInput {
-  sessionId: string;
-  courseId: string;
-  date1: string;
-  date2: string;
-  timeSlot1?: string | null;
-  timeSlot2?: string | null;
-  classroom?: string | null;
-  details?: string | null;
-}
-
-export interface UpsertGenericEventInput {
-  id?: string | null;
-  sessionId: string;
-  courseId?: string | null;
-  date: string;
-  timeSlot?: string | null;
-  title: string;
-  category: EventCategory;
-  details?: string | null;
-}
-
-export interface UpsertTodoInput {
-  id?: string | null;
-  sessionId: string;
-  courseId?: string | null;
-  date: string;
-  text: string;
-  priority?: number | null;
-  planTaskId?: string | null;
-  plannedHours?: number | null;
-  kind?: string | null;
-}
-
-export interface UpsertTodoSubItemInput {
-  id?: string | null;
-  todoId: string;
-  text: string;
-  done?: boolean | null;
-  sortOrder?: number | null;
-  planSubtaskId?: string | null;
-}
-
-export interface UpsertWeeklyLessonInput {
-  id?: string | null;
-  sessionId: string;
-  courseId?: string | null;
-  courseName: string;
-  dayOfWeek: number;
-  startTime: string;
-  endTime: string;
-  classroom?: string | null;
-  professor?: string | null;
-  colorHex?: string | null;
-}
-
-// ============================================================================
-// Windowing & DWM Native State (Fase 3)
-// ============================================================================
 
 export interface SystemThemeState {
   systemIsDark: boolean;
@@ -426,9 +346,22 @@ export interface MaxButtonBounds {
   height: number;
 }
 
-// ============================================================================
-// Multimodal AI Assistant & Tool Calling (Fase 6)
-// ============================================================================
+export interface ExtractedLessonItem {
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  courseName: string;
+  classroom: string;
+  professor: string;
+}
+
+export interface CliAgentInfo {
+  id: string;
+  name: string;
+  command: string;
+  installed: boolean;
+  resolvedPath: string | null;
+}
 
 export interface AiToolCallRecord {
   toolName: string;
@@ -438,80 +371,12 @@ export interface AiToolCallRecord {
 export interface AiAssistantResponse {
   replyMarkdown: string;
   executedTools: AiToolCallRecord[];
+  undoSnapshotId: string | null;
   navigateToDate: string | null;
+  navigateToSection: SectionId | null;
   updatedSettings: AppSettings | null;
   updatedSnapshot: SessionSnapshot | null;
   providerUsed: string;
-}
-
-// ============================================================================
-// Study Plan Import & Diff Engine (Fase 2 & 3)
-// ============================================================================
-
-export interface PendingPlanNotification {
-  planId: string;
-  planName: string;
-  revision: number;
-  filePath: string;
-  isNewSession: boolean;
-}
-
-export interface TaskChangeItem {
-  taskId: string;
-  courseId: string;
-  date: string;
-  text: string;
-  plannedHours: number;
-  kind: string;
-}
-
-export interface TaskMoveItem {
-  taskId: string;
-  courseId: string;
-  text: string;
-  oldDate: string;
-  newDate: string;
-  plannedHours: number;
-}
-
-export interface TaskConflictItem {
-  taskId: string;
-  courseId: string;
-  baseDate: string;
-  myDate: string;
-  theirDate: string;
-  baseText: string;
-  myText: string;
-  theirText: string;
-  isCompleted: boolean;
-}
-
-export interface ExamChangeItem {
-  examId: string;
-  courseId: string;
-  title: string;
-  oldDate: string | null;
-  newDate: string;
-  oldStatus: string | null;
-  newStatus: string;
-}
-
-export interface CourseChangeItem {
-  courseId: string;
-  sigla: string;
-  name: string;
-  isAdded: boolean;
-  isActiveChanged: boolean;
-  active: boolean;
-}
-
-export interface ExtractedLessonItem {
-  dayOfWeek: number; // 1=Lun .. 7=Dom
-  startTime: string; // HH:MM
-  endTime: string;   // HH:MM
-  courseName: string;
-  classroom: string;
-  professor: string;
 }
 
 export interface PlanDiffSummary {
@@ -519,12 +384,13 @@ export interface PlanDiffSummary {
   planId: string;
   oldRevision: number;
   newRevision: number;
-  addedTasks: TaskChangeItem[];
-  removedTasks: TaskChangeItem[];
-  movedTasks: TaskMoveItem[];
-  conflicts: TaskConflictItem[];
-  examsChanged: ExamChangeItem[];
-  coursesChanged: CourseChangeItem[];
+  addedTasks: Array<{ taskId: string; courseId: string; date: string; title: string; plannedHours: number; category: string }>;
+  removedTasks: Array<{ taskId: string; courseId: string; date: string; title: string; plannedHours: number; category: string }>;
+  movedTasks: Array<{ taskId: string; courseId: string; title: string; oldDate: string; newDate: string; plannedHours: number }>;
+  conflicts: Array<{ taskId: string; courseId: string; baseDate: string; myDate: string; theirDate: string; baseTitle: string; myTitle: string; theirTitle: string; isCompleted: boolean }>;
+  quizzesCount: number;
+  examsChanged: Array<{ examId: string; courseId: string; title: string; oldDate: string | null; newDate: string; oldStatus: string | null; newStatus: string }>;
+  coursesChanged: Array<{ courseId: string; sigla: string; name: string; isAdded: boolean; isActiveChanged: boolean; active: boolean }>;
 }
 
 export interface AiModelCatalogItem {
@@ -575,4 +441,124 @@ export interface AiModelDownloadProgress {
   speedMbPerSec: number;
   isCompleted: boolean;
   error?: string | null;
+}
+
+export interface UpsertSessionInput {
+  id?: string | null;
+  name: string;
+  subtitle: string;
+  sessionType: SessionType;
+  academicYear: string;
+  startDate: string;
+  endDate: string;
+  maxHoursPerDay?: number | null;
+  studyWeekdays?: number[] | null;
+  offDates?: string[] | null;
+  reviewDaysBeforeExam?: number | null;
+  notes?: string | null;
+}
+
+export interface UpsertCourseInput {
+  id?: string | null;
+  sessionId: string;
+  sigla: string;
+  name: string;
+  code?: string | null;
+  cfu: number;
+  professor?: string | null;
+  colorHex: string;
+  difficultyWeight?: number | null;
+  targetHours?: number | null;
+  isActive?: boolean | null;
+  notes?: string | null;
+}
+
+export interface UpsertStudyUnitInput {
+  id?: string | null;
+  sessionId: string;
+  courseId: string;
+  unitNumber: number;
+  chapter?: string | null;
+  title: string;
+  description?: string | null;
+  source?: string | null;
+  estimatedHours: number;
+  priority?: number | null;
+}
+
+export interface UpsertExamInput {
+  id?: string | null;
+  sessionId: string;
+  courseId: string;
+  date: string;
+  timeSlot?: string | null;
+  durationMinutes?: number | null;
+  round: string;
+  examType?: string | null;
+  classroom?: string | null;
+  title?: string | null;
+  details?: string | null;
+  status?: "planned" | "passed" | "failed" | "withdrawn" | null;
+  grade?: string | null;
+}
+
+export interface UpsertTaskInput {
+  id?: string | null;
+  sessionId: string;
+  courseId?: string | null;
+  unitId?: string | null;
+  date: string;
+  category: TaskCategory;
+  title: string;
+  chapter?: string | null;
+  topic?: string | null;
+  pages?: string | null;
+  source?: string | null;
+  plannedHours?: number | null;
+  priority?: number | null;
+}
+
+export interface UpsertTaskSubItemInput {
+  id?: string | null;
+  taskId: string;
+  text: string;
+  category?: string | null;
+  pages?: string | null;
+  done?: boolean | null;
+  sortOrder?: number | null;
+}
+
+export interface SubmitQuizAttemptInput {
+  quizId: string;
+  sessionId: string;
+  courseId: string;
+  scorePct: number;
+  correctCount: number;
+  totalCount: number;
+  answersJson: string;
+  wrongQuestionIds: string[];
+}
+
+export interface UpsertWeeklyLessonInput {
+  id?: string | null;
+  sessionId: string;
+  courseId?: string | null;
+  courseName: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  classroom?: string | null;
+  professor?: string | null;
+  colorHex?: string | null;
+}
+
+export interface UpsertCalendarEventInput {
+  id?: string | null;
+  sessionId: string;
+  courseId?: string | null;
+  date: string;
+  timeSlot?: string | null;
+  title: string;
+  category: string;
+  details?: string | null;
 }

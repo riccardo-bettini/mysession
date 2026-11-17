@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const SUPPORTED_SCHEMA_VERSION: i64 = 2;
+pub const SUPPORTED_SCHEMA_VERSION: i64 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -92,6 +92,8 @@ pub struct PlanUnit {
     pub id: String,
     pub course_id: String,
     pub unit_number: i32,
+    #[serde(default)]
+    pub chapter: String,
     pub title: String,
     #[serde(default)]
     pub description: String,
@@ -106,9 +108,33 @@ pub struct PlanUnit {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct PlanDay {
-    pub date: String,
-    pub tasks: Vec<PlanTask>,
+pub struct PlanOperationalBlock {
+    pub id: String,
+    pub order: i32,
+    pub course_id: String,
+    pub category: String,
+    pub title: String,
+    #[serde(default)]
+    pub chapter: String,
+    #[serde(default)]
+    pub topic: String,
+    #[serde(default)]
+    pub pages: String,
+    #[serde(default)]
+    pub source: String,
+    pub duration_hours: f64,
+    #[serde(default)]
+    pub instructions: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanOperationalPlan {
+    pub daily_goal: String,
+    #[serde(default)]
+    pub strategy_note: String,
+    #[serde(default)]
+    pub blocks: Vec<PlanOperationalBlock>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -116,6 +142,10 @@ pub struct PlanDay {
 pub struct PlanSubTask {
     pub id: String,
     pub text: String,
+    #[serde(default)]
+    pub category: String,
+    #[serde(default)]
+    pub pages: String,
     #[serde(default)]
     pub aliases: Vec<String>,
 }
@@ -127,15 +157,65 @@ pub struct PlanTask {
     pub course_id: String,
     #[serde(default)]
     pub unit_id: Option<String>,
-    pub text: String,
-    pub planned_hours: f64,
-    pub kind: String,
+    pub category: String,
+    pub title: String,
     #[serde(default)]
-    pub priority: Option<i32>,
+    pub chapter: String,
+    #[serde(default)]
+    pub topic: String,
+    #[serde(default)]
+    pub pages: String,
     #[serde(default)]
     pub source: Option<String>,
+    pub planned_hours: f64,
+    #[serde(default)]
+    pub priority: Option<i32>,
     #[serde(default)]
     pub aliases: Vec<String>,
     #[serde(default)]
     pub subtasks: Vec<PlanSubTask>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanQuizQuestion {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub question_type: String,
+    pub category: String,
+    #[serde(default)]
+    pub chapter: String,
+    #[serde(default)]
+    pub topic: String,
+    pub prompt: String,
+    #[serde(default)]
+    pub options: Vec<String>,
+    #[serde(default)]
+    pub correct_index: Option<i32>,
+    pub explanation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanQuiz {
+    pub id: String,
+    pub course_id: String,
+    pub title: String,
+    #[serde(default)]
+    pub topic_summary: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub questions: Vec<PlanQuizQuestion>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanDay {
+    pub date: String,
+    pub operational_plan: PlanOperationalPlan,
+    #[serde(default)]
+    pub tasks: Vec<PlanTask>,
+    #[serde(default)]
+    pub quizzes: Vec<PlanQuiz>,
 }

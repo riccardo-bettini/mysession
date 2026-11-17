@@ -1,74 +1,46 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ipc } from "../api/ipc";
-import type {
-  AppSettings,
-  BackdropMaterial,
-  CalendarViewMode,
-  MaxButtonBounds,
-  ThemeChoice,
-  WindowControlsStyle
-} from "../types/domain";
+import type { AppSettings, MaxButtonBounds } from "../types/domain";
+import { hexToRgb, normalizeHex } from "../utils/color";
 
 export const UI_SCALE_MIN = 80;
-export const UI_SCALE_MAX = 150;
+export const UI_SCALE_MAX = 140;
 export const UI_SCALE_STEP = 5;
 
-function clampScalePercent(value: number): number {
-  const rounded = Math.round(value / UI_SCALE_STEP) * UI_SCALE_STEP;
-  return Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, rounded));
+function clampScale(v: number): number {
+  return Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, Math.round(v / UI_SCALE_STEP) * UI_SCALE_STEP));
 }
 
-class ThemeAndWindowStore {
+class ThemeStore {
   settings = $state<AppSettings>({
-    theme: "auto",
+    theme: "light",
     backdropMaterial: "mica",
-    windowControlsStyle: "macos-left",
-    windowFrameStyle: "custom",
     uiScale: 100,
-    sidebarState: "expanded",
-    defaultView: "continuous",
-    startDayOfWeek: 1,
-    weeklyHolidayDay: 0,
-    studyHoursPerCfu: 15.0,
-    accentColor: "#007AFF",
-    holidayColor: "#FF3B30",
-    sundayColor: "#FF9500",
-    catStudioColor: "#007AFF",
-    catScadenzaColor: "#FF9500",
-    catLezioneColor: "#AF52DE",
-    catPersonaleColor: "#34C759",
-    aiProvider: "local",
-    aiApiKey: "",
-    aiEndpointUrl: "http://127.0.0.1:11434",
-    aiModel: "gemini-3.8-flash",
-    aiBarWidth: 760,
-    aiLocalModelId: "qwen2.5-vl-3b",
-    aiIdleTimeoutMinutes: 5,
-    aiBootStrategy: "on_demand",
-    aiHardwarePreference: "auto",
+    accentColor: "#7C5CFC",
+    catTeoriaColor: "#3B82F6",
+    catEserciziColor: "#10B981",
+    catTemiEsameColor: "#F59E0B",
+    catDimostrazioniColor: "#8B5CF6",
+    catDomandeOraleColor: "#EC4899",
+    sidebarSections: ["home", "calendar", "today", "courses", "quiz", "progress", "ai"],
+    hiddenSections: [],
+    planFolder: "",
     activeSessionId: null,
-    planFolder: ""
+    studyHoursPerCfu: 15.0,
+    startDayOfWeek: 1,
+    aiProvider: "local",
+    aiLocalModelId: "qwen2.5-vl-3b",
+    aiCustomCliCommand: "",
+    aiIdleTimeoutMinutes: 5,
   });
 
-  systemIsDark = $state<boolean>(true);
+  systemIsDark = $state<boolean>(false);
   isMaximized = $state<boolean>(false);
-  isInitialized = $state<boolean>(false);
-  showLessonTimes = $state<boolean>(
-    typeof localStorage !== "undefined" && localStorage.getItem("mysession_show_lesson_times") !== null
-      ? localStorage.getItem("mysession_show_lesson_times") === "true"
-      : true
-  );
+  private unlistenTheme: UnlistenFn | null = null;
+  private unlistenResize: UnlistenFn | null = null;
 
-  toggleShowLessonTimes(force?: boolean): boolean {
-    this.showLessonTimes = force !== undefined ? force : !this.showLessonTimes;
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem("mysession_show_lesson_times", String(this.showLessonTimes));
-    }
-    return this.showLessonTimes;
-  }
-
-  effectiveTheme = $derived<"dark" | "light">(
+  effectiveTheme = $derived<"light" | "dark">(
     this.settings.theme === "dark"
       ? "dark"
       : this.settings.theme === "light"
@@ -78,177 +50,89 @@ class ThemeAndWindowStore {
           : "light"
   );
 
-  uiScalePercent = $derived<number>(clampScalePercent(this.settings.uiScale));
-
-  private unlistenThemeEvent: UnlistenFn | null = null;
-  private unlistenResizeEvent: UnlistenFn | null = null;
-
-  async init(initialSettings: AppSettings): Promise<void> {
+  async init(initial: AppSettings): Promise<void> {
     this.settings = {
-      ...initialSettings,
-      uiScale: clampScalePercent(initialSettings.uiScale || 100)
+      ...initial,
+      uiScale: clampScale(initial.uiScale || 100)
     };
 
     try {
-      const themeInfo = await ipc.getSystemThemeInfo();
-      this.systemIsDark = themeInfo.systemIsDark;
+      const info = await ipc.getSystemThemeInfo();
+      this.systemIsDark = info.systemIsDark;
     } catch {
       if (typeof window !== "undefined" && window.matchMedia) {
         this.systemIsDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
       }
     }
 
-    this.applyDomAttributes();
+    this.applyDomVariables();
+    await this.syncNativeWindow();
 
     try {
-      await ipc.applyWindowMaterial(this.settings.backdropMaterial, this.settings.theme);
-    } catch {
-      // Fallback silenzioso fuori dal runtime Tauri
-    }
-
-    await this.setupNativeListeners();
-    this.isInitialized = true;
-  }
-
-  applyDomAttributes(): void {
-    if (typeof document === "undefined") return;
-    const root = document.documentElement;
-    const scalePct = clampScalePercent(this.settings.uiScale);
-    const scaleRatio = scalePct / 100;
-
-    root.setAttribute("data-theme", this.effectiveTheme);
-    root.setAttribute("data-theme-mode", this.settings.theme);
-    root.setAttribute("data-material", this.settings.backdropMaterial);
-    root.setAttribute("data-controls", this.settings.windowControlsStyle);
-    root.style.setProperty("--ui-scale", scaleRatio.toFixed(2));
-    root.style.setProperty("--accent-primary", this.settings.accentColor || "#0A84FF");
-    root.style.fontSize = `${(16 * scaleRatio).toFixed(2)}px`;
-  }
-
-  private async setupNativeListeners(): Promise<void> {
-    if (typeof window === "undefined") return;
-
-    // 1. Listener per WM_SETTINGCHANGE da Rust (cambio tema del registro di Windows 11)
-    try {
-      if (this.unlistenThemeEvent) this.unlistenThemeEvent();
-      this.unlistenThemeEvent = await listen<boolean>("system-theme-changed", async (event) => {
-        this.systemIsDark = Boolean(event.payload);
-        this.applyDomAttributes();
-        if (this.settings.theme === "auto") {
-          await ipc.applyWindowMaterial(this.settings.backdropMaterial, "auto");
-        }
-      });
-    } catch {
-      // Non in contesto Tauri
-    }
-
-    // 2. Listener stato massimizzazione della finestra Tauri
-    try {
-      const appWindow = getCurrentWindow();
-      this.isMaximized = await appWindow.isMaximized();
-      if (this.unlistenResizeEvent) this.unlistenResizeEvent();
-      this.unlistenResizeEvent = await appWindow.onResized(async () => {
+      const win = getCurrentWindow();
+      this.isMaximized = await win.isMaximized();
+      this.unlistenResize?.();
+      this.unlistenResize = await win.onResized(async () => {
         try {
-          this.isMaximized = await appWindow.isMaximized();
+          this.isMaximized = await win.isMaximized();
         } catch {
           // ignore
         }
       });
-    } catch {
-      // Non in contesto Tauri
-    }
-
-    // 3. MediaQuery fallback per prefers-color-scheme
-    if (window.matchMedia) {
-      const mq = window.matchMedia("(prefers-color-scheme: dark)");
-      mq.addEventListener("change", (e) => {
-        this.systemIsDark = e.matches;
-        this.applyDomAttributes();
+      this.unlistenTheme?.();
+      this.unlistenTheme = await listen<boolean>("system-theme-changed", async (ev) => {
+        this.systemIsDark = ev.payload;
+        this.applyDomVariables();
+        if (this.settings.theme === "auto") {
+          await this.syncNativeWindow();
+        }
       });
-    }
-  }
-
-  async persistAndSync(): Promise<void> {
-    this.applyDomAttributes();
-    try {
-      const saved = await ipc.saveAppSettings(this.settings);
-      this.settings = saved;
     } catch {
-      // Ignora errori in modalità offline/test
+      // ignore outside Tauri
     }
   }
 
-  async setThemeMode(mode: ThemeChoice): Promise<void> {
-    this.settings.theme = mode;
-    await this.persistAndSync();
+  applyDomVariables(): void {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    root.setAttribute("data-theme", this.effectiveTheme);
+    root.style.setProperty("--ui-scale", String(clampScale(this.settings.uiScale) / 100));
+
+    const accent = normalizeHex(this.settings.accentColor, "#7C5CFC");
+    const rgb = hexToRgb(accent);
+    root.style.setProperty("--accent", accent);
+    root.style.setProperty("--accent-soft", `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.20)`);
+
+    root.style.setProperty("--cat-teoria", normalizeHex(this.settings.catTeoriaColor, "#3B82F6"));
+    root.style.setProperty("--cat-esercizi", normalizeHex(this.settings.catEserciziColor, "#10B981"));
+    root.style.setProperty("--cat-temi-esame", normalizeHex(this.settings.catTemiEsameColor, "#F59E0B"));
+    root.style.setProperty("--cat-dimostrazioni", normalizeHex(this.settings.catDimostrazioniColor, "#8B5CF6"));
+    root.style.setProperty("--cat-domande-orale", normalizeHex(this.settings.catDomandeOraleColor, "#EC4899"));
   }
 
-  async setTheme(mode: ThemeChoice): Promise<void> {
-    await this.setThemeMode(mode);
+  async syncNativeWindow(): Promise<void> {
+    try {
+      await ipc.applyWindowMaterial(this.settings.backdropMaterial, this.settings.theme);
+    } catch {
+      // ignore
+    }
   }
 
-  async cycleThemeMode(): Promise<void> {
-    const order: ThemeChoice[] = ["auto", "dark", "light"];
-    const idx = order.indexOf(this.settings.theme);
-    const next = order[(idx + 1) % order.length];
-    await this.setThemeMode(next);
-  }
-
-  async setWindowMaterial(material: BackdropMaterial): Promise<void> {
-    this.settings.backdropMaterial = material;
-    await this.persistAndSync();
-  }
-
-  async setBackdropMaterial(material: BackdropMaterial): Promise<void> {
-    await this.setWindowMaterial(material);
-  }
-
-  async setWindowControlsStyle(style: WindowControlsStyle): Promise<void> {
-    this.settings.windowControlsStyle = style;
-    await this.persistAndSync();
-  }
-
-  async toggleWindowControlsStyle(): Promise<void> {
-    const next: WindowControlsStyle =
-      this.settings.windowControlsStyle === "macos-left" ? "win11-right" : "macos-left";
-    await this.setWindowControlsStyle(next);
-  }
-
-  async setUiScale(scalePercent: number): Promise<void> {
-    this.settings.uiScale = clampScalePercent(scalePercent);
-    await this.persistAndSync();
-  }
-
-  async zoomIn(): Promise<void> {
-    await this.setUiScale(this.settings.uiScale + UI_SCALE_STEP);
-  }
-
-  async zoomOut(): Promise<void> {
-    await this.setUiScale(this.settings.uiScale - UI_SCALE_STEP);
-  }
-
-  async resetZoom(): Promise<void> {
-    await this.setUiScale(100);
-  }
-
-  async setActiveView(view: CalendarViewMode): Promise<void> {
-    this.settings.defaultView = view;
-    await this.persistAndSync();
-  }
-
-  async setDefaultView(view: CalendarViewMode): Promise<void> {
-    await this.setActiveView(view);
-  }
-
-  async updateSettings(partial: Partial<AppSettings>): Promise<void> {
-    this.settings = {
+  async updateSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
+    const next: AppSettings = {
       ...this.settings,
-      ...partial
+      ...patch,
+      uiScale: clampScale(patch.uiScale ?? this.settings.uiScale)
     };
-    await this.persistAndSync();
+    this.settings = next;
+    this.applyDomVariables();
+    const saved = await ipc.saveAppSettings(next);
+    this.settings = saved;
+    this.applyDomVariables();
+    return saved;
   }
 
-  async registerMaximizeButtonElement(el: HTMLElement | null): Promise<void> {
+  async registerMaximizeBounds(el: HTMLElement | null): Promise<void> {
     if (!el || typeof window === "undefined") return;
     const rect = el.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
@@ -261,7 +145,7 @@ class ThemeAndWindowStore {
     try {
       await ipc.setMaximizeButtonBounds(bounds);
     } catch {
-      // ignore outside Tauri
+      // ignore
     }
   }
 
@@ -290,6 +174,11 @@ class ThemeAndWindowStore {
       // ignore
     }
   }
+
+  destroy(): void {
+    this.unlistenTheme?.();
+    this.unlistenResize?.();
+  }
 }
 
-export const themeStore = new ThemeAndWindowStore();
+export const themeStore = new ThemeStore();
