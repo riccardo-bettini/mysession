@@ -1,5 +1,5 @@
 ﻿param(
-    [string]$Tag = "v1.0.57",
+    [string]$Tag = "v2.0.0",
     [string]$Token = $env:GITHUB_TOKEN
 )
 
@@ -33,21 +33,19 @@ if ($existing) {
 }
 
 $releaseNotes = @"
-### Novità e Migliorie di MySession v1.0.57
+### Novità Principali di MySession v2.00 ($Tag)
 
-- **Sotto-elementi To-Do (Subtasks Checklist)**:
-  - Ogni attività giornaliera può ora contenere una propria mini to-do list di sotto-elementi / sotto-argomenti spuntabili singolarmente.
-  - **Cascata Intelligente**: spuntando tutti i sotto-elementi il task padre si completa in automatico; spuntando il padre si completano tutti i sotto-elementi; deselezionando un sotto-elemento il padre torna non completato.
-  - **Interazione Fluida Apple HIG**: contatore di avanzamento con badge e chevron espandibile/collassabile, aggiunta rapida inline continua con Invio, doppio click per modificare il testo in linea e rimozione rapida.
-- **Raggruppamento per Materia nell'Ispettore Giornata**:
-  - Le attività della giornata sono ora suddivise in schede/box dedicati per ciascuna materia programmata nel giorno (con barra d'accento, sigla e nome completo) con contatore di completamento e input rapido per inserire nuovi task direttamente in quella materia.
-  - Box dedicato separato per le attività Generali.
-- **Coerenza Multivista & Arretrati**:
-  - Sotto-elementi e fisarmonica interattiva integrati anche nella sezione **Arretrati da recuperare**.
-  - Visualizzazione compatta della frazione di avanzamento dei sotto-elementi nella vista **Settimana** del calendario.
-- **Supporto Piani di Studio v2**:
-  - Compatibilità nativa con schema v1 e v2 (`subtasks` con ID stabili per non perdere progressi tra revisioni).
-  - Preservazione intelligente delle spunte e dei sotto-elementi manuali dell'utente durante gli aggiornamenti del piano.
+- **Nuova Interfaccia Bento & Floating Pill Sidebar**:
+  - Barra laterale verticale flottante a pillola con logo, indicatore circolare fluido a molla, tooltip laterale, Selettore Sessioni e Impostazioni in basso (nessuna barra superiore visibile).
+  - 7 sezioni riordinabili e personalizzabili dalle Impostazioni: **Home**, **Calendario**, **Oggi**, **Corsi**, **Quiz**, **Progressione**, **AI**.
+- **Piano Operativo Giornaliero & To-Do List Strutturata**:
+  - Sezione **Oggi** (con switcher rapido data e espansione dal Calendario) divisa in Piano Operativo sequenziale, To-Do List filtrabile nelle **5 categorie** (`Teoria`, `Esercizi`, `Temi d'esame`, `Dimostrazioni`, `Domande orale`) con campi dedicati per Capitolo, Argomento, Pagine e Fonte, e **Quiz del giorno**.
+- **Quiz Giornalieri Interattivi**:
+  - Un quiz dedicato per ogni materia studiata nel giorno, con domande a scelta multipla e flashcard aperte/orali, spiegazioni dettagliate e storico tentativi/errori.
+- **Corsi & Progressione**:
+  - Schermate dedicate per ogni singolo corso e panoramica di avanzamento per materia, per categoria e countdown dei giorni rimanenti agli esami.
+- **Agente AI & Agenti CLI Integrati**:
+  - Supporto al modello locale base leggero (`Qwen2.5-VL 3B` on-demand) e collegamento diretto ad **Antigravity CLI (`agy`)**, **Claude Code (`claude`)**, **Codex (`codex`)** o CLI custom, con scansione foto orario lezioni e **Undo** immediato delle modifiche.
 "@
 
 $releasePayload = @{
